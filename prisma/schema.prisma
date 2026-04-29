@@ -1,0 +1,132 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum RoleName {
+  super_admin_bba
+  crew
+  admin_apotek
+  owner
+}
+
+enum RequestStatus {
+  draft
+  submitted
+  revision_required
+  approved
+  rejected
+}
+
+enum CandidateStatus {
+  new
+  screening_passed
+  screening_failed
+  interview_scheduled
+  interviewed
+  hired
+  rejected
+  hold
+}
+
+enum TaskStatus {
+  open
+  assigned
+  in_progress
+  submitted
+  revision_required
+  approved
+  closed
+}
+
+model TenantApotek {
+  id        String            @id @default(cuid())
+  name      String
+  code      String            @unique
+  status    String            @default("active")
+  users     User[]
+  requests  WorkforceRequest[]
+  candidates Candidate[]
+  tasks     Task[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model User {
+  id        String      @id @default(cuid())
+  fullName  String
+  email     String      @unique
+  isActive  Boolean     @default(true)
+  tenantId  String?
+  tenant    TenantApotek? @relation(fields: [tenantId], references: [id])
+  roles     UserRole[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model Role {
+  id          String     @id @default(cuid())
+  name        RoleName   @unique
+  description String
+  userRoles   UserRole[]
+}
+
+model UserRole {
+  id       String @id @default(cuid())
+  userId   String
+  roleId   String
+  tenantId String?
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, tenantId])
+}
+
+model WorkforceRequest {
+  id              String        @id @default(cuid())
+  tenantId        String
+  positionTitle   String
+  headcountNeeded Int
+  priorityLevel   String
+  targetJoinDate  DateTime
+  status          RequestStatus @default(draft)
+  tenant          TenantApotek  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  candidates      Candidate[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Candidate {
+  id               String          @id @default(cuid())
+  tenantId         String
+  requestId        String?
+  fullName         String
+  appliedPosition  String
+  sourceChannel    String
+  status           CandidateStatus @default(new)
+  tenant           TenantApotek    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request          WorkforceRequest? @relation(fields: [requestId], references: [id])
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  tenantId    String
+  title       String
+  assignee    String
+  dueDate     DateTime
+  status      TaskStatus @default(open)
+  tenant      TenantApotek @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
