@@ -1,4 +1,6 @@
 import { getSessionContext } from "@/lib/auth-context";
+import { recordReminderDispatch } from "@/lib/reminder-dispatch-log";
+import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
@@ -20,7 +22,8 @@ export default async function CrewDashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const today = new Date().toISOString().slice(0, 10);
+  const reminderWindow = getOperationalReminderWindow();
+  const today = reminderWindow.dateKey;
   const [todayCount, personalPending, personalApproved] = await Promise.all([
     supabase
       .from("daily_submissions")
@@ -42,6 +45,71 @@ export default async function CrewDashboardPage() {
       .eq("status", "approved"),
   ]);
   const numberFormatter = new Intl.NumberFormat("id-ID");
+  const reminders: { tone: "amber" | "emerald"; text: string; href: string; cta: string }[] = [];
+  if ((todayCount.count ?? 0) === 0) {
+    const deadlineCopy =
+      reminderWindow.phase === "post_cutoff"
+        ? "Cut-off sudah lewat, mohon input secepatnya untuk menghindari keterlambatan."
+        : `Input minimal satu submission sebelum pukul ${String(reminderWindow.cutoffHour).padStart(2, "0")}.00 ${reminderWindow.timezoneLabel}.`;
+    reminders.push({
+      tone: "amber",
+      text: `Belum ada input hari ini. ${deadlineCopy}`,
+      href: "/crew/input-harian",
+      cta: "Input Sekarang",
+    });
+  }
+  if ((personalPending.count ?? 0) > 0) {
+    const pendingCopy =
+      reminderWindow.phase === "post_cutoff"
+        ? "Segera cek agar tidak menumpuk ke hari berikutnya."
+        : "Pastikan data sudah lengkap sebelum cut-off.";
+    reminders.push({
+      tone: "amber",
+      text: `Ada ${numberFormatter.format(
+        personalPending.count ?? 0,
+      )} submission menunggu verifikasi. ${pendingCopy}`,
+      href: "/crew/riwayat-input",
+      cta: "Cek Riwayat",
+    });
+  }
+  if (reminders.length === 0) {
+    reminders.push({
+      tone: "emerald",
+      text: "Semua indikator operasional kamu aman. Pertahankan ritme input harian.",
+      href: "/crew/leaderboard",
+      cta: "Lihat Leaderboard",
+    });
+  }
+  const reminderWrites: Promise<unknown>[] = [];
+  if ((todayCount.count ?? 0) === 0) {
+    reminderWrites.push(
+      recordReminderDispatch(supabase, {
+        tenantApotekId: active.tenantId,
+        actorUserId: user?.id ?? null,
+        reminderDate: reminderWindow.dateKey,
+        phase: reminderWindow.phase,
+        scope: "crew_dashboard",
+        reasonCode: "missing_submission",
+        payload: { pendingCount: personalPending.count ?? 0 },
+      }),
+    );
+  }
+  if ((personalPending.count ?? 0) > 0) {
+    reminderWrites.push(
+      recordReminderDispatch(supabase, {
+        tenantApotekId: active.tenantId,
+        actorUserId: user?.id ?? null,
+        reminderDate: reminderWindow.dateKey,
+        phase: reminderWindow.phase,
+        scope: "crew_dashboard",
+        reasonCode: "pending_submission",
+        payload: { pendingCount: personalPending.count ?? 0 },
+      }),
+    );
+  }
+  if (reminderWrites.length > 0) {
+    await Promise.allSettled(reminderWrites);
+  }
 
   return (
     <section className="space-y-4">
@@ -50,6 +118,26 @@ export default async function CrewDashboardPage() {
         <p className="text-sm text-slate-600">
           Ringkasan aktivitas input untuk tenant aktif: {active.tenantCode}
         </p>
+      </div>
+      <div className="space-y-2">
+        {reminders.map((reminder) => (
+          <div
+            key={reminder.text}
+            className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm ${
+              reminder.tone === "amber"
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            }`}
+          >
+            <p>{reminder.text}</p>
+            <Link
+              href={reminder.href}
+              className="rounded-md border border-current px-3 py-1 text-xs font-semibold"
+            >
+              {reminder.cta}
+            </Link>
+          </div>
+        ))}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

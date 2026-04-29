@@ -8,6 +8,8 @@ import {
   getSubmissionStatusLabel,
   getVerificationActionLabel,
 } from "@/lib/labels";
+import { recordReminderDispatch } from "@/lib/reminder-dispatch-log";
+import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
@@ -63,6 +65,7 @@ export default async function AdminVerifikasiPage({
     : "all";
   const from = params.from ?? "";
   const to = params.to ?? "";
+  const reminderWindow = getOperationalReminderWindow();
 
   let query = supabase
     .from("daily_submissions")
@@ -85,6 +88,15 @@ export default async function AdminVerifikasiPage({
     query = query.lte("submission_date", to);
   }
   const { data, count } = await query;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { count: overdueQueueCount } = await supabase
+    .from("daily_submissions")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_apotek_id", active.tenantId)
+    .lt("submission_date", reminderWindow.dateKey)
+    .in("status", ["submitted", "edited_by_admin", "reject"]);
 
   const rows = (data ?? []) as VerificationQueueRow[];
   const numberFormatter = new Intl.NumberFormat("id-ID");
@@ -110,6 +122,39 @@ export default async function AdminVerifikasiPage({
     feedbackStatus && params.message
       ? feedbackMessageMap[params.message] ?? "Aksi selesai."
       : null;
+  const reminderTone =
+    reminderWindow.phase === "post_cutoff" && (overdueQueueCount ?? 0) > 0
+      ? "rose"
+      : reminderWindow.phase === "near_cutoff" || (overdueQueueCount ?? 0) > 0
+        ? "amber"
+        : "emerald";
+  const reminderText =
+    reminderTone === "rose"
+      ? `Ada ${numberFormatter.format(
+          overdueQueueCount ?? 0,
+        )} queue lintas hari setelah cut-off. Prioritaskan verifikasi untuk menekan backlog.`
+      : reminderTone === "amber"
+        ? `Reminder operasional: ${
+            reminderWindow.phase === "near_cutoff"
+              ? `mendekati cut-off ${String(reminderWindow.cutoffHour).padStart(2, "0")}.00 ${reminderWindow.timezoneLabel}`
+              : `${numberFormatter.format(overdueQueueCount ?? 0)} queue lintas hari belum tuntas`
+          }.`
+        : "Queue verifikasi berada dalam kondisi aman.";
+  if (reminderTone === "amber" || reminderTone === "rose") {
+    await recordReminderDispatch(supabase, {
+      tenantApotekId: active.tenantId,
+      actorUserId: user?.id ?? null,
+      reminderDate: reminderWindow.dateKey,
+      phase: reminderWindow.phase,
+      scope: "admin_verifikasi",
+      reasonCode: reminderTone === "rose" ? "overdue_verification" : "verification_backlog",
+      payload: {
+        queueCount: count ?? 0,
+        overdueCount: overdueQueueCount ?? 0,
+        selectedStatus,
+      },
+    });
+  }
 
   return (
     <section className="space-y-4">
@@ -118,6 +163,17 @@ export default async function AdminVerifikasiPage({
         <p className="text-sm text-slate-600">
           Antrian verifikasi submission crew/admin pada tenant aktif.
         </p>
+      </div>
+      <div
+        className={`rounded-xl border px-4 py-3 text-sm ${
+          reminderTone === "rose"
+            ? "border-rose-200 bg-rose-50 text-rose-800"
+            : reminderTone === "amber"
+              ? "border-amber-200 bg-amber-50 text-amber-800"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+        }`}
+      >
+        {reminderText}
       </div>
       <form className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-4">
         <label className="text-sm text-slate-700">

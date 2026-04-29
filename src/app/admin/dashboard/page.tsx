@@ -1,4 +1,6 @@
 import { getSessionContext } from "@/lib/auth-context";
+import { recordReminderDispatch } from "@/lib/reminder-dispatch-log";
+import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
@@ -16,7 +18,15 @@ export default async function AdminDashboardPage() {
   }
 
   const supabase = await createClient();
-  const [queueCount, approvedCount, needsFollowupCount] = await Promise.all([
+  const [
+    {
+      data: { user },
+    },
+    queueCount,
+    approvedCount,
+    needsFollowupCount,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
     supabase
       .from("daily_submissions")
       .select("id", { count: "exact", head: true })
@@ -34,6 +44,48 @@ export default async function AdminDashboardPage() {
       .in("status", ["reject", "draft"]),
   ]);
   const numberFormatter = new Intl.NumberFormat("id-ID");
+  const reminderWindow = getOperationalReminderWindow();
+  const queueValue = queueCount.count ?? 0;
+  const followupValue = needsFollowupCount.count ?? 0;
+  const reminder =
+    queueValue > 0 || followupValue > 0
+      ? {
+          tone: "amber" as const,
+          title:
+            reminderWindow.phase === "post_cutoff"
+              ? "Cut-off terlewati"
+              : reminderWindow.phase === "near_cutoff"
+                ? "Mendekati cut-off"
+                : "Perlu tindakan verifikasi",
+          text: `Terdapat ${numberFormatter.format(
+            queueValue,
+          )} antrian verifikasi dan ${numberFormatter.format(
+            followupValue,
+          )} item tindak lanjut. ${
+            reminderWindow.phase === "post_cutoff"
+              ? "Prioritaskan penyelesaian segera untuk menekan backlog."
+              : `Prioritaskan penyelesaian sebelum pukul ${String(reminderWindow.cutoffHour).padStart(2, "0")}.00 ${reminderWindow.timezoneLabel}.`
+          }`,
+        }
+      : {
+          tone: "emerald" as const,
+          title: "Queue terkendali",
+          text: "Antrian verifikasi saat ini terkendali. Lanjutkan monitoring berkala.",
+        };
+  if (queueValue > 0 || followupValue > 0) {
+    await recordReminderDispatch(supabase, {
+      tenantApotekId: active.tenantId,
+      actorUserId: user?.id ?? null,
+      reminderDate: reminderWindow.dateKey,
+      phase: reminderWindow.phase,
+      scope: "admin_dashboard",
+      reasonCode: "verification_backlog",
+      payload: {
+        queueCount: queueValue,
+        followupCount: followupValue,
+      },
+    });
+  }
 
   return (
     <section className="space-y-4">
@@ -42,6 +94,16 @@ export default async function AdminDashboardPage() {
         <p className="text-sm text-slate-600">
           Monitoring verifikasi dan kualitas data untuk tenant aktif: {active.tenantCode}
         </p>
+      </div>
+      <div
+        className={`rounded-xl border px-4 py-3 text-sm ${
+          reminder.tone === "amber"
+            ? "border-amber-200 bg-amber-50 text-amber-800"
+            : "border-emerald-200 bg-emerald-50 text-emerald-800"
+        }`}
+      >
+        <p className="font-semibold">{reminder.title}</p>
+        {reminder.text}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
