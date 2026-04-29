@@ -96,8 +96,27 @@ export default async function CrewRiwayatInputPage({
   }
 
   const { data, count } = await query;
+  const countByStatus = await Promise.all(
+    ["draft", "submitted", "approved", "reject"].map(async (status) => {
+      let statusQuery = supabase
+        .from("daily_submissions")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_apotek_id", active.tenantId)
+        .eq("user_id", user?.id ?? "")
+        .eq("status", status);
+      if (from) {
+        statusQuery = statusQuery.gte("submission_date", from);
+      }
+      if (to) {
+        statusQuery = statusQuery.lte("submission_date", to);
+      }
+      const { count: statusCount } = await statusQuery;
+      return [status, statusCount ?? 0] as const;
+    }),
+  );
   const rows = (data ?? []) as SubmissionRow[];
   const numberFormatter = new Intl.NumberFormat("id-ID");
+  const statusMap = new Map(countByStatus);
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
   const hasPrev = page > 1;
   const hasNext = page < totalPages;
@@ -117,6 +136,32 @@ export default async function CrewRiwayatInputPage({
         <p className="text-sm text-slate-600">
           Riwayat input pribadi untuk tenant aktif: {active.tenantCode}
         </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Draft</p>
+          <p className="mt-1 text-xl font-semibold text-slate-900">
+            {numberFormatter.format(statusMap.get("draft") ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Submitted</p>
+          <p className="mt-1 text-xl font-semibold text-slate-900">
+            {numberFormatter.format(statusMap.get("submitted") ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Approved</p>
+          <p className="mt-1 text-xl font-semibold text-emerald-700">
+            {numberFormatter.format(statusMap.get("approved") ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Reject</p>
+          <p className="mt-1 text-xl font-semibold text-rose-700">
+            {numberFormatter.format(statusMap.get("reject") ?? 0)}
+          </p>
+        </div>
       </div>
 
       <form className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-4">
@@ -168,6 +213,20 @@ export default async function CrewRiwayatInputPage({
           </Link>
         </div>
       </form>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/crew/input-harian"
+          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+        >
+          Input Baru
+        </Link>
+        <Link
+          href="/crew/dashboard"
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700"
+        >
+          Kembali ke Dashboard
+        </Link>
+      </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="min-w-full text-left text-sm">
@@ -186,7 +245,7 @@ export default async function CrewRiwayatInputPage({
             {rows.length === 0 ? (
               <tr>
                 <td className="px-3 py-4 text-slate-500" colSpan={7}>
-                  Belum ada data yang sesuai filter.
+                  Tidak ada data sesuai filter. Coba reset filter atau buat input baru.
                 </td>
               </tr>
             ) : null}
