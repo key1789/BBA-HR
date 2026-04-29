@@ -19,7 +19,7 @@ type ExportJobRow = {
 export default async function BbaExportCenterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ feedback?: string; message?: string; page?: string }>;
+  searchParams: Promise<{ feedback?: string; message?: string; page?: string; status?: string }>;
 }) {
   const params = await searchParams;
   const session = await getSessionContext();
@@ -30,15 +30,43 @@ export default async function BbaExportCenterPage({
 
   const supabase = await createClient();
   const pageSize = 10;
+  const selectedStatus = params.status ?? "all";
   const parsedPage = Number(params.page ?? "1");
   const page = Number.isFinite(parsedPage) && parsedPage > 0 ? Math.floor(parsedPage) : 1;
   const offset = (page - 1) * pageSize;
-  const { data, count } = await supabase
+  let jobsQuery = supabase
     .from("export_jobs")
     .select("id, export_type, format, status, created_at", { count: "exact" })
     .eq("tenant_apotek_id", active.tenantId)
     .order("created_at", { ascending: false })
     .range(offset, offset + pageSize - 1);
+  if (selectedStatus !== "all") {
+    jobsQuery = jobsQuery.eq("status", selectedStatus);
+  }
+  const { data, count } = await jobsQuery;
+  const [{ count: queuedCount }, { count: processingCount }, { count: doneCount }, { count: failedCount }] =
+    await Promise.all([
+      supabase
+        .from("export_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_apotek_id", active.tenantId)
+        .eq("status", "queued"),
+      supabase
+        .from("export_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_apotek_id", active.tenantId)
+        .eq("status", "processing"),
+      supabase
+        .from("export_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_apotek_id", active.tenantId)
+        .eq("status", "done"),
+      supabase
+        .from("export_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_apotek_id", active.tenantId)
+        .eq("status", "failed"),
+    ]);
 
   const jobs = (data ?? []) as ExportJobRow[];
   const feedbackStatus =
@@ -63,6 +91,7 @@ export default async function BbaExportCenterPage({
   const navParams = new URLSearchParams();
   if (params.feedback) navParams.set("feedback", params.feedback);
   if (params.message) navParams.set("message", params.message);
+  if (selectedStatus !== "all") navParams.set("status", selectedStatus);
   const prevParams = new URLSearchParams(navParams);
   prevParams.set("page", String(page - 1));
   const nextParams = new URLSearchParams(navParams);
@@ -75,6 +104,24 @@ export default async function BbaExportCenterPage({
         <p className="text-sm text-slate-600">
           Export hanya untuk role BBA. Semua request export masuk audit log.
         </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Queued</p>
+          <p className="mt-1 text-xl font-semibold text-slate-900">{queuedCount ?? 0}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Processing</p>
+          <p className="mt-1 text-xl font-semibold text-slate-900">{processingCount ?? 0}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Done</p>
+          <p className="mt-1 text-xl font-semibold text-emerald-700">{doneCount ?? 0}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Failed</p>
+          <p className="mt-1 text-xl font-semibold text-rose-700">{failedCount ?? 0}</p>
+        </div>
       </div>
       {feedbackStatus && feedbackMessage ? (
         <div
@@ -110,6 +157,35 @@ export default async function BbaExportCenterPage({
         >
           Buat Export Job
         </button>
+      </form>
+
+      <form className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3">
+        <label className="text-sm text-slate-700">
+          Status
+          <select
+            name="status"
+            defaultValue={selectedStatus}
+            className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="all">Semua</option>
+            <option value="queued">Queued</option>
+            <option value="processing">Processing</option>
+            <option value="done">Done</option>
+            <option value="failed">Failed</option>
+          </select>
+        </label>
+        <button
+          type="submit"
+          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+        >
+          Terapkan
+        </button>
+        <Link
+          href="/bba/export-center"
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700"
+        >
+          Reset
+        </Link>
       </form>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

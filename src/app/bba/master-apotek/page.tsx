@@ -44,6 +44,10 @@ type PeriodRow = {
   period_end: string;
   status: string;
 };
+type QueueRow = {
+  id: string;
+  submission_date: string;
+};
 
 const addonKeys = [
   "produk_fokus",
@@ -87,6 +91,9 @@ export default async function BbaMasterApotekPage({
       </section>
     );
   }
+  const now = new Date();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
   const [{ data: membersData }, { data: kpiData }, { data: addonData }, { data: periodData }] =
     await Promise.all([
@@ -113,6 +120,38 @@ export default async function BbaMasterApotekPage({
         .order("period_start", { ascending: false })
         .limit(5),
     ]);
+  const [{ count: openQueueCount }, { count: overdueQueueCount }, { count: reminder7dCount }, { count: exportFailedCount }] =
+    await Promise.all([
+      supabase
+        .from("daily_submissions")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_apotek_id", selectedTenantId)
+        .in("status", ["submitted", "edited_by_admin", "reject"]),
+      supabase
+        .from("daily_submissions")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_apotek_id", selectedTenantId)
+        .lt("submission_date", new Date().toISOString().slice(0, 10))
+        .in("status", ["submitted", "edited_by_admin", "reject"]),
+      supabase
+        .from("reminder_dispatch_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_apotek_id", selectedTenantId)
+        .gte("created_at", sevenDaysAgo.toISOString()),
+      supabase
+        .from("export_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_apotek_id", selectedTenantId)
+        .eq("status", "failed"),
+    ]);
+  const { data: oldestQueueData } = await supabase
+    .from("daily_submissions")
+    .select("id, submission_date")
+    .eq("tenant_apotek_id", selectedTenantId)
+    .in("status", ["submitted", "edited_by_admin", "reject"])
+    .order("submission_date", { ascending: true })
+    .limit(1);
+  const oldestQueue = (oldestQueueData?.[0] ?? null) as QueueRow | null;
 
   const members = (membersData ?? []) as MemberRow[];
   const latestKpi = (kpiData?.[0] ?? null) as KpiRow | null;
@@ -120,7 +159,6 @@ export default async function BbaMasterApotekPage({
     ((addonData ?? []) as AddonRow[]).map((item) => [item.addon_key, item.is_enabled]),
   );
   const periods = (periodData ?? []) as PeriodRow[];
-  const now = new Date();
   const feedbackStatus =
     params.feedback === "success" || params.feedback === "error"
       ? params.feedback
@@ -241,6 +279,33 @@ export default async function BbaMasterApotekPage({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <article className="rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Governance Signal
+          </h2>
+          <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+            <div className="rounded-md border border-slate-200 p-2">
+              <p className="text-xs text-slate-500">Open Queue</p>
+              <p className="text-lg font-semibold text-slate-900">{openQueueCount ?? 0}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 p-2">
+              <p className="text-xs text-slate-500">SLA Breach Queue</p>
+              <p className="text-lg font-semibold text-rose-700">{overdueQueueCount ?? 0}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 p-2">
+              <p className="text-xs text-slate-500">Reminder 7 Hari</p>
+              <p className="text-lg font-semibold text-slate-900">{reminder7dCount ?? 0}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 p-2">
+              <p className="text-xs text-slate-500">Export Failed</p>
+              <p className="text-lg font-semibold text-amber-700">{exportFailedCount ?? 0}</p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Queue terlama: {oldestQueue?.submission_date ?? "-"}
+          </p>
+        </article>
+
         <article className="rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">KPI&Target</h2>
           <form action={upsertKpiConfigAction} className="mt-3 grid gap-2 text-sm md:grid-cols-2">

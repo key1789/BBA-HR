@@ -45,7 +45,7 @@ function compactJson(value: Record<string, unknown> | null): string {
 export default async function BbaAuditLogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ action?: string; entity?: string; page?: string }>;
+  searchParams: Promise<{ action?: string; entity?: string; page?: string; days?: string }>;
 }) {
   const params = await searchParams;
   const session = await getSessionContext();
@@ -58,6 +58,12 @@ export default async function BbaAuditLogPage({
   const parsedPage = Number(params.page ?? "1");
   const page = Number.isFinite(parsedPage) && parsedPage > 0 ? Math.floor(parsedPage) : 1;
   const offset = (page - 1) * PAGE_SIZE;
+  const parsedDays = Number(params.days ?? "7");
+  const days =
+    Number.isFinite(parsedDays) && [1, 7, 30].includes(parsedDays) ? parsedDays : 7;
+  const fromDate = new Date();
+  fromDate.setDate(fromDate.getDate() - days);
+  const fromIso = fromDate.toISOString();
   let query = supabase
     .from("activity_logs")
     .select(
@@ -65,6 +71,7 @@ export default async function BbaAuditLogPage({
       { count: "exact" },
     )
     .eq("tenant_apotek_id", active.tenantId)
+    .gte("created_at", fromIso)
     .order("created_at", { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1);
 
@@ -83,10 +90,24 @@ export default async function BbaAuditLogPage({
   const pageParams = new URLSearchParams();
   if (params.action) pageParams.set("action", params.action);
   if (params.entity) pageParams.set("entity", params.entity);
+  pageParams.set("days", String(days));
   const prevParams = new URLSearchParams(pageParams);
   prevParams.set("page", String(page - 1));
   const nextParams = new URLSearchParams(pageParams);
   nextParams.set("page", String(page + 1));
+  const summary = rows.reduce(
+    (acc, row) => {
+      acc.total += 1;
+      if (row.action.includes("payroll") || row.action.includes("export")) {
+        acc.governanceCritical += 1;
+      }
+      if (row.action.includes("reject") || row.action.includes("unlock")) {
+        acc.needsReview += 1;
+      }
+      return acc;
+    },
+    { total: 0, governanceCritical: 0, needsReview: 0 },
+  );
 
   return (
     <section className="space-y-4">
@@ -95,6 +116,20 @@ export default async function BbaAuditLogPage({
         <p className="text-sm text-slate-600">
           Jejak aksi sensitif tenant aktif: {active.tenantCode}
         </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Total Event ({days} hari)</p>
+          <p className="mt-1 text-xl font-semibold text-slate-900">{summary.total}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Governance Critical</p>
+          <p className="mt-1 text-xl font-semibold text-slate-900">{summary.governanceCritical}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs text-slate-500">Perlu Review</p>
+          <p className="mt-1 text-xl font-semibold text-amber-700">{summary.needsReview}</p>
+        </div>
       </div>
 
       <form className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3">
@@ -117,6 +152,18 @@ export default async function BbaAuditLogPage({
             placeholder="mis. payroll_periods"
             className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
+        </label>
+        <label className="text-sm text-slate-700">
+          Periode
+          <select
+            name="days"
+            defaultValue={String(days)}
+            className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="1">1 hari</option>
+            <option value="7">7 hari</option>
+            <option value="30">30 hari</option>
+          </select>
         </label>
         <button
           type="submit"
