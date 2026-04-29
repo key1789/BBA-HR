@@ -4,18 +4,59 @@ import { getSessionContext } from "@/lib/auth-context";
 import { writeAuditLog } from "@/lib/audit-log";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+type FeedbackStatus = "success" | "error";
+
+function buildPathWithQuery(
+  pathname: string,
+  query: Record<string, string | undefined>,
+) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+  const qs = params.toString();
+  return qs ? `${pathname}?${qs}` : pathname;
+}
+
+function redirectWithFeedback(
+  pathname: string,
+  status: FeedbackStatus,
+  message: string,
+  query: Record<string, string | undefined> = {},
+): never {
+  redirect(
+    buildPathWithQuery(pathname, {
+      ...query,
+      feedback: status,
+      message,
+    }),
+  );
+}
 
 export async function createExportJobAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return;
+    return redirectWithFeedback("/bba/export-center", "error", "access_denied");
   }
 
-  const exportType = formData.get("exportType")?.toString();
+  const exportType = formData.get("exportType")?.toString()?.trim();
   const format = formData.get("format")?.toString() ?? "csv";
-  if (!exportType) {
-    return;
+  const allowedTypes = ["tasks", "candidates", "payroll"];
+  const allowedFormats = ["csv", "pdf"];
+  if (!exportType || !allowedTypes.includes(exportType)) {
+    return redirectWithFeedback(
+      "/bba/export-center",
+      "error",
+      "invalid_export_type",
+    );
+  }
+  if (!allowedFormats.includes(format)) {
+    return redirectWithFeedback("/bba/export-center", "error", "invalid_format");
   }
 
   const supabase = await createClient();
@@ -23,10 +64,10 @@ export async function createExportJobAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return;
+    return redirectWithFeedback("/bba/export-center", "error", "user_not_found");
   }
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("export_jobs")
     .insert({
       tenant_apotek_id: active.tenantId,
@@ -38,31 +79,34 @@ export async function createExportJobAction(formData: FormData) {
     .select("id")
     .single();
 
-  if (data?.id) {
-    await writeAuditLog(supabase, {
-      tenantApotekId: active.tenantId,
-      actorUserId: user.id,
-      entityType: "export_jobs",
-      entityId: data.id,
-      action: "export_requested",
-      newValue: { exportType, format },
-    });
+  if (error || !data?.id) {
+    return redirectWithFeedback("/bba/export-center", "error", "create_failed");
   }
+
+  await writeAuditLog(supabase, {
+    tenantApotekId: active.tenantId,
+    actorUserId: user.id,
+    entityType: "export_jobs",
+    entityId: data.id,
+    action: "export_requested",
+    newValue: { exportType, format },
+  });
 
   revalidatePath("/bba/export-center");
   revalidatePath("/bba/audit-log");
+  return redirectWithFeedback("/bba/export-center", "success", "export_queued");
 }
 
 export async function lockPayrollPeriodAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return;
+    return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
 
   const periodId = formData.get("periodId")?.toString();
   if (!periodId) {
-    return;
+    return redirectWithFeedback("/bba/payroll", "error", "period_required");
   }
 
   const supabase = await createClient();
@@ -70,7 +114,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return;
+    return redirectWithFeedback("/bba/payroll", "error", "user_not_found");
   }
 
   const { data: currentPeriod, error: currentError } = await supabase
@@ -80,8 +124,11 @@ export async function lockPayrollPeriodAction(formData: FormData) {
     .eq("tenant_apotek_id", active.tenantId)
     .maybeSingle();
 
-  if (currentError || !currentPeriod?.status || currentPeriod.status === "locked") {
-    return;
+  if (currentError || !currentPeriod?.status) {
+    return redirectWithFeedback("/bba/payroll", "error", "period_not_found");
+  }
+  if (currentPeriod.status === "locked") {
+    return redirectWithFeedback("/bba/payroll", "error", "already_locked");
   }
 
   const { data: updatedPeriod, error: updateError } = await supabase
@@ -93,7 +140,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
     .maybeSingle();
 
   if (updateError || !updatedPeriod?.id) {
-    return;
+    return redirectWithFeedback("/bba/payroll", "error", "lock_failed");
   }
 
   await writeAuditLog(supabase, {
@@ -106,19 +153,20 @@ export async function lockPayrollPeriodAction(formData: FormData) {
 
   revalidatePath("/bba/payroll");
   revalidatePath("/bba/audit-log");
+  return redirectWithFeedback("/bba/payroll", "success", "period_locked");
 }
 
 export async function unlockPayrollPeriodAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return;
+    return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
 
   const periodId = formData.get("periodId")?.toString();
-  const reason = formData.get("reason")?.toString();
+  const reason = formData.get("reason")?.toString()?.trim();
   if (!periodId || !reason) {
-    return;
+    return redirectWithFeedback("/bba/payroll", "error", "unlock_reason_required");
   }
 
   const supabase = await createClient();
@@ -126,7 +174,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return;
+    return redirectWithFeedback("/bba/payroll", "error", "user_not_found");
   }
 
   const { data: currentPeriod, error: currentError } = await supabase
@@ -136,8 +184,11 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     .eq("tenant_apotek_id", active.tenantId)
     .maybeSingle();
 
-  if (currentError || currentPeriod?.status !== "locked") {
-    return;
+  if (currentError || !currentPeriod?.status) {
+    return redirectWithFeedback("/bba/payroll", "error", "period_not_found");
+  }
+  if (currentPeriod.status !== "locked") {
+    return redirectWithFeedback("/bba/payroll", "error", "not_locked");
   }
 
   const { data: updatedPeriod, error: updateError } = await supabase
@@ -149,7 +200,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     .maybeSingle();
 
   if (updateError || !updatedPeriod?.id) {
-    return;
+    return redirectWithFeedback("/bba/payroll", "error", "unlock_failed");
   }
 
   await writeAuditLog(supabase, {
@@ -163,20 +214,24 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
 
   revalidatePath("/bba/payroll");
   revalidatePath("/bba/audit-log");
+  return redirectWithFeedback("/bba/payroll", "success", "period_unlocked");
 }
 
 export async function updateTenantInfoAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return;
+    return redirectWithFeedback("/bba/master-apotek", "error", "access_denied");
   }
 
   const tenantId = formData.get("tenantId")?.toString();
-  const name = formData.get("name")?.toString();
+  const name = formData.get("name")?.toString()?.trim();
   const status = formData.get("status")?.toString();
+  const basePath = buildPathWithQuery("/bba/master-apotek", { tenant: tenantId });
   if (!tenantId || !name || (status !== "active" && status !== "inactive")) {
-    return;
+    return redirectWithFeedback(basePath, "error", "invalid_tenant_payload", {
+      scope: "tenant_info",
+    });
   }
 
   const supabase = await createClient();
@@ -184,7 +239,9 @@ export async function updateTenantInfoAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return;
+    return redirectWithFeedback(basePath, "error", "user_not_found", {
+      scope: "tenant_info",
+    });
   }
 
   const { data: updated, error } = await supabase
@@ -195,7 +252,9 @@ export async function updateTenantInfoAction(formData: FormData) {
     .maybeSingle();
 
   if (error || !updated?.id) {
-    return;
+    return redirectWithFeedback(basePath, "error", "update_failed", {
+      scope: "tenant_info",
+    });
   }
 
   await writeAuditLog(supabase, {
@@ -209,13 +268,16 @@ export async function updateTenantInfoAction(formData: FormData) {
 
   revalidatePath("/bba/master-apotek");
   revalidatePath("/bba/audit-log");
+  return redirectWithFeedback(basePath, "success", "tenant_saved", {
+    scope: "tenant_info",
+  });
 }
 
 export async function upsertKpiConfigAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return;
+    return redirectWithFeedback("/bba/master-apotek", "error", "access_denied");
   }
 
   const tenantId = formData.get("tenantId")?.toString();
@@ -226,17 +288,24 @@ export async function upsertKpiConfigAction(formData: FormData) {
   const targetAtu = Number(formData.get("targetAtu")?.toString() ?? 0);
   const bonusMode = formData.get("bonusMode")?.toString();
   const allowedModes = ["fixed_only", "progressive_only", "fixed_plus_progressive"];
+  const basePath = buildPathWithQuery("/bba/master-apotek", { tenant: tenantId });
 
   if (
     !tenantId ||
-    !periodMonth ||
-    !periodYear ||
     Number.isNaN(periodMonth) ||
     Number.isNaN(periodYear) ||
+    periodMonth < 1 ||
+    periodMonth > 12 ||
+    periodYear < 2000 ||
+    targetOmzet < 0 ||
+    targetAtv < 0 ||
+    targetAtu < 0 ||
     !bonusMode ||
     !allowedModes.includes(bonusMode)
   ) {
-    return;
+    return redirectWithFeedback(basePath, "error", "invalid_kpi_payload", {
+      scope: "kpi",
+    });
   }
 
   const supabase = await createClient();
@@ -244,7 +313,9 @@ export async function upsertKpiConfigAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return;
+    return redirectWithFeedback(basePath, "error", "user_not_found", {
+      scope: "kpi",
+    });
   }
 
   const { data: upserted, error } = await supabase
@@ -269,7 +340,9 @@ export async function upsertKpiConfigAction(formData: FormData) {
     .maybeSingle();
 
   if (error || !upserted?.id) {
-    return;
+    return redirectWithFeedback(basePath, "error", "upsert_failed", {
+      scope: "kpi",
+    });
   }
 
   await writeAuditLog(supabase, {
@@ -290,13 +363,14 @@ export async function upsertKpiConfigAction(formData: FormData) {
 
   revalidatePath("/bba/master-apotek");
   revalidatePath("/bba/audit-log");
+  return redirectWithFeedback(basePath, "success", "kpi_saved", { scope: "kpi" });
 }
 
 export async function toggleAddonSettingAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return;
+    return redirectWithFeedback("/bba/master-apotek", "error", "access_denied");
   }
 
   const tenantId = formData.get("tenantId")?.toString();
@@ -309,8 +383,11 @@ export async function toggleAddonSettingAction(formData: FormData) {
     "review_pelanggan",
     "payroll",
   ];
+  const basePath = buildPathWithQuery("/bba/master-apotek", { tenant: tenantId });
   if (!tenantId || !addonKey || !allowedKeys.includes(addonKey)) {
-    return;
+    return redirectWithFeedback(basePath, "error", "invalid_addon_payload", {
+      scope: "addon",
+    });
   }
 
   const supabase = await createClient();
@@ -318,7 +395,9 @@ export async function toggleAddonSettingAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return;
+    return redirectWithFeedback(basePath, "error", "user_not_found", {
+      scope: "addon",
+    });
   }
 
   const { data: upserted, error } = await supabase
@@ -338,7 +417,9 @@ export async function toggleAddonSettingAction(formData: FormData) {
     .maybeSingle();
 
   if (error || !upserted?.id) {
-    return;
+    return redirectWithFeedback(basePath, "error", "toggle_failed", {
+      scope: "addon",
+    });
   }
 
   await writeAuditLog(supabase, {
@@ -352,4 +433,7 @@ export async function toggleAddonSettingAction(formData: FormData) {
 
   revalidatePath("/bba/master-apotek");
   revalidatePath("/bba/audit-log");
+  return redirectWithFeedback(basePath, "success", "addon_saved", {
+    scope: "addon",
+  });
 }

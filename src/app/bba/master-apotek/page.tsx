@@ -56,7 +56,12 @@ const addonKeys = [
 export default async function BbaMasterApotekPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tenant?: string }>;
+  searchParams: Promise<{
+    tenant?: string;
+    feedback?: string;
+    message?: string;
+    scope?: string;
+  }>;
 }) {
   const params = await searchParams;
   const session = await getSessionContext();
@@ -116,6 +121,31 @@ export default async function BbaMasterApotekPage({
   );
   const periods = (periodData ?? []) as PeriodRow[];
   const now = new Date();
+  const feedbackStatus =
+    params.feedback === "success" || params.feedback === "error"
+      ? params.feedback
+      : null;
+  const feedbackKey = `${params.scope ?? "general"}:${params.message ?? "unknown"}`;
+  const feedbackMessageMap: Record<string, string> = {
+    "tenant_info:tenant_saved": "Informasi apotek berhasil disimpan.",
+    "tenant_info:invalid_tenant_payload":
+      "Data informasi apotek tidak valid. Periksa nama dan status.",
+    "tenant_info:update_failed":
+      "Gagal menyimpan informasi apotek. Silakan coba lagi.",
+    "kpi:kpi_saved": "Konfigurasi KPI berhasil disimpan.",
+    "kpi:invalid_kpi_payload":
+      "Data KPI tidak valid. Pastikan bulan/tahun/target sesuai.",
+    "kpi:upsert_failed": "Gagal menyimpan konfigurasi KPI.",
+    "addon:addon_saved": "Pengaturan add-on berhasil diperbarui.",
+    "addon:invalid_addon_payload": "Payload add-on tidak valid.",
+    "addon:toggle_failed": "Gagal memperbarui status add-on.",
+    "general:access_denied": "Akses ditolak untuk aksi ini.",
+    "general:user_not_found": "Sesi user tidak ditemukan. Silakan login ulang.",
+  };
+  const feedbackMessage =
+    feedbackStatus && params.message
+      ? feedbackMessageMap[feedbackKey] ?? "Aksi selesai."
+      : null;
 
   return (
     <section className="space-y-4">
@@ -125,6 +155,17 @@ export default async function BbaMasterApotekPage({
           Informasi, Tim&Akses, KPI&Target, Add-on, dan Periode.
         </p>
       </div>
+      {feedbackStatus && feedbackMessage ? (
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm ${
+            feedbackStatus === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-rose-200 bg-rose-50 text-rose-800"
+          }`}
+        >
+          {feedbackMessage}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3">
         {tenants.map((tenant) => (
@@ -152,6 +193,7 @@ export default async function BbaMasterApotekPage({
               <input
                 name="name"
                 defaultValue={selectedTenant.name}
+                required
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
               />
             </label>
@@ -204,7 +246,7 @@ export default async function BbaMasterApotekPage({
           <form action={upsertKpiConfigAction} className="mt-3 grid gap-2 text-sm md:grid-cols-2">
             <input type="hidden" name="tenantId" value={selectedTenantId} />
             <label className="block">
-              Month
+              Bulan
               <input
                 type="number"
                 name="periodMonth"
@@ -215,11 +257,12 @@ export default async function BbaMasterApotekPage({
               />
             </label>
             <label className="block">
-              Year
+              Tahun
               <input
                 type="number"
                 name="periodYear"
                 defaultValue={latestKpi?.period_year ?? now.getFullYear()}
+                min={2000}
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
               />
             </label>
@@ -229,6 +272,7 @@ export default async function BbaMasterApotekPage({
                 type="number"
                 name="targetOmzet"
                 defaultValue={latestKpi?.target_omzet ?? 0}
+                min={0}
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
               />
             </label>
@@ -238,6 +282,7 @@ export default async function BbaMasterApotekPage({
                 type="number"
                 name="targetAtv"
                 defaultValue={latestKpi?.target_atv ?? 0}
+                min={0}
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
               />
             </label>
@@ -248,6 +293,7 @@ export default async function BbaMasterApotekPage({
                 step="0.01"
                 name="targetAtu"
                 defaultValue={latestKpi?.target_atu ?? 0}
+                min={0}
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
               />
             </label>
@@ -310,7 +356,7 @@ export default async function BbaMasterApotekPage({
           <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-100 text-slate-700">
               <tr>
-                <th className="px-3 py-2">Period</th>
+                <th className="px-3 py-2">Periode</th>
                 <th className="px-3 py-2">Status</th>
               </tr>
             </thead>

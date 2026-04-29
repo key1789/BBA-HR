@@ -29,6 +29,7 @@ type SearchParams = {
   status?: string;
   from?: string;
   to?: string;
+  page?: string;
 };
 
 const ALLOWED_STATUS: SubmissionStatus[] = [
@@ -39,6 +40,7 @@ const ALLOWED_STATUS: SubmissionStatus[] = [
   "edited_by_admin",
   "missing_submission",
 ];
+const PAGE_SIZE = 20;
 
 export default async function CrewRiwayatInputPage({
   searchParams,
@@ -63,6 +65,9 @@ export default async function CrewRiwayatInputPage({
     : "all";
   const from = params.from ?? "";
   const to = params.to ?? "";
+  const parsedPage = Number(params.page ?? "1");
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? Math.floor(parsedPage) : 1;
+  const offset = (page - 1) * PAGE_SIZE;
 
   const supabase = await createClient();
   const {
@@ -73,11 +78,12 @@ export default async function CrewRiwayatInputPage({
     .from("daily_submissions")
     .select(
       "id, submission_date, shift_label, omzet_total, transaction_total, product_total, rejected_customer_total, status",
+      { count: "exact" },
     )
     .eq("tenant_apotek_id", active.tenantId)
     .eq("user_id", user?.id ?? "")
     .order("submission_date", { ascending: false })
-    .limit(100);
+    .range(offset, offset + PAGE_SIZE - 1);
 
   if (selectedStatus !== "all") {
     query = query.eq("status", selectedStatus);
@@ -89,9 +95,20 @@ export default async function CrewRiwayatInputPage({
     query = query.lte("submission_date", to);
   }
 
-  const { data } = await query;
+  const { data, count } = await query;
   const rows = (data ?? []) as SubmissionRow[];
   const numberFormatter = new Intl.NumberFormat("id-ID");
+  const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
+  const hasPrev = page > 1;
+  const hasNext = page < totalPages;
+  const pageParams = new URLSearchParams();
+  if (selectedStatus !== "all") pageParams.set("status", selectedStatus);
+  if (from) pageParams.set("from", from);
+  if (to) pageParams.set("to", to);
+  const prevParams = new URLSearchParams(pageParams);
+  prevParams.set("page", String(page - 1));
+  const nextParams = new URLSearchParams(pageParams);
+  nextParams.set("page", String(page + 1));
 
   return (
     <section className="space-y-4">
@@ -196,6 +213,37 @@ export default async function CrewRiwayatInputPage({
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="flex items-center justify-between text-sm text-slate-600">
+        <p>
+          Halaman {page} dari {totalPages}
+        </p>
+        <div className="flex gap-2">
+          {hasPrev ? (
+            <Link
+              href={`/crew/riwayat-input?${prevParams.toString()}`}
+              className="rounded-md border border-slate-300 px-3 py-1 font-medium text-slate-700"
+            >
+              Sebelumnya
+            </Link>
+          ) : (
+            <span className="rounded-md border border-slate-200 px-3 py-1 text-slate-400">
+              Sebelumnya
+            </span>
+          )}
+          {hasNext ? (
+            <Link
+              href={`/crew/riwayat-input?${nextParams.toString()}`}
+              className="rounded-md border border-slate-300 px-3 py-1 font-medium text-slate-700"
+            >
+              Berikutnya
+            </Link>
+          ) : (
+            <span className="rounded-md border border-slate-200 px-3 py-1 text-slate-400">
+              Berikutnya
+            </span>
+          )}
+        </div>
       </div>
     </section>
   );

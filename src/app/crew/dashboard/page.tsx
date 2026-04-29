@@ -60,13 +60,13 @@ export default async function CrewDashboardPage() {
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Pending Verifikasi (Saya)</p>
+          <p className="text-xs text-slate-500">Menunggu Verifikasi (Saya)</p>
           <p className="mt-2 text-2xl font-bold text-slate-900">
             {numberFormatter.format(personalPending.count ?? 0)}
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Approved (Saya)</p>
+          <p className="text-xs text-slate-500">Disetujui (Saya)</p>
           <p className="mt-2 text-2xl font-bold text-slate-900">
             {numberFormatter.format(personalApproved.count ?? 0)}
           </p>

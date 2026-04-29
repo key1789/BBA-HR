@@ -34,6 +34,7 @@ export default async function OwnerDashboardPage() {
           .select("id", { count: "exact", head: true })
           .in("submission_id", submissionIds)
       : { count: 0 };
+  const numberFormatter = new Intl.NumberFormat("id-ID");
 
   return (
     <section className="space-y-4">
@@ -45,16 +46,22 @@ export default async function OwnerDashboardPage() {
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Approved Submissions</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900">{approved.count ?? 0}</p>
+          <p className="text-xs text-slate-500">Submission Disetujui</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">
+            {numberFormatter.format(approved.count ?? 0)}
+          </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Pending Verification</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900">{submitted.count ?? 0}</p>
+          <p className="text-xs text-slate-500">Menunggu Verifikasi</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">
+            {numberFormatter.format(submitted.count ?? 0)}
+          </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Minus Point Events</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900">{minusPoints.count ?? 0}</p>
+          <p className="text-xs text-slate-500">Event Minus Poin</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">
+            {numberFormatter.format(minusPoints.count ?? 0)}
+          </p>
         </div>
       </div>
     </section>

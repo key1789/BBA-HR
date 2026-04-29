@@ -46,13 +46,13 @@ export default async function AdminDashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Queue Verifikasi</p>
+          <p className="text-xs text-slate-500">Antrian Verifikasi</p>
           <p className="mt-2 text-2xl font-bold text-slate-900">
             {numberFormatter.format(queueCount.count ?? 0)}
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Approved Submission</p>
+          <p className="text-xs text-slate-500">Submission Disetujui</p>
           <p className="mt-2 text-2xl font-bold text-slate-900">
             {numberFormatter.format(approvedCount.count ?? 0)}
           </p>
@@ -72,7 +72,7 @@ export default async function AdminDashboardPage() {
             href="/admin/verifikasi"
             className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
           >
-            Buka Queue Verifikasi
+            Buka Antrian Verifikasi
           </Link>
           <Link
             href="/admin/laporan"
