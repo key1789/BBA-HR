@@ -163,7 +163,7 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
     );
   }
 
-  if (!["approve", "reject"].includes(bulkAction)) {
+  if (!["approve", "reject", "edit_directly"].includes(bulkAction)) {
     return redirect(
       verificationPath({ ...baseParams, feedback: "error", message: "bulk_action_invalid" }),
     );
@@ -213,12 +213,13 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
   }
 
   const isReject = bulkAction === "reject";
+  const isEditDirectly = bulkAction === "edit_directly";
   const { error: insertError } = await supabase.from("submission_verifications").insert(
     eligibleIds.map((submissionId) => ({
       submission_id: submissionId,
       action: bulkAction,
       error_code: isReject ? "verification_issue" : null,
-      note: isReject ? "bulk_reject" : "bulk_approve",
+      note: isReject ? "bulk_reject" : isEditDirectly ? "bulk_edit_directly" : "bulk_approve",
       acted_by_user_id: user.id,
     })),
   );
@@ -239,7 +240,7 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
         action: `submission_${bulkAction}`,
         newValue: {
           action: bulkAction,
-          note: isReject ? "bulk_reject" : "bulk_approve",
+          note: isReject ? "bulk_reject" : isEditDirectly ? "bulk_edit_directly" : "bulk_approve",
         },
       }),
     ),
@@ -252,8 +253,147 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
     verificationPath({
       ...baseParams,
       feedback: "success",
-      message: isReject ? "bulk_rejected" : "bulk_approved",
+      message: isReject ? "bulk_rejected" : isEditDirectly ? "bulk_edited_directly" : "bulk_approved",
       count: String(eligibleIds.length),
+    }),
+  );
+}
+
+export async function bulkAssignSubmissionsAction(formData: FormData) {
+  const session = await getSessionContext();
+  const active = session?.activeMembership;
+  const currentPage = formData.get("page")?.toString() ?? "1";
+  const selectedStatus = formData.get("status")?.toString() ?? "";
+  const from = formData.get("from")?.toString() ?? "";
+  const to = formData.get("to")?.toString() ?? "";
+  const assignMode = formData.get("assignMode")?.toString() ?? "assign_unassigned";
+  const baseParams = {
+    page: currentPage,
+    status: selectedStatus || undefined,
+    from: from || undefined,
+    to: to || undefined,
+  };
+
+  if (!active || (active.role !== "admin_apotek" && active.role !== "super_admin_bba")) {
+    return redirect(
+      verificationPath({ ...baseParams, feedback: "error", message: "access_denied" }),
+    );
+  }
+
+  if (!["assign_unassigned", "take_over"].includes(assignMode)) {
+    return redirect(
+      verificationPath({ ...baseParams, feedback: "error", message: "assign_mode_invalid" }),
+    );
+  }
+
+  const selectedIds = Array.from(
+    new Set(
+      formData
+        .getAll("submissionIds")
+        .map((item) => item.toString().trim())
+        .filter(Boolean),
+    ),
+  );
+
+  if (selectedIds.length === 0) {
+    return redirect(
+      verificationPath({ ...baseParams, feedback: "error", message: "assign_selection_empty" }),
+    );
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return redirect(
+      verificationPath({ ...baseParams, feedback: "error", message: "user_not_found" }),
+    );
+  }
+
+  const { data: eligibleRows, error: eligibleError } = await supabase
+    .from("daily_submissions")
+    .select("id")
+    .eq("tenant_apotek_id", active.tenantId)
+    .in("id", selectedIds)
+    .in("status", ["submitted", "edited_by_admin", "reject"]);
+
+  if (eligibleError) {
+    return redirect(
+      verificationPath({ ...baseParams, feedback: "error", message: "assign_fetch_failed" }),
+    );
+  }
+
+  const eligibleIds = (eligibleRows ?? []).map((row) => row.id);
+  if (eligibleIds.length === 0) {
+    return redirect(
+      verificationPath({ ...baseParams, feedback: "error", message: "assign_none_eligible" }),
+    );
+  }
+
+  const { data: existingAssignments } = await supabase
+    .from("submission_assignments")
+    .select("submission_id, assigned_to_user_id")
+    .eq("tenant_apotek_id", active.tenantId)
+    .in("submission_id", eligibleIds);
+  const existingMap = new Map((existingAssignments ?? []).map((row) => [row.submission_id, row]));
+
+  const targetIds =
+    assignMode === "assign_unassigned"
+      ? eligibleIds.filter((id) => !existingMap.has(id))
+      : eligibleIds;
+
+  if (targetIds.length === 0) {
+    return redirect(
+      verificationPath({
+        ...baseParams,
+        feedback: "error",
+        message: assignMode === "assign_unassigned" ? "assign_all_assigned" : "assign_none_eligible",
+      }),
+    );
+  }
+
+  const { error: upsertError } = await supabase.from("submission_assignments").upsert(
+    targetIds.map((submissionId) => ({
+      submission_id: submissionId,
+      tenant_apotek_id: active.tenantId,
+      assigned_to_user_id: user.id,
+      assigned_by_user_id: user.id,
+      assigned_at: new Date().toISOString(),
+    })),
+    { onConflict: "submission_id" },
+  );
+  if (upsertError) {
+    return redirect(
+      verificationPath({ ...baseParams, feedback: "error", message: "assign_upsert_failed" }),
+    );
+  }
+
+  await Promise.all(
+    targetIds.map((submissionId) =>
+      writeAuditLog(supabase, {
+        tenantApotekId: active.tenantId,
+        actorUserId: user.id,
+        entityType: "submission_assignments",
+        entityId: submissionId,
+        action: assignMode === "assign_unassigned" ? "submission_auto_assigned" : "submission_take_over",
+        newValue: {
+          submissionId,
+          assignMode,
+          assignedToUserId: user.id,
+        },
+      }),
+    ),
+  );
+
+  revalidatePath("/admin/verifikasi");
+  return redirect(
+    verificationPath({
+      ...baseParams,
+      feedback: "success",
+      message:
+        assignMode === "assign_unassigned" ? "assign_unassigned_success" : "assign_take_over_success",
+      count: String(targetIds.length),
     }),
   );
 }
