@@ -1,3 +1,7 @@
+import { Card } from "@/components/shared/card";
+import { Input } from "@/components/shared/input";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import { PageHeader } from "@/components/shared/page-header";
 import { ReportMetricsGrid } from "@/components/reports/report-metrics-grid";
 import { getSessionContext } from "@/lib/auth-context";
 import { getReportMetricsForTenant } from "@/lib/report-metrics";
@@ -11,7 +15,7 @@ export default async function AdminLaporanPage({
   const params = await searchParams;
   const session = await getSessionContext();
   const active = session?.activeMembership;
-  if (!active || (active.role !== "admin_apotek" && active.role !== "super_admin_bba")) {
+  if (!active || active.role !== "admin_apotek") {
     return <p className="text-sm text-slate-600">Akses laporan admin tidak tersedia.</p>;
   }
 
@@ -27,15 +31,18 @@ export default async function AdminLaporanPage({
   const quickLast7 = `/admin/laporan?from=${fmt(sevenDaysAgo)}&to=${fmt(now)}`;
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const quickThisMonth = `/admin/laporan?from=${fmt(monthStart)}&to=${fmt(now)}`;
+  const rangeSummary = `${metrics.effectiveFrom} s/d ${metrics.effectiveTo}`;
 
   return (
     <section className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Admin - Laporan</h1>
-        <p className="text-sm text-slate-600">
-          Laporan harian/bulanan/berjalan tenant aktif: {active.tenantCode}
-        </p>
-      </div>
+      <PageHeader
+        title="Admin - Laporan"
+        subtitle={`Laporan harian/bulanan/berjalan tenant aktif: ${active.tenantCode}`}
+      />
+      <InlineAlert
+        tone="info"
+        message={`Range aktif ${rangeSummary}. Approved data pada range: ${metrics.rangeApprovedCount}.`}
+      />
       <div className="flex flex-wrap gap-2">
         <Link
           href={quickLast7}
@@ -58,23 +65,21 @@ export default async function AdminLaporanPage({
           </Link>
         ) : null}
       </div>
-      <form className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+      <form className="flex flex-wrap items-end gap-3 card-surface p-3 text-sm">
         <label>
           Dari Tanggal
-          <input
+          <Input
             type="date"
             name="from"
             defaultValue={params.from}
-            className="mt-1 block rounded-md border border-slate-300 px-3 py-2"
           />
         </label>
         <label>
           Sampai Tanggal
-          <input
+          <Input
             type="date"
             name="to"
             defaultValue={params.to}
-            className="mt-1 block rounded-md border border-slate-300 px-3 py-2"
           />
         </label>
         <button
@@ -85,10 +90,10 @@ export default async function AdminLaporanPage({
         </button>
       </form>
       <ReportMetricsGrid metrics={metrics} />
-      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+      <Card className="rounded-xl p-4 text-sm text-slate-600">
         Data sumber laporan berasal dari submission status <code>approved</code>. Total approved
         bulan ini: <span className="font-semibold text-slate-900">{metrics.monthApprovedCount}</span>.
-      </div>
+      </Card>
     </section>
   );
 }

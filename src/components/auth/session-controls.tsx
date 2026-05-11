@@ -1,5 +1,6 @@
-import { logoutAction } from "@/app/actions/auth";
+import { logoutAction } from "@/actions/auth";
 import { TenantMembership } from "@/lib/auth-context";
+import { getRoleLabel } from "@/lib/labels";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
@@ -52,7 +53,7 @@ export function SessionControls({ userEmail, memberships, activeTenantId }: Prop
   return (
     <div className="flex items-center gap-2">
       {memberships.length > 0 ? (
-        <form action={setActiveTenant} className="flex items-center gap-2">
+        <form action={setActiveTenant} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white p-1">
           <select
             name="tenantIdRole"
             defaultValue={
@@ -60,22 +61,22 @@ export function SessionControls({ userEmail, memberships, activeTenantId }: Prop
                 ? `${activeOption.tenantId}::${activeOption.role}`
                 : undefined
             }
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700"
+            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700"
           >
             {memberships.map((membership) => (
               <option
                 key={`${membership.tenantId}-${membership.role}`}
                 value={`${membership.tenantId}::${membership.role}`}
               >
-                {membership.tenantCode} ({membership.role})
+                {membership.tenantCode} ({getRoleLabel(membership.role)})
               </option>
             ))}
           </select>
           <button
             type="submit"
-            className="rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white"
+            className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
           >
-            Switch
+            Ganti
           </button>
         </form>
       ) : null}
@@ -83,7 +84,7 @@ export function SessionControls({ userEmail, memberships, activeTenantId }: Prop
       <form action={logoutAction}>
         <button
           type="submit"
-          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700"
+          className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700"
         >
           Logout
         </button>

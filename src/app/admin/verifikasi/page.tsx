@@ -1,8 +1,16 @@
 import {
-  bulkAssignSubmissionsAction,
   bulkVerifySubmissionsAction,
   verifySubmissionAction,
-} from "@/app/actions/operational";
+} from "@/actions/operational";
+import { Button } from "@/components/shared/button";
+import { Card } from "@/components/shared/card";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import { Input } from "@/components/shared/input";
+import { PageHeader } from "@/components/shared/page-header";
+import { PendingSubmitButton } from "./submit-buttons";
+import { MobileFilterSheet } from "./mobile-filter-sheet";
+import { MobileVerificationDetailModal } from "./mobile-verification-detail-modal";
+import { DirectEditModal } from "./direct-edit-modal";
 import { getSessionContext } from "@/lib/auth-context";
 import {
   getSubmissionStatusBadgeClass,
@@ -22,23 +30,12 @@ type VerificationQueueRow = {
   transaction_total: number;
   product_total: number;
   rejected_customer_total: number;
+  late_reason: string | null;
   status: string;
   user: { full_name: string } | { full_name: string }[] | null;
-  assignment:
-    | {
-        assigned_to_user_id: string;
-        assigned_at: string;
-        assignee: { full_name: string } | { full_name: string }[] | null;
-      }
-    | {
-        assigned_to_user_id: string;
-        assigned_at: string;
-        assignee: { full_name: string } | { full_name: string }[] | null;
-      }[]
-    | null;
 };
 const PAGE_SIZE = 15;
-const FILTERABLE_STATUS = ["all", "submitted", "edited_by_admin", "reject"] as const;
+const FILTERABLE_STATUS = ["all", "submitted"] as const;
 
 function getSlaBadge(submissionDate: string, todayDateKey: string) {
   const todayMs = Date.parse(`${todayDateKey}T00:00:00Z`);
@@ -73,18 +70,19 @@ export default async function AdminVerifikasiPage({
     feedback?: string;
     message?: string;
     count?: string;
+    action?: string;
   }>;
 }) {
   const params = await searchParams;
   const session = await getSessionContext();
   const active = session?.activeMembership;
-  if (!active || (active.role !== "admin_apotek" && active.role !== "super_admin_bba")) {
+  if (!active || active.role !== "admin_apotek") {
     return (
       <section className="space-y-4">
-        <h1 className="text-2xl font-bold text-slate-900">Admin - Verifikasi Data</h1>
-        <p className="text-sm text-slate-600">
-          Halaman ini hanya untuk admin apotek atau super admin BBA.
-        </p>
+        <PageHeader
+          title="Admin - Verifikasi Data"
+          subtitle="Halaman ini hanya untuk admin apotek."
+        />
       </section>
     );
   }
@@ -105,7 +103,7 @@ export default async function AdminVerifikasiPage({
   let query = supabase
     .from("daily_submissions")
     .select(
-      "id, submission_date, shift_label, omzet_total, transaction_total, product_total, rejected_customer_total, status, user:user_id(full_name), assignment:submission_assignments(assigned_to_user_id, assigned_at, assignee:assigned_to_user_id(full_name))",
+      "id, submission_date, shift_label, omzet_total, transaction_total, product_total, rejected_customer_total, late_reason, status, user:user_id(full_name)",
       { count: "exact" },
     )
     .eq("tenant_apotek_id", active.tenantId)
@@ -114,7 +112,7 @@ export default async function AdminVerifikasiPage({
   if (selectedStatus !== "all") {
     query = query.eq("status", selectedStatus);
   } else {
-    query = query.in("status", ["submitted", "edited_by_admin", "reject"]);
+    query = query.in("status", ["submitted"]);
   }
   if (from) {
     query = query.gte("submission_date", from);
@@ -131,9 +129,84 @@ export default async function AdminVerifikasiPage({
     .select("id", { count: "exact", head: true })
     .eq("tenant_apotek_id", active.tenantId)
     .lt("submission_date", reminderWindow.dateKey)
-    .in("status", ["submitted", "edited_by_admin", "reject"]);
+    .in("status", ["submitted"]);
 
-  const rows = (data ?? []) as VerificationQueueRow[];
+  const rowsRaw = (data ?? []) as VerificationQueueRow[];
+  const submissionIds = rowsRaw.map((row) => row.id);
+  const { data: submissionProducts } =
+    submissionIds.length > 0
+      ? await supabase
+          .from("daily_submission_products")
+          .select("submission_id, product_id, quantity_sold")
+          .in("submission_id", submissionIds)
+      : { data: [] as { submission_id: string; product_id: string; quantity_sold: number }[] };
+  const productIds = Array.from(new Set((submissionProducts ?? []).map((row) => row.product_id).filter(Boolean)));
+  const { data: productRows } =
+    productIds.length > 0
+      ? await supabase.from("master_products").select("id, product_name").in("id", productIds)
+      : { data: [] as { id: string; product_name: string }[] };
+  const productNameById = new Map((productRows ?? []).map((p) => [p.id, p.product_name]));
+  const productsBySubmission = new Map<string, { product_name: string; quantity_sold: number }[]>();
+  for (const row of submissionProducts ?? []) {
+    const prev = productsBySubmission.get(row.submission_id) ?? [];
+    prev.push({
+      product_name: productNameById.get(row.product_id) ?? "Produk",
+      quantity_sold: Number(row.quantity_sold ?? 0),
+    });
+    productsBySubmission.set(row.submission_id, prev);
+  }
+
+  const { data: verificationRows } =
+    submissionIds.length > 0
+      ? await supabase
+          .from("submission_verifications")
+          .select("submission_id, action, error_code, note, acted_at, actor:acted_by_user_id(full_name)")
+          .in("submission_id", submissionIds)
+          .order("acted_at", { ascending: false })
+      : {
+          data: [] as {
+            submission_id: string;
+            action: string;
+            error_code: string | null;
+            note: string | null;
+            acted_at: string;
+            actor: { full_name: string } | { full_name: string }[] | null;
+          }[],
+        };
+  const verificationsBySubmission = new Map<
+    string,
+    {
+      action: string;
+      error_code: string | null;
+      note: string | null;
+      acted_at: string;
+      actor_name: string;
+    }[]
+  >();
+  for (const row of verificationRows ?? []) {
+    const prev = verificationsBySubmission.get(row.submission_id) ?? [];
+    const actorName = Array.isArray(row.actor) ? row.actor[0]?.full_name : row.actor?.full_name;
+    prev.push({
+      action: row.action,
+      error_code: row.error_code,
+      note: row.note,
+      acted_at: row.acted_at,
+      actor_name: actorName ?? "Admin",
+    });
+    verificationsBySubmission.set(row.submission_id, prev);
+  }
+
+  const rows = [...rowsRaw].sort((a, b) => {
+    const rank = (status: string) => (status === "reject" ? 0 : 1);
+    const statusDiff = rank(a.status) - rank(b.status);
+    if (statusDiff !== 0) return statusDiff;
+    return a.submission_date.localeCompare(b.submission_date);
+  });
+  const rowsByDate = rows.reduce<Record<string, VerificationQueueRow[]>>((acc, row) => {
+    if (!acc[row.submission_date]) acc[row.submission_date] = [];
+    acc[row.submission_date].push(row);
+    return acc;
+  }, {});
   const numberFormatter = new Intl.NumberFormat("id-ID");
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
   const hasPrev = page > 1;
@@ -143,22 +216,22 @@ export default async function AdminVerifikasiPage({
       ? params.feedback
       : null;
   const feedbackMessageMap: Record<string, string> = {
-    bulk_approved: `Bulk approve berhasil untuk ${params.count ?? "0"} submission.`,
-    bulk_rejected: `Bulk reject berhasil untuk ${params.count ?? "0"} submission.`,
-    bulk_edited_directly: `Bulk edit langsung berhasil untuk ${params.count ?? "0"} submission.`,
-    bulk_empty: "Pilih minimal satu submission untuk bulk approve.",
-    bulk_none_eligible: "Submission terpilih tidak memenuhi syarat approve.",
+    single_verified: `Aksi verifikasi ${getVerificationActionLabel(params.action ?? "approve")} berhasil diproses.`,
+    single_not_eligible: "Submission tidak memenuhi syarat untuk diverifikasi.",
+    single_insert_failed: "Gagal menyimpan aksi verifikasi. Silakan coba lagi.",
+    single_action_invalid: "Aksi verifikasi tidak valid.",
+    single_invalid_payload: "Payload verifikasi tidak valid.",
+    edit_direct_saved: "Perbaikan admin berhasil disimpan dan laporan difinalkan.",
+    edit_direct_invalid: "Input edit langsung tidak valid.",
+    edit_direct_save_failed: "Gagal menyimpan perbaikan admin. Coba lagi.",
+    bulk_approved: `Persetujuan massal berhasil untuk ${params.count ?? "0"} submission.`,
+    bulk_rejected: `Penolakan massal berhasil untuk ${params.count ?? "0"} submission.`,
+    bulk_edited_directly: `Edit langsung massal berhasil untuk ${params.count ?? "0"} submission.`,
+    bulk_empty: "Pilih minimal satu submission untuk diproses bulk.",
+    bulk_none_eligible: "Submission terpilih tidak memenuhi syarat untuk aksi bulk.",
     bulk_action_invalid: "Aksi bulk tidak valid.",
     bulk_fetch_failed: "Gagal membaca data submission terpilih.",
     bulk_insert_failed: "Bulk approve gagal diproses. Silakan coba lagi.",
-    assign_mode_invalid: "Mode assign tidak valid.",
-    assign_selection_empty: "Pilih minimal satu submission untuk assign.",
-    assign_fetch_failed: "Gagal membaca submission untuk assign.",
-    assign_none_eligible: "Submission terpilih tidak memenuhi syarat assign.",
-    assign_all_assigned: "Semua submission terpilih sudah memiliki assignee.",
-    assign_upsert_failed: "Gagal menyimpan assignment. Silakan coba lagi.",
-    assign_unassigned_success: `Auto assign berhasil untuk ${params.count ?? "0"} submission.`,
-    assign_take_over_success: `Take over berhasil untuk ${params.count ?? "0"} submission.`,
     access_denied: "Akses ditolak untuk aksi ini.",
     user_not_found: "Sesi user tidak ditemukan. Silakan login ulang.",
   };
@@ -202,62 +275,122 @@ export default async function AdminVerifikasiPage({
 
   return (
     <section className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Admin - Verifikasi Data</h1>
-        <p className="text-sm text-slate-600">
-          Antrian verifikasi submission crew/admin pada tenant aktif.
-        </p>
+      <div className="bg-white rounded-3xl p-6 shadow-md border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-20">
+        <div>
+          <PageHeader
+            title="Admin - Verifikasi Data"
+            subtitle="Antrian verifikasi submission crew/admin pada tenant aktif."
+          />
+        </div>
       </div>
-      <div
-        className={`rounded-xl border px-4 py-3 text-sm ${
-          reminderTone === "rose"
-            ? "border-rose-200 bg-rose-50 text-rose-800"
-            : reminderTone === "amber"
-              ? "border-amber-200 bg-amber-50 text-amber-800"
-              : "border-emerald-200 bg-emerald-50 text-emerald-800"
-        }`}
-      >
-        {reminderText}
-      </div>
-      <form className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-4">
-        <label className="text-sm text-slate-700">
+      <InlineAlert
+        tone={reminderTone === "rose" ? "error" : reminderTone === "amber" ? "warning" : "success"}
+        message={reminderText}
+      />
+      <MobileFilterSheet
+        queueCount={count ?? 0}
+        selectedStatus={selectedStatus}
+        from={from}
+        to={to}
+      />
+      <section className="space-y-3 md:hidden">
+        {rows.length === 0 ? (
+          <Card className="rounded-2xl p-4 text-sm text-slate-500">Tidak ada queue verifikasi.</Card>
+        ) : (
+          Object.entries(rowsByDate).map(([dateKey, dateRows]) => (
+            <Card key={`date-${dateKey}`} className="overflow-hidden rounded-2xl border border-slate-100 shadow-sm">
+              <div className="border-b border-slate-100 bg-indigo-50/50 px-4 py-2">
+                <p className="text-xs font-black uppercase tracking-widest text-indigo-700">{dateKey}</p>
+              </div>
+              <div className="overflow-x-auto">
+                <div className="min-w-[760px]">
+                  <div className="grid grid-cols-[1.4fr_0.8fr_1fr_0.9fr_0.9fr] gap-2 bg-slate-50 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-slate-500">
+                    <span>User</span>
+                    <span>Shift</span>
+                    <span>Total Omzet</span>
+                    <span>Status</span>
+                    <span>Detail</span>
+                  </div>
+                  {dateRows.map((row) => {
+                    return (
+                      <div key={`m-row-${row.id}`} className="border-t border-slate-100 px-4 py-3">
+                        <div className="grid grid-cols-[1.4fr_0.8fr_1fr_0.9fr_0.9fr] items-center gap-2 text-xs">
+                          <span className="font-semibold text-slate-800">
+                            {Array.isArray(row.user) ? row.user[0]?.full_name : row.user?.full_name}
+                          </span>
+                          <span className="text-slate-600">{row.shift_label}</span>
+                          <span className="font-semibold text-slate-800">
+                            {numberFormatter.format(Number(row.omzet_total))}
+                          </span>
+                          <span
+                            className={`inline-flex w-fit rounded-full px-2 py-1 text-[11px] font-medium ${getSubmissionStatusBadgeClass(row.status)}`}
+                          >
+                            {getSubmissionStatusLabel(row.status)}
+                          </span>
+                          <MobileVerificationDetailModal
+                            row={{
+                              id: row.id,
+                              submission_date: row.submission_date,
+                              user_name: Array.isArray(row.user) ? row.user[0]?.full_name ?? "Tanpa Nama" : row.user?.full_name ?? "Tanpa Nama",
+                              shift_label: row.shift_label,
+                              omzet_total: Number(row.omzet_total),
+                              transaction_total: Number(row.transaction_total),
+                              product_total: Number(row.product_total),
+                              rejected_customer_total: Number(row.rejected_customer_total),
+                              late_reason: row.late_reason,
+                              status: row.status,
+                            }}
+                            focusItems={productsBySubmission.get(row.id) ?? []}
+                            verifications={verificationsBySubmission.get(row.id) ?? []}
+                            page={page}
+                            selectedStatus={selectedStatus}
+                            from={from}
+                            to={to}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Card>
+          ))
+        )}
+      </section>
+      <form className="hidden items-end gap-2 overflow-x-auto bg-white rounded-3xl border border-slate-100 p-3 shadow-sm md:grid md:gap-3 md:overflow-visible md:p-4 md:grid-cols-4">
+        <label className="min-w-[130px] text-sm text-slate-700 md:min-w-0">
           Status
           <select
             name="status"
             defaultValue={selectedStatus}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
           >
             <option value="all">Semua</option>
             <option value="submitted">Submitted</option>
-            <option value="edited_by_admin">Edited by Admin</option>
-            <option value="reject">Rejected</option>
           </select>
         </label>
-        <label className="text-sm text-slate-700">
+        <label className="min-w-[140px] text-sm text-slate-700 md:min-w-0">
           Dari Tanggal
-          <input
+          <Input
             type="date"
             name="from"
             defaultValue={from}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
-        <label className="text-sm text-slate-700">
+        <label className="min-w-[140px] text-sm text-slate-700 md:min-w-0">
           Sampai Tanggal
-          <input
+          <Input
             type="date"
             name="to"
             defaultValue={to}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
-        <div className="flex items-end gap-2">
-          <button
+        <div className="flex min-w-[180px] items-end gap-2 md:min-w-0">
+          <Button
             type="submit"
-            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
           >
             Terapkan Filter
-          </button>
+          </Button>
           <Link
             href="/admin/verifikasi"
             className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700"
@@ -267,98 +400,62 @@ export default async function AdminVerifikasiPage({
         </div>
       </form>
       {feedbackStatus && feedbackMessage ? (
-        <div
-          className={`rounded-xl border px-4 py-3 text-sm ${
-            feedbackStatus === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-rose-200 bg-rose-50 text-rose-800"
-          }`}
-        >
-          {feedbackMessage}
-        </div>
+        <InlineAlert tone={feedbackStatus === "success" ? "success" : "error"} message={feedbackMessage} />
       ) : null}
-      <form className="rounded-2xl border border-slate-200 bg-white p-3">
+      <form className="hidden bg-white rounded-3xl border border-slate-100 p-4 shadow-sm md:block">
         <input type="hidden" name="page" value={String(page)} />
         <input type="hidden" name="status" value={selectedStatus} />
         <input type="hidden" name="from" value={from} />
         <input type="hidden" name="to" value={to} />
         <div className="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            formAction={bulkAssignSubmissionsAction}
-            name="assignMode"
-            value="assign_unassigned"
-            disabled={rows.length === 0}
-            className={`rounded-md px-3 py-2 text-sm font-medium ${
-              rows.length === 0
-                ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
-                : "border border-indigo-300 text-indigo-700"
-            }`}
-          >
-            Auto Assign Belum Ditugaskan
-          </button>
-          <button
-            type="submit"
-            formAction={bulkAssignSubmissionsAction}
-            name="assignMode"
-            value="take_over"
-            disabled={rows.length === 0}
-            className={`rounded-md px-3 py-2 text-sm font-medium ${
-              rows.length === 0
-                ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
-                : "border border-violet-300 text-violet-700"
-            }`}
-          >
-            Take Over ke Saya
-          </button>
-          <button
-            type="submit"
-            formAction={bulkVerifySubmissionsAction}
-            name="bulkAction"
-            value="edit_directly"
-            disabled={rows.length === 0}
-            className={`rounded-md px-3 py-2 text-sm font-medium ${
-              rows.length === 0
-                ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
-                : "border border-slate-300 text-slate-700"
-            }`}
-          >
-            Bulk Edit Langsung
-          </button>
-          <button
-            type="submit"
-            formAction={bulkVerifySubmissionsAction}
-            name="bulkAction"
-            value="approve"
-            disabled={rows.length === 0}
-            className={`rounded-md px-3 py-2 text-sm font-medium ${
-              rows.length === 0
-                ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
-                : "bg-slate-900 text-white"
-            }`}
-          >
-            Bulk Approve (Halaman Ini)
-          </button>
-          <button
-            type="submit"
-            formAction={bulkVerifySubmissionsAction}
-            name="bulkAction"
-            value="reject"
-            disabled={rows.length === 0}
-            className={`rounded-md px-3 py-2 text-sm font-medium ${
-              rows.length === 0
-                ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
-                : "border border-rose-300 text-rose-700"
-            }`}
-          >
-            Bulk Reject (Halaman Ini)
-          </button>
+          {rows.length === 0 ? (
+            <>
+              <button
+                type="button"
+                disabled
+                className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
+              >
+            Setujui massal (halaman ini)
+              </button>
+              <button
+                type="button"
+                disabled
+                className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
+              >
+            Setujui massal (halaman ini)
+              </button>
+              <button
+                type="button"
+                disabled
+                className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
+              >
+            Tolak massal (halaman ini)
+              </button>
+            </>
+          ) : (
+            <>
+              <PendingSubmitButton
+                formAction={bulkVerifySubmissionsAction}
+                hiddenFields={{ bulkAction: "approve" }}
+                idleLabel="Setujui massal (halaman ini)"
+                pendingLabel="Memproses..."
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              />
+              <PendingSubmitButton
+                formAction={bulkVerifySubmissionsAction}
+                hiddenFields={{ bulkAction: "reject" }}
+                idleLabel="Tolak massal (halaman ini)"
+                pendingLabel="Memproses..."
+                className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700"
+              />
+            </>
+          )}
         </div>
         <p className="mt-2 text-xs text-slate-500">
           Pilih baris yang ingin diproses. Default semua baris halaman ini terpilih.
         </p>
-        <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <table className="min-w-full text-left text-sm">
+        <Card className="mt-3 overflow-x-auto rounded-2xl shadow-none">
+        <table className="min-w-[1200px] text-left text-sm">
           <thead className="bg-slate-100 text-slate-700">
             <tr>
               <th className="px-3 py-2">Pilih</th>
@@ -366,22 +463,25 @@ export default async function AdminVerifikasiPage({
               <th className="px-3 py-2">User</th>
               <th className="px-3 py-2">Shift</th>
               <th className="px-3 py-2">Omzet</th>
+              <th className="px-3 py-2">Transaksi</th>
+              <th className="px-3 py-2">Produk</th>
+              <th className="px-3 py-2">Pelanggan Ditolak</th>
               <th className="px-3 py-2">SLA</th>
-              <th className="px-3 py-2">Assignee</th>
               <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Detail</th>
               <th className="px-3 py-2">Aksi</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td className="px-3 py-4 text-slate-500" colSpan={9}>
+                <td className="px-3 py-4 text-slate-500" colSpan={12}>
                   Tidak ada queue verifikasi.
                 </td>
               </tr>
             ) : null}
             {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-100">
+              <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50">
                 <td className="px-3 py-2">
                   <input type="checkbox" name="submissionIds" value={row.id} defaultChecked />
                 </td>
@@ -390,7 +490,10 @@ export default async function AdminVerifikasiPage({
                   {Array.isArray(row.user) ? row.user[0]?.full_name : row.user?.full_name}
                 </td>
                 <td className="px-3 py-2">{row.shift_label}</td>
-                <td className="px-3 py-2">{numberFormatter.format(Number(row.omzet_total))}</td>
+                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.omzet_total))}</td>
+                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.transaction_total))}</td>
+                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.product_total))}</td>
+                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.rejected_customer_total))}</td>
                 <td className="px-3 py-2">
                   {(() => {
                     const sla = getSlaBadge(row.submission_date, reminderWindow.dateKey);
@@ -404,27 +507,6 @@ export default async function AdminVerifikasiPage({
                   })()}
                 </td>
                 <td className="px-3 py-2">
-                  {(() => {
-                    const assignment = Array.isArray(row.assignment)
-                      ? row.assignment[0]
-                      : row.assignment;
-                    if (!assignment) {
-                      return <span className="text-xs text-slate-500">Belum ditugaskan</span>;
-                    }
-                    const assignee = Array.isArray(assignment.assignee)
-                      ? assignment.assignee[0]
-                      : assignment.assignee;
-                    return (
-                      <div className="text-xs text-slate-700">
-                        <p className="font-medium">{assignee?.full_name ?? "Tanpa nama"}</p>
-                        <p className="text-slate-500">
-                          {new Date(assignment.assigned_at).toLocaleString("id-ID")}
-                        </p>
-                      </div>
-                    );
-                  })()}
-                </td>
-                <td className="px-3 py-2">
                   <span
                     className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getSubmissionStatusBadgeClass(row.status)}`}
                   >
@@ -432,31 +514,152 @@ export default async function AdminVerifikasiPage({
                   </span>
                 </td>
                 <td className="px-3 py-2">
+                  <div className="hidden md:block">
+                    <details className="group">
+                      <summary className="cursor-pointer text-xs font-semibold text-indigo-700 hover:text-indigo-800">
+                        Lihat detail
+                      </summary>
+                      <div className="mt-2 w-[360px] max-w-[70vw] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-sm">
+                        <p className="font-semibold text-slate-800">Input Crew</p>
+                        <div className="mt-1 grid grid-cols-2 gap-1">
+                          <p>Omzet: <span className="font-medium">{numberFormatter.format(Number(row.omzet_total))}</span></p>
+                          <p>Transaksi: <span className="font-medium">{numberFormatter.format(Number(row.transaction_total))}</span></p>
+                          <p>Produk: <span className="font-medium">{numberFormatter.format(Number(row.product_total))}</span></p>
+                          <p>Pelanggan ditolak: <span className="font-medium">{numberFormatter.format(Number(row.rejected_customer_total))}</span></p>
+                        </div>
+                        <p className="mt-2">
+                          Alasan terlambat:{" "}
+                          <span className="font-medium">{row.late_reason?.trim() ? row.late_reason : "-"}</span>
+                        </p>
+                        <div className="mt-2">
+                          <p className="font-semibold text-slate-800">Produk Fokus</p>
+                          {(productsBySubmission.get(row.id) ?? []).length === 0 ? (
+                            <p className="text-slate-500">Tidak ada detail produk fokus.</p>
+                          ) : (
+                            <ul className="mt-1 space-y-1">
+                              {(productsBySubmission.get(row.id) ?? []).map((item, idx) => (
+                                <li key={`${row.id}-fp-${idx}`}>
+                                  {item.product_name}: <span className="font-medium">{numberFormatter.format(item.quantity_sold)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        <div className="mt-2">
+                          <p className="font-semibold text-slate-800">Riwayat Verifikasi</p>
+                          {(verificationsBySubmission.get(row.id) ?? []).length === 0 ? (
+                            <p className="text-slate-500">Belum ada riwayat verifikasi.</p>
+                          ) : (
+                            <ul className="mt-1 space-y-1">
+                              {(verificationsBySubmission.get(row.id) ?? []).slice(0, 5).map((v, idx) => (
+                                <li key={`${row.id}-ver-${idx}`} className="rounded-md bg-slate-50 px-2 py-1">
+                                  <p>
+                                    <span className="font-semibold">{getVerificationActionLabel(v.action)}</span>{" "}
+                                    oleh <span className="font-medium">{v.actor_name}</span>
+                                  </p>
+                                  <p className="text-slate-500">
+                                    {new Date(v.acted_at).toLocaleString("id-ID")}
+                                    {v.error_code ? ` | code: ${v.error_code}` : ""}
+                                    {v.note ? ` | note: ${v.note}` : ""}
+                                  </p>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                  <div className="md:hidden">
+                    <details className="group">
+                      <summary className="cursor-pointer text-xs font-semibold text-indigo-700 hover:text-indigo-800">
+                        Expand
+                      </summary>
+                      <div className="mt-2 w-[280px] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-sm">
+                      <p className="font-semibold text-slate-800">Input Crew</p>
+                      <div className="mt-1 grid grid-cols-2 gap-1">
+                        <p>Omzet: <span className="font-medium">{numberFormatter.format(Number(row.omzet_total))}</span></p>
+                        <p>Transaksi: <span className="font-medium">{numberFormatter.format(Number(row.transaction_total))}</span></p>
+                        <p>Produk: <span className="font-medium">{numberFormatter.format(Number(row.product_total))}</span></p>
+                        <p>Pelanggan ditolak: <span className="font-medium">{numberFormatter.format(Number(row.rejected_customer_total))}</span></p>
+                      </div>
+                      <p className="mt-2">
+                        Alasan terlambat:{" "}
+                        <span className="font-medium">{row.late_reason?.trim() ? row.late_reason : "-"}</span>
+                      </p>
+                      <div className="mt-2">
+                        <p className="font-semibold text-slate-800">Produk Fokus</p>
+                        {(productsBySubmission.get(row.id) ?? []).length === 0 ? (
+                          <p className="text-slate-500">Tidak ada detail produk fokus.</p>
+                        ) : (
+                          <ul className="mt-1 space-y-1">
+                            {(productsBySubmission.get(row.id) ?? []).map((item, idx) => (
+                              <li key={`${row.id}-fp-${idx}`}>
+                                {item.product_name}: <span className="font-medium">{numberFormatter.format(item.quantity_sold)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div className="mt-2">
+                        <p className="font-semibold text-slate-800">Riwayat Verifikasi</p>
+                        {(verificationsBySubmission.get(row.id) ?? []).length === 0 ? (
+                          <p className="text-slate-500">Belum ada riwayat verifikasi.</p>
+                        ) : (
+                          <ul className="mt-1 space-y-1">
+                            {(verificationsBySubmission.get(row.id) ?? []).slice(0, 5).map((v, idx) => (
+                              <li key={`${row.id}-ver-${idx}`} className="rounded-md bg-slate-50 px-2 py-1">
+                                <p>
+                                  <span className="font-semibold">{getVerificationActionLabel(v.action)}</span>{" "}
+                                  oleh <span className="font-medium">{v.actor_name}</span>
+                                </p>
+                                <p className="text-slate-500">
+                                  {new Date(v.acted_at).toLocaleString("id-ID")}
+                                  {v.error_code ? ` | code: ${v.error_code}` : ""}
+                                  {v.note ? ` | note: ${v.note}` : ""}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      </div>
+                    </details>
+                  </div>
+                </td>
+                <td className="px-3 py-2">
                   <div className="flex flex-wrap gap-2">
-                    {(["approve", "reject", "edit_directly"] as const).map((action) => (
-                      <form action={verifySubmissionAction} key={`${row.id}-${action}`}>
-                        <input type="hidden" name="submissionId" value={row.id} />
-                        <input type="hidden" name="action" value={action} />
-                        <input
-                          type="hidden"
-                          name="errorCode"
-                          value={action === "approve" ? "" : "verification_issue"}
-                        />
-                        <button
-                          type="submit"
-                          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700"
-                        >
-                          {getVerificationActionLabel(action)}
-                        </button>
-                      </form>
+                    {(["approve", "reject"] as const).map((action) => (
+                      <PendingSubmitButton
+                        key={`${row.id}-${action}`}
+                        formAction={verifySubmissionAction}
+                        hiddenFields={{ verification: `${row.id}:${action}` }}
+                        idleLabel={getVerificationActionLabel(action)}
+                        pendingLabel="Memproses..."
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700"
+                      />
                     ))}
+                    <DirectEditModal
+                      submissionId={row.id}
+                      page={page}
+                      selectedStatus={selectedStatus}
+                      from={from}
+                      to={to}
+                      defaultValues={{
+                        omzetTotal: Number(row.omzet_total),
+                        transactionTotal: Number(row.transaction_total),
+                        productTotal: Number(row.product_total),
+                        rejectedCustomerTotal: Number(row.rejected_customer_total),
+                        lateReason: row.late_reason,
+                      }}
+                    />
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        </div>
+        </Card>
       </form>
       {(() => {
         const pageParams = new URLSearchParams();

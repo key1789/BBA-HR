@@ -20,10 +20,13 @@ function metricValue(value: number, asCurrency = false, fractionDigits = 0) {
 
 export function ReportMetricsGrid({ metrics }: Props) {
   const items = [
-    { label: "Total Omzet (Harian)", value: metricValue(metrics.totalOmzet, true) },
+    { label: "Total Omzet (Range Aktif)", value: metricValue(metrics.totalOmzet, true) },
     { label: "Akumulasi Omzet (Bulan Ini)", value: metricValue(metrics.accumulatedOmzet, true) },
     { label: "Target Omzet", value: metricValue(metrics.targetOmzet, true) },
+    { label: "Target s/d Tanggal Ini", value: metricValue(metrics.targetToDate, true) },
+    { label: "Selisih vs Target s/d Hari Ini", value: metricValue(metrics.varianceToDate, true) },
     { label: "Perkiraan Omzet Akhir Bulan", value: metricValue(metrics.projectedOmzetEom, true) },
+    { label: "Proyeksi Gap vs Target Bulanan", value: metricValue(metrics.projectedOmzetGap, true) },
     { label: "Total Transaksi", value: metricValue(metrics.totalTransactions) },
     { label: "Total Produk", value: metricValue(metrics.totalProducts) },
     { label: "ATV", value: metricValue(metrics.atv, true) },

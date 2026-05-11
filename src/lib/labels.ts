@@ -32,6 +32,19 @@ const PAYROLL_STATUS_LABEL: Record<string, string> = {
   locked: "Locked",
 };
 
+const ROLE_LABEL: Record<string, string> = {
+  crew: "Crew",
+  admin_apotek: "Admin Apotek",
+  owner: "Owner",
+  super_admin_bba: "Super Admin BBA",
+};
+
+const AUDIT_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  under_review: "Under Review",
+  approved: "Approved",
+};
+
 export function humanizeEnum(value: string) {
   return value
     .split("_")
@@ -100,4 +113,19 @@ export function getPayrollStatusBadgeClass(status: string) {
     return "bg-slate-200 text-slate-800";
   }
   return "bg-slate-100 text-slate-700";
+}
+
+export function getRoleLabel(role: string) {
+  return ROLE_LABEL[role] ?? humanizeEnum(role);
+}
+
+export function getAuditStatusLabel(status: string) {
+  return AUDIT_STATUS_LABEL[status.toLowerCase()] ?? humanizeEnum(status);
+}
+
+export function getAuditStatusBadgeClass(status: string) {
+  const s = status.toLowerCase();
+  if (s === "approved") return "bg-emerald-100 text-emerald-700";
+  if (s === "under_review") return "bg-amber-100 text-amber-700";
+  return "bg-slate-100 text-slate-600";
 }

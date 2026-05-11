@@ -1,3 +1,6 @@
+import { Card } from "@/components/shared/card";
+import { Input } from "@/components/shared/input";
+import { PageHeader } from "@/components/shared/page-header";
 import { getSessionContext } from "@/lib/auth-context";
 import { getSubmissionStatusBadgeClass, getSubmissionStatusLabel } from "@/lib/labels";
 import { createClient } from "@/lib/supabase/server";
@@ -96,35 +99,33 @@ export default async function OwnerDetailPage({
 
   return (
     <section className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Owner - Detail Data</h1>
-        <p className="text-sm text-slate-600">
-          Drill-down operasional submission tenant aktif: {active.tenantCode}
-        </p>
-      </div>
+      <PageHeader
+        title="Owner - Detail Data"
+        subtitle={`Drill-down operasional submission tenant aktif: ${active.tenantCode}`}
+      />
 
       <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <Card className="p-3">
           <p className="text-xs text-slate-500">Submitted / Menunggu</p>
           <p className="mt-1 text-xl font-semibold text-slate-900">
             {numberFormatter.format(submittedRes.count ?? 0)}
           </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
+        </Card>
+        <Card className="p-3">
           <p className="text-xs text-slate-500">Approved</p>
           <p className="mt-1 text-xl font-semibold text-emerald-700">
             {numberFormatter.format(approvedRes.count ?? 0)}
           </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
+        </Card>
+        <Card className="p-3">
           <p className="text-xs text-slate-500">Reject</p>
           <p className="mt-1 text-xl font-semibold text-rose-700">
             {numberFormatter.format(rejectRes.count ?? 0)}
           </p>
-        </div>
+        </Card>
       </div>
 
-      <form className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-4">
+      <form className="grid gap-3 card-surface p-3 md:grid-cols-4">
         <label className="text-sm text-slate-700">
           Status
           <select
@@ -141,20 +142,18 @@ export default async function OwnerDetailPage({
         </label>
         <label className="text-sm text-slate-700">
           Dari Tanggal
-          <input
+          <Input
             type="date"
             name="from"
             defaultValue={from}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
         <label className="text-sm text-slate-700">
           Sampai Tanggal
-          <input
+          <Input
             type="date"
             name="to"
             defaultValue={to}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
         <div className="flex items-end gap-2">
@@ -173,7 +172,7 @@ export default async function OwnerDetailPage({
         </div>
       </form>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <Card className="overflow-hidden rounded-2xl shadow-none">
         <table className="min-w-full text-left text-sm">
           <thead className="bg-slate-100 text-slate-700">
             <tr>
@@ -196,16 +195,16 @@ export default async function OwnerDetailPage({
               </tr>
             ) : null}
             {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-100">
+              <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50">
                 <td className="px-3 py-2">{row.submission_date}</td>
                 <td className="px-3 py-2">
                   {Array.isArray(row.user) ? row.user[0]?.full_name : row.user?.full_name}
                 </td>
                 <td className="px-3 py-2">{row.shift_label}</td>
-                <td className="px-3 py-2">{numberFormatter.format(Number(row.omzet_total))}</td>
-                <td className="px-3 py-2">{numberFormatter.format(Number(row.transaction_total))}</td>
-                <td className="px-3 py-2">{numberFormatter.format(Number(row.product_total))}</td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.omzet_total))}</td>
+                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.transaction_total))}</td>
+                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.product_total))}</td>
+                <td className="px-3 py-2 text-right">
                   {numberFormatter.format(Number(row.rejected_customer_total))}
                 </td>
                 <td className="px-3 py-2">
@@ -219,7 +218,7 @@ export default async function OwnerDetailPage({
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
 
       <div className="flex items-center justify-between text-sm text-slate-600">
         <p>
