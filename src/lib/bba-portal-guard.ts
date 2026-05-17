@@ -11,6 +11,10 @@ export function bbaPortalHasFullMenuAccess(session: SessionContext | null): bool
 export async function assertGlobalBbaPortalManager() {
   const session = await getSessionContext();
   if (!session?.isGlobalSuperAdmin) {
+    console.warn("[auth] assertGlobalBbaPortalManager denied", {
+      userId: session?.userId ?? null,
+      role: session?.activeMembership?.role ?? null,
+    });
     return { ok: false as const, error: "Hanya super admin global yang dapat melakukan aksi ini." };
   }
   return { ok: true as const, session };
@@ -21,6 +25,10 @@ export async function assertBbaAccess() {
   const session = await getSessionContext();
   const role = session?.activeMembership?.role;
   if (!session?.isGlobalSuperAdmin && role !== "super_admin_bba") {
+    console.warn("[auth] assertBbaAccess denied", {
+      userId: session?.userId ?? null,
+      role: role ?? null,
+    });
     return { ok: false as const, error: "Akses ditolak." };
   }
   return { ok: true as const, session };

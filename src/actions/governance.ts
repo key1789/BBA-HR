@@ -10,6 +10,7 @@ import { createDefaultKpiV2Config, mergeKpiConfigs } from "@/lib/kpi-v2/utils";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isValidEmail } from "@/lib/validation";
 
 type FeedbackStatus = "success" | "error";
 
@@ -144,7 +145,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
   if (!active || active.role !== "super_admin_bba") {
     return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
+  assertAnalystPortalMenu(session, "audit", "/bba/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
@@ -227,7 +228,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
   if (!active || active.role !== "super_admin_bba") {
     return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
+  assertAnalystPortalMenu(session, "audit", "/bba/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
@@ -307,7 +308,7 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
   if (!active || active.role !== "super_admin_bba") {
     return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
+  assertAnalystPortalMenu(session, "audit", "/bba/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
@@ -445,7 +446,7 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
   if (!active || active.role !== "super_admin_bba") {
     return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
+  assertAnalystPortalMenu(session, "audit", "/bba/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
@@ -558,7 +559,7 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
   if (!active || active.role !== "super_admin_bba") {
     return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
+  assertAnalystPortalMenu(session, "audit", "/bba/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
@@ -740,7 +741,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
     !code ||
     (status !== "active" && status !== "inactive") ||
     !ownerEmail ||
-    !ownerEmail.includes("@")
+    !isValidEmail(ownerEmail)
   ) {
     return redirectWithFeedback("/bba/master-apotek", "error", "invalid_new_tenant_payload", {
       scope: "tenant_create",
@@ -1009,7 +1010,7 @@ export async function createOwnerAccountAction(formData: FormData) {
   const email = formData.get("email")?.toString()?.trim().toLowerCase();
   const password = formData.get("password")?.toString() ?? "";
 
-  if (!fullName || !email || password.length < 8 || !email.includes("@")) {
+  if (!fullName || !email || password.length < 8 || !isValidEmail(email)) {
     return redirectWithFeedback(redirectPath, "error", "invalid_owner_payload", {
       scope: "owner",
     });
@@ -1172,7 +1173,7 @@ export async function assignOwnerToTenantAction(formData: FormData) {
   const tenantId = formData.get("tenantId")?.toString();
   const redirectPath =
     formData.get("redirectPath")?.toString() || "/bba/kelola-owner";
-  if (!tenantId || !email || !email.includes("@")) {
+  if (!tenantId || !email || !isValidEmail(email)) {
     return redirectWithFeedback(redirectPath, "error", "invalid_owner_payload", {
       scope: "owner",
     });

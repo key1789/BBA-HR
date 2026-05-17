@@ -228,9 +228,9 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
 
   return (
     <>
-    <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 lg:gap-8 lg:h-[calc(100vh-14rem)] lg:overflow-hidden">
+    <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 lg:gap-8">
       {/* 1. EMPLOYEE LIST */}
-      <div className="lg:col-span-1 flex flex-col gap-4 lg:h-full lg:overflow-hidden shrink-0">
+      <div className="lg:col-span-1 flex flex-col gap-4 shrink-0">
         <div className="space-y-1 px-1">
           <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
             <Users size={20} className="text-sky-600" /> Daftar Pegawai
@@ -259,7 +259,7 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto max-h-[40vh] lg:max-h-none pr-2 space-y-3 custom-scrollbar">
+        <div className="overflow-y-auto max-h-72 lg:max-h-[55vh] pr-2 space-y-3 custom-scrollbar">
           {filteredUsers.map((user) => {
             const uid = user.app_users.id;
             const status = getConfigStatus(uid);
@@ -337,7 +337,7 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
       </div>
 
       {/* 2. SETUP PANEL */}
-      <div className="lg:col-span-2 h-[80vh] lg:h-full lg:overflow-hidden">
+      <div className="lg:col-span-2">
         <AnimatePresence mode="wait">
           {selectedUser ? (
             <motion.div
@@ -345,10 +345,9 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="h-full flex flex-col"
             >
-              <GlassCard variant="light" className="p-0 overflow-hidden flex flex-col h-full border-2 border-sky-100 shadow-2xl shadow-sky-600/5">
-                <form onSubmit={handleSave} className="flex flex-col h-full">
+              <GlassCard variant="light" className="p-0 overflow-hidden flex flex-col border-2 border-sky-100 shadow-2xl shadow-sky-600/5">
+                <form onSubmit={handleSave} className="flex flex-col">
                   <input type="hidden" name="tenantId" value={branchId} />
                   <input type="hidden" name="userId" value={selectedUser.app_users.id} />
                   
@@ -379,7 +378,7 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
                   </div>
 
                   {/* Form Content */}
-                  <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar bg-white">
+                  <div className="p-8 space-y-8 bg-white">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       {/* Fixed Salary Components */}
                       <div className="space-y-6">
@@ -627,7 +626,7 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
               </GlassCard>
             </motion.div>
           ) : (
-            <div className="h-full flex items-center justify-center text-center p-8">
+            <div className="flex items-center justify-center text-center py-20 px-8">
               <div className="max-w-xs space-y-4">
                 <div className="w-20 h-20 rounded-[32px] bg-slate-100 text-slate-300 flex items-center justify-center mx-auto">
                   <Banknote size={40} />

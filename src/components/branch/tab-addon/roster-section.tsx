@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Clock, CalendarDays, Save } from "lucide-react";
+import { Clock, CalendarDays, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { copyRosterAction, saveRosterAction } from "@/app/bba/branches/[id]/actions";
 import { isBranchOperationalPersonnel } from "@/lib/branch-personnel";
@@ -126,6 +126,7 @@ export function RosterSection({
 }: RosterSectionProps) {
   const [pendingRosterSaves, setPendingRosterSaves] = useState(0);
   const [localRosterByUserDate, setLocalRosterByUserDate] = useState<Record<string, any>>({});
+  const [isCopyPending, startCopyTransition] = useTransition();
 
   useEffect(() => {
     onBusyChange?.(pendingRosterSaves > 0);
@@ -229,23 +230,27 @@ export function RosterSection({
         <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
           <CalendarDays size={14} /> Penjadwalan Roster
         </h4>
-        <form
-          action={async (formData) => {
+        <button
+          type="button"
+          disabled={isCopyPending}
+          onClick={() => {
+            const formData = new FormData();
             formData.append("tenantId", branchId);
             formData.append("month", currentMonth.toString());
             formData.append("year", currentYear.toString());
-            const res = await copyRosterAction(formData);
-            if (res.success) toast.success(res.message);
-            else toast.error(res.error);
+            startCopyTransition(async () => {
+              const res = await copyRosterAction(formData);
+              if (res.success) toast.success(res.message);
+              else toast.error(res.error);
+            });
           }}
+          className="group flex items-center gap-2 px-4 py-2 bg-white hover:bg-sky-50 text-sky-600 border border-sky-100 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all duration-300 shadow-sm hover:shadow-sky-100 w-full sm:w-auto disabled:opacity-50 disabled:pointer-events-none"
         >
-          <button
-            type="submit"
-            className="group flex items-center gap-2 px-4 py-2 bg-white hover:bg-sky-50 text-sky-600 border border-sky-100 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all duration-300 shadow-sm hover:shadow-sky-100 w-full sm:w-auto"
-          >
-            <Save size={12} className="group-hover:rotate-12 transition-transform" /> Salin dari Bulan Lalu
-          </button>
-        </form>
+          {isCopyPending
+            ? <Loader2 size={12} className="animate-spin" />
+            : <Save size={12} className="group-hover:rotate-12 transition-transform" />}
+          {isCopyPending ? "Menyalin…" : "Salin dari Bulan Lalu"}
+        </button>
       </div>
 
       <div className="border border-slate-100 rounded-[28px] overflow-hidden bg-white shadow-xl shadow-slate-200/50 overflow-x-auto custom-scrollbar relative border-separate border-spacing-0">

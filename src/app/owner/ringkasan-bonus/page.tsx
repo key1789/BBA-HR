@@ -79,6 +79,7 @@ export default async function OwnerRingkasanBonusPage({
           leaveRequestsApproved={auditPayload.leaveRequestsApproved}
           monthlyAddonAppraisals={auditPayload.monthlyAddonAppraisals}
           activeCrewCount={auditPayload.activeCrewCount}
+          raportPeriodPublished={auditPayload.raportPeriodPublished}
           portalMode="owner"
           ownerSurface="ringkasan"
           ownerVerifiedOnly={ctx.verifiedOnly}

@@ -34,12 +34,11 @@ function inputHarianPath(role: "crew" | "admin_apotek", params: Record<string, s
 }
 
 function getSubmissionPeriod(submissionDate: string): { periodMonth: number; periodYear: number } | null {
-  const d = new Date(`${submissionDate}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  return {
-    periodMonth: d.getMonth() + 1,
-    periodYear: d.getFullYear(),
-  };
+  const parts = (submissionDate ?? "").split("-");
+  const y = parseInt(parts[0] ?? "", 10);
+  const m = parseInt(parts[1] ?? "", 10);
+  if (!y || !m || m < 1 || m > 12) return null;
+  return { periodMonth: m, periodYear: y };
 }
 
 export async function createDailySubmissionAction(

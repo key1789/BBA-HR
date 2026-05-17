@@ -102,83 +102,76 @@ export function BranchDetailClient({
 
   return (
     <div className="flex flex-col h-full space-y-6">
-      {/* HEADER PAGE */}
-      <GlassCard className="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6 p-5 md:p-8 shrink-0 w-full bg-white/80 backdrop-blur-xl border-slate-200/60 shadow-xl shadow-slate-200/50" variant="light">
-        <div className="flex items-start md:items-center gap-4 md:gap-6 w-full md:w-auto">
-          <Link href="/bba/branches" className="w-12 h-12 shrink-0 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-sky-600 hover:text-white transition-all duration-500 shadow-sm border border-slate-100 group">
-            <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+      {/* HEADER PAGE — compact single-row on desktop */}
+      <GlassCard className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-4 shrink-0 w-full bg-white/80 backdrop-blur-xl border-slate-200/60 shadow-xl shadow-slate-200/50" variant="light">
+        {/* Left: back + branch info */}
+        <div className="flex items-center gap-3 min-w-0">
+          <Link href="/bba/branches" className="w-9 h-9 shrink-0 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-sky-600 hover:text-white transition-all duration-300 shadow-sm border border-slate-100 group">
+            <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
           </Link>
-          <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl md:text-3xl font-black text-slate-800 uppercase tracking-tight leading-none">{branch.name}</h1>
-              <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border shadow-sm ${branch.status === 'active' ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-slate-500 bg-slate-100 border-slate-200'}`}>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-lg md:text-xl font-black text-slate-800 uppercase tracking-tight leading-none truncate">{branch.name}</h1>
+              <span className={`shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${branch.status === 'active' ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-slate-500 bg-slate-100 border-slate-200'}`}>
                 {branch.status}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-sky-50 text-sky-600 rounded-lg border border-sky-100 shadow-sm">
-                <Hash size={12} className="font-black" />
-                <span className="text-[11px] font-black uppercase tracking-widest">{branch.code}</span>
-              </div>
-              <div className="w-1 h-1 rounded-full bg-slate-300 mx-1"></div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                <MapPin size={12} /> {branch.location || 'Lokasi Belum Diatur'}
-              </p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-sky-50 text-sky-600 rounded-md border border-sky-100 text-[10px] font-black uppercase tracking-widest">
+                <Hash size={10} />{branch.code}
+              </span>
+              <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 truncate">
+                <MapPin size={10} />{branch.location || 'Lokasi belum diatur'}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* ACTIONS & PERIOD SELECTOR */}
-        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+        {/* Right: actions + period selector */}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+          {/* Salin Aturan — icon + short label */}
           <button
             type="button"
             onClick={openCloneModal}
             disabled={!canCloneBranch}
-            className="w-full md:w-auto px-6 py-3 bg-slate-900 hover:bg-black text-white rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-slate-900/20 transition-all hover:-translate-y-0.5 active:scale-95 group disabled:opacity-50 disabled:pointer-events-none"
+            title="Salin Aturan Cabang"
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-black text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-slate-900/20 transition-all hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:pointer-events-none group"
           >
-            <div className="w-6 h-6 rounded-lg bg-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
-              <Wand2 size={14} />
-            </div>
-            Salin Aturan Cabang
+            <Wand2 size={13} className="text-sky-400 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">Salin Aturan</span>
           </button>
 
-          {/* GLOBAL PERIOD SELECTOR */}
-          <div className="bg-slate-50 p-1.5 rounded-2xl border border-slate-100 flex items-center gap-2 w-full md:w-auto shadow-inner">
-            <div className="px-3 flex items-center gap-2 shrink-0 border-r border-slate-200 py-1.5">
-              <CalendarDays size={16} className="text-slate-400" />
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest hidden lg:inline">Periode</span>
-            </div>
-            
-            <div className="flex items-center gap-1 bg-white p-1 rounded-xl shadow-sm border border-slate-100 flex-1 md:flex-initial">
-              <select 
-                value={currentMonth}
-                onChange={(e) => handlePeriodChange(parseInt(e.target.value), currentYear)}
-                disabled={isPending}
-                className="bg-transparent text-xs font-black text-slate-700 px-3 py-1.5 outline-none cursor-pointer hover:text-sky-600 transition-colors disabled:opacity-50 min-w-[100px]"
-              >
-                {['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'].map((m, i) => (
-                  <option key={i+1} value={i+1}>{m}</option>
-                ))}
-              </select>
-              <div className="w-px h-5 bg-slate-100 shrink-0 mx-1" />
-              <select 
-                value={currentYear}
-                onChange={(e) => handlePeriodChange(currentMonth, parseInt(e.target.value))}
-                disabled={isPending}
-                className="bg-transparent text-xs font-black text-slate-700 px-3 py-1.5 outline-none cursor-pointer hover:text-sky-600 transition-colors disabled:opacity-50"
-              >
-                {yearOptions.map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-              {isPending && <Loader2 size={14} className="animate-spin text-sky-500 mx-2" />}
-            </div>
+          {/* Period selector */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-sm">
+            <CalendarDays size={13} className="text-slate-400 shrink-0" />
+            <select
+              value={currentMonth}
+              onChange={(e) => handlePeriodChange(parseInt(e.target.value), currentYear)}
+              disabled={isPending}
+              className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer hover:text-sky-600 transition-colors disabled:opacity-50"
+            >
+              {['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agt','Sep','Okt','Nov','Des'].map((m, i) => (
+                <option key={i+1} value={i+1}>{m}</option>
+              ))}
+            </select>
+            <div className="w-px h-4 bg-slate-200 shrink-0" />
+            <select
+              value={currentYear}
+              onChange={(e) => handlePeriodChange(currentMonth, parseInt(e.target.value))}
+              disabled={isPending}
+              className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer hover:text-sky-600 transition-colors disabled:opacity-50"
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            {isPending && <Loader2 size={12} className="animate-spin text-sky-500 ml-1" />}
           </div>
         </div>
       </GlassCard>
 
       {/* TAB NAVIGATION */}
-      <div className="flex overflow-x-auto hide-scrollbar gap-2 p-2 bg-white rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/40 shrink-0 w-full relative z-20">
+      <div className="flex overflow-x-auto hide-scrollbar gap-1 p-1.5 bg-white rounded-2xl border border-slate-100 shadow-lg shadow-slate-200/40 shrink-0 w-full relative z-20">
         {currentTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -186,19 +179,19 @@ export function BranchDetailClient({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative shrink-0 whitespace-nowrap px-6 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 transition-all duration-500 group ${isActive ? 'text-sky-600' : 'text-slate-400 hover:text-slate-800'}`}
+              className={`relative shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all duration-300 group ${isActive ? 'text-sky-600' : 'text-slate-400 hover:text-slate-700'}`}
             >
               {isActive && (
                 <motion.div
                   layoutId="activeTab"
-                  className="absolute inset-0 bg-sky-50 rounded-2xl border border-sky-100 shadow-sm"
+                  className="absolute inset-0 bg-sky-50 rounded-xl border border-sky-100 shadow-sm"
                   transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                 />
               )}
-              <div className={`relative z-10 w-6 h-6 rounded-lg flex items-center justify-center transition-all duration-500 ${isActive ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30 rotate-3' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100'}`}>
-                <Icon size={14} />
+              <div className={`relative z-10 w-5 h-5 rounded-md flex items-center justify-center transition-all duration-300 ${isActive ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100'}`}>
+                <Icon size={12} />
               </div>
-              <span className="relative z-10 font-black tracking-widest">{tab.label}</span>
+              <span className="relative z-10">{tab.label}</span>
             </button>
           );
         })}

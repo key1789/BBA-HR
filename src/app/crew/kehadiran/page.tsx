@@ -1,9 +1,10 @@
-import { getSessionContext } from "@/lib/auth-context";
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getSessionContext } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { KehadiranClient } from "@/app/crew/kehadiran/kehadiran-client";
+import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 
 export default async function CrewKehadiranPage() {
   const session = await getSessionContext();
@@ -21,13 +22,15 @@ export default async function CrewKehadiranPage() {
     return redirect("/login");
   }
 
-  const today = new Date();
-  const startOfMonthTs = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
-  const endOfMonthTs = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59).toISOString();
-  const startOfMonthDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
-  const endOfMonthDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
-    new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate(),
-  ).padStart(2, "0")}`;
+  // Use WIB date to avoid UTC boundary issues
+  const reminderWindow = getOperationalReminderWindow();
+  const [wibYear, wibMonth] = reminderWindow.dateKey.split("-").map(Number);
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const lastDay = new Date(wibYear!, wibMonth!, 0).getDate();
+  const startOfMonthDate = `${wibYear}-${pad2(wibMonth!)}-01`;
+  const endOfMonthDate   = `${wibYear}-${pad2(wibMonth!)}-${pad2(lastDay)}`;
+  const startOfMonthTs = new Date(`${startOfMonthDate}T00:00:00+07:00`).toISOString();
+  const endOfMonthTs   = new Date(`${endOfMonthDate}T23:59:59+07:00`).toISOString();
 
   // 1. Fetch Attendance Logs (for metrics and history tab)
   const { data: attendanceData } = await supabase

@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils";
 import type { SessionContext } from "@/lib/auth-context";
 import type { BbaPortalMenuKey } from "@/lib/bba-portal-menus";
 import { 
-  LayoutDashboard, Building2, Store, Package, 
-  ClipboardCheck, Download, Megaphone, ShieldCheck, 
-  ChevronLeft, ChevronRight, HeartPulse, LogOut, Banknote
+  LayoutDashboard, Building2, Store, Package,
+  ClipboardCheck, Download, Megaphone, ShieldCheck,
+  ChevronLeft, ChevronRight, HeartPulse, LogOut
 } from "lucide-react";
 
 const MENU_GROUPS: {
@@ -33,7 +33,6 @@ const MENU_GROUPS: {
     label: "Operasional & Audit",
     items: [
       { name: "Approval & Audit", path: "/bba/audit", icon: ClipboardCheck, menuKey: "audit" },
-      { name: "Pratinjau THP & Rapor Bulanan", path: "/bba/payroll", icon: Banknote, menuKey: "payroll" },
       { name: "Pusat Unduhan", path: "/bba/export", icon: Download, menuKey: "export" },
       { name: "Pusat Pengumuman", path: "/bba/broadcast", icon: Megaphone, menuKey: "broadcast" },
     ],

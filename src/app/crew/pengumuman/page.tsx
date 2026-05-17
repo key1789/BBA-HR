@@ -1,10 +1,11 @@
 import { getSessionContext } from "@/lib/auth-context";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PageHeader } from "@/components/shared/page-header";
 import { AnnouncementInbox, type AnnouncementInboxItem } from "@/components/announcements/announcement-inbox";
 import { markAnnouncementViewedAction } from "@/actions/announcements";
 import { redirect } from "next/navigation";
 import { publishDueAnnouncementsAction } from "@/app/bba/broadcast/actions";
+import { AnimatedPage } from "@/components/shared/animated-page";
+import { Bell } from "lucide-react";
 
 type ReceiptRow = {
   viewed_at: string | null;
@@ -81,9 +82,19 @@ export default async function CrewAnnouncementPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <PageHeader title="Crew - Pengumuman" subtitle="Informasi operasional terbaru dari BBA untuk tim lapangan." />
+    <AnimatedPage className="space-y-4 pb-10">
+      <div className="bg-white rounded-3xl p-5 shadow-md border border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-sky-600 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+            <Bell size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Pengumuman</h1>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Info operasional dari BBA</p>
+          </div>
+        </div>
+      </div>
       <AnnouncementInbox items={items} audienceLabel={roleFilter === "crew" ? "Crew" : "Admin Apotek"} />
-    </section>
+    </AnimatedPage>
   );
 }

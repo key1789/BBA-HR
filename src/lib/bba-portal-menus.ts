@@ -7,7 +7,6 @@ export const BBA_PORTAL_MENU_KEYS = [
   "audit",
   "export",
   "broadcast",
-  "payroll",
   "admins",
 ] as const;
 
@@ -28,7 +27,6 @@ export const BBA_PORTAL_MENU_REGISTRY: {
   { key: "export", label: "Pusat Unduhan", pathPrefix: "/bba/export-center" },
   { key: "export", label: "Pusat Unduhan", pathPrefix: "/bba/export" },
   { key: "broadcast", label: "Pusat Pengumuman", pathPrefix: "/bba/broadcast" },
-  { key: "payroll", label: "Payroll", pathPrefix: "/bba/payroll" },
   { key: "admins", label: "Kelola Super Admin", pathPrefix: "/bba/admins" },
 ];
 

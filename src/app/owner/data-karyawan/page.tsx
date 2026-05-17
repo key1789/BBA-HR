@@ -79,6 +79,7 @@ export default async function OwnerDataKaryawanPage({
           leaveRequestsApproved={auditPayload.leaveRequestsApproved}
           monthlyAddonAppraisals={auditPayload.monthlyAddonAppraisals}
           activeCrewCount={auditPayload.activeCrewCount}
+          raportPeriodPublished={auditPayload.raportPeriodPublished}
           portalMode="owner"
           ownerSurface="kpi"
           ownerVerifiedOnly={ctx.verifiedOnly}

@@ -44,7 +44,10 @@ export default async function OwnerPenjualanKinerjaPage({
           </>
         }
       >
-        <OwnerPenjualanKinerja snapshot={penjualanSnapshot} />
+        <OwnerPenjualanKinerja
+          snapshot={penjualanSnapshot}
+          auditHref={`/owner/ringkasan-bonus?month=${ctx.month}&year=${ctx.year}`}
+        />
       </OwnerPortalShell>
     </AnimatedPage>
   );

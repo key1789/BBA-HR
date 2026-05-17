@@ -29,9 +29,16 @@ function canTransitionAuditState(from: string, to: string) {
 async function assertAuditMutationAccess() {
   const session = await getSessionContext();
   if (isAnalystWithoutAuditMenu(session)) {
+    console.warn("[auth] assertAuditMutationAccess denied: analyst without audit menu", {
+      userId: session?.userId ?? null,
+    });
     return { error: "Akses ditolak untuk modul audit." } as const;
   }
   if (session?.activeMembership?.role !== "super_admin_bba") {
+    console.warn("[auth] assertAuditMutationAccess denied: insufficient role", {
+      userId: session?.userId ?? null,
+      role: session?.activeMembership?.role ?? null,
+    });
     return { error: "Hanya super admin BBA yang dapat mengubah data audit." } as const;
   }
   return { session } as const;
@@ -99,6 +106,36 @@ async function revalidateAuditDetailForMonthlyAuditId(supabaseAdmin: ReturnType<
   }
 }
 
+async function logAuditStateEvent(
+  supabaseAdmin: ReturnType<typeof createAdminClient>,
+  event: {
+    monthlyAuditId?: string | null;
+    tenantApotekId: string;
+    periodMonth: number;
+    periodYear: number;
+    action: string;
+    actorUserId: string | null;
+    targetUserId?: string | null;
+    fromStatus?: string | null;
+    toStatus?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+) {
+  const { error } = await supabaseAdmin.from("monthly_audit_state_events").insert({
+    monthly_audit_id: event.monthlyAuditId ?? null,
+    tenant_apotek_id: event.tenantApotekId,
+    period_month: event.periodMonth,
+    period_year: event.periodYear,
+    action: event.action,
+    actor_user_id: event.actorUserId,
+    target_user_id: event.targetUserId ?? null,
+    from_status: event.fromStatus ?? null,
+    to_status: event.toStatus ?? null,
+    metadata: event.metadata ?? null,
+  });
+  if (error) console.error("logAuditStateEvent failed", event.action, error);
+}
+
 export async function toggleCrewLockAction(auditId: string, userId: string, currentStatus: boolean) {
   const supabaseAdmin = createAdminClient();
   const supabase = await createClient();
@@ -152,27 +189,41 @@ export async function toggleCrewLockAction(auditId: string, userId: string, curr
     return { error: "Gagal mengubah status kunci." };
   }
 
+  await logAuditStateEvent(supabaseAdmin, {
+    monthlyAuditId: auditId,
+    tenantApotekId: String(mainAudit.tenant_apotek_id),
+    periodMonth: Number(mainAudit.period_month),
+    periodYear: Number(mainAudit.period_year),
+    action: !currentStatus ? "crew_lock" : "crew_unlock",
+    actorUserId: user.id,
+    targetUserId: userId,
+  });
+
   await revalidateAuditDetailForMonthlyAuditId(supabaseAdmin, auditId);
-  return { 
-    success: true, 
-    message: !currentStatus ? "Data karyawan berhasil dikunci!" : "Data karyawan berhasil dibuka!" 
+  return {
+    success: true,
+    message: !currentStatus ? "Data karyawan berhasil dikunci!" : "Data karyawan berhasil dibuka!"
   };
 }
 
 export async function updateCrewAuditAction(
-  auditId: string, 
-  userId: string, 
-  updates: { 
-    analyst_score?: number, 
-    bba_adjustment?: number, 
+  auditId: string,
+  userId: string,
+  updates: {
+    analyst_score?: number,
+    bba_adjustment?: number,
     analyst_feedback?: string,
     internal_review_score?: number,
     customer_review_score?: number
   }
 ) {
   const supabaseAdmin = createAdminClient();
+  const supabase = await createClient();
   const access = await assertAuditMutationAccess();
   if ("error" in access) return { error: access.error };
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesi habis, silakan login kembali." };
 
   const { data: mainAudit } = await supabaseAdmin
     .from("monthly_audits")
@@ -222,14 +273,29 @@ export async function updateCrewAuditAction(
     return { error: "Gagal menyimpan perubahan." };
   }
 
+  await logAuditStateEvent(supabaseAdmin, {
+    monthlyAuditId: auditId,
+    tenantApotekId: String(mainAudit.tenant_apotek_id),
+    periodMonth: Number(mainAudit.period_month),
+    periodYear: Number(mainAudit.period_year),
+    action: "crew_audit_update",
+    actorUserId: user.id,
+    targetUserId: userId,
+    metadata: { fields: Object.keys(updates) },
+  });
+
   await revalidateAuditDetailForMonthlyAuditId(supabaseAdmin, auditId);
   return { success: true, message: "Data berhasil disimpan!" };
 }
 
 export async function submitAuditForReviewAction(auditId: string) {
   const supabaseAdmin = createAdminClient();
+  const supabase = await createClient();
   const access = await assertAuditMutationAccess();
   if ("error" in access) return { error: access.error };
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesi habis, silakan login kembali." };
 
   const { data: auditRow } = await supabaseAdmin
     .from("monthly_audits")
@@ -273,6 +339,17 @@ export async function submitAuditForReviewAction(auditId: string) {
     console.error("submitAuditForReviewAction", error);
     return { error: "Gagal memulai review audit." };
   }
+
+  await logAuditStateEvent(supabaseAdmin, {
+    monthlyAuditId: auditId,
+    tenantApotekId: String(auditRow.tenant_apotek_id),
+    periodMonth: Number(auditRow.period_month),
+    periodYear: Number(auditRow.period_year),
+    action: "submit_for_review",
+    actorUserId: user.id,
+    fromStatus: String(auditRow.status),
+    toStatus: "UNDER_REVIEW",
+  });
 
   await revalidateAuditDetailForMonthlyAuditId(supabaseAdmin, auditId);
   return { success: true, message: "Audit dipindahkan ke tahap Under Review." };
@@ -382,6 +459,17 @@ export async function finalizeAuditAction(auditId: string) {
     return { error: `Finalisasi dibatalkan karena sinkronisasi rapor gagal: ${syncResult.error}` };
   }
 
+  await logAuditStateEvent(supabaseAdmin, {
+    monthlyAuditId: auditId,
+    tenantApotekId: String(auditRow.tenant_apotek_id),
+    periodMonth: Number(auditRow.period_month),
+    periodYear: Number(auditRow.period_year),
+    action: "finalize",
+    actorUserId: user.id,
+    fromStatus: String(auditRow.status),
+    toStatus: "APPROVED",
+  });
+
   await revalidateAuditDetailForMonthlyAuditId(supabaseAdmin, auditId);
   revalidatePath("/bba/payroll");
   return { success: true, message: "Audit berhasil difinalisasi, rapor bulanan disinkronkan, dan dikirim ke Keuangan!" };
@@ -465,6 +553,30 @@ export async function reopenApprovedAuditAsGlobalAdminAction(auditId: string) {
     return { error: "Gagal membuka kunci baris karyawan. Status audit dikembalikan ke APPROVED." };
   }
 
+  // Fetch tenant/period for the event log (not in auditRow select above)
+  const { data: auditMeta } = await supabaseAdmin
+    .from("monthly_audits")
+    .select("tenant_apotek_id, period_month, period_year")
+    .eq("id", auditId)
+    .maybeSingle();
+
+  if (auditMeta) {
+    await logAuditStateEvent(supabaseAdmin, {
+      monthlyAuditId: auditId,
+      tenantApotekId: String(auditMeta.tenant_apotek_id),
+      periodMonth: Number(auditMeta.period_month),
+      periodYear: Number(auditMeta.period_year),
+      action: "reopen",
+      actorUserId: user.id,
+      fromStatus: "APPROVED",
+      toStatus: "UNDER_REVIEW",
+      metadata: {
+        previously_approved_by: auditRow.approved_by ?? null,
+        previously_approved_at: auditRow.approved_at ?? null,
+      },
+    });
+  }
+
   await revalidateAuditDetailForMonthlyAuditId(supabaseAdmin, auditId);
   revalidatePath("/bba/payroll");
   return { success: true, message: "Audit dibuka kembali (UNDER_REVIEW). Baris karyawan tidak terkunci." };
@@ -481,8 +593,12 @@ export async function upsertMonthlyAddonAppraisalAction(input: {
   notes: string | null;
 }) {
   const supabaseAdmin = createAdminClient();
+  const supabase = await createClient();
   const access = await assertAuditMutationAccess();
   if ("error" in access) return { error: access.error };
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesi habis, silakan login kembali." };
 
   if (!ALLOWED_ADDON_KEYS.includes(input.addonKey as (typeof ALLOWED_ADDON_KEYS)[number])) {
     return { error: "Jenis add-on tidak valid." };
@@ -570,6 +686,21 @@ export async function upsertMonthlyAddonAppraisalAction(input: {
     console.error("upsertMonthlyAddonAppraisalAction", error);
     return { error: "Gagal menyimpan penilaian add-on." };
   }
+
+  await logAuditStateEvent(supabaseAdmin, {
+    monthlyAuditId: mainAudit?.id ?? null,
+    tenantApotekId: input.tenantApotekId,
+    periodMonth: input.periodMonth,
+    periodYear: input.periodYear,
+    action: "addon_upsert",
+    actorUserId: user.id,
+    targetUserId: input.crewUserId,
+    metadata: {
+      addon_key: input.addonKey,
+      score_manual: scoreParsed,
+      nominal_manual: nominalParsed,
+    },
+  });
 
   revalidatePath(`/bba/audit/${input.tenantApotekId}`);
   return { success: true };
@@ -786,6 +917,19 @@ export async function recalculateAuditAppraisalAction(auditId: string, reason: s
   });
 
   if (result.error) return { error: result.error };
+
+  await logAuditStateEvent(supabaseAdmin, {
+    monthlyAuditId: auditId,
+    tenantApotekId: tenantId,
+    periodMonth,
+    periodYear,
+    action: "recalculate",
+    actorUserId: user.id,
+    metadata: {
+      reason,
+      affected_user_count: result.affectedUserCount,
+    },
+  });
 
   revalidatePath(`/bba/audit/${tenantId}`);
   return { success: true, affectedUserCount: result.affectedUserCount };
