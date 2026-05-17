@@ -10,6 +10,7 @@ import {
   type BbaPortalMenuKey,
 } from "@/lib/bba-portal-menus";
 import { assertGlobalBbaPortalManager } from "@/lib/bba-portal-guard";
+import { isValidEmail } from "@/lib/validation";
 import { AUDIT_PAGE_SIZE, AUDIT_EXPORT_MAX, parseAuditDateRange, toAuditDisplayRow, escapeCsvField } from "./bba-portal-audit-shared";
 
 async function logPortalAudit(
@@ -84,7 +85,7 @@ export async function promoteToGlobalAdminAction(email: string) {
   if (!gate.ok) return { success: false, error: gate.error };
 
   const trimmed = email.trim().toLowerCase();
-  if (!trimmed.includes("@")) {
+  if (!isValidEmail(trimmed)) {
     return { success: false, error: "Email tidak valid." };
   }
 
@@ -260,12 +261,23 @@ export async function updateAnalystPortalAccessAction(input: {
     .upsert(menuRows, { onConflict: "user_id,menu_key" });
   if (insMenu) return { success: false, error: insMenu.message };
 
-  const { error: delMenu } = await supabase
+  // Fetch existing menu keys to compute stale set — avoids string-concatenation in filter.
+  const { data: existingMenuRows, error: fetchMenuErr } = await supabase
     .from("bba_portal_user_menus")
-    .delete()
-    .eq("user_id", input.userId)
-    .not("menu_key", "in", `(${menuKeys.join(",")})`);
-  if (delMenu) return { success: false, error: delMenu.message };
+    .select("menu_key")
+    .eq("user_id", input.userId);
+  if (fetchMenuErr) return { success: false, error: fetchMenuErr.message };
+  const staleMenuKeys = (existingMenuRows ?? [])
+    .map((r) => r.menu_key as string)
+    .filter((k) => !menuKeys.includes(k as BbaPortalMenuKey));
+  if (staleMenuKeys.length > 0) {
+    const { error: delMenu } = await supabase
+      .from("bba_portal_user_menus")
+      .delete()
+      .eq("user_id", input.userId)
+      .in("menu_key", staleMenuKeys);
+    if (delMenu) return { success: false, error: delMenu.message };
+  }
 
   // Same pattern for memberships: upsert first, then delete stale tenants.
   const membershipRows = input.tenantApotekIds.map((tenant_apotek_id) => ({
@@ -279,13 +291,25 @@ export async function updateAnalystPortalAccessAction(input: {
   });
   if (memErr) return { success: false, error: memErr.message };
 
-  const { error: delMem } = await supabase
+  // Fetch existing memberships to compute stale set — avoids string-concatenation in filter.
+  const { data: existingMemRows, error: fetchMemErr } = await supabase
     .from("tenant_memberships")
-    .delete()
+    .select("tenant_apotek_id")
     .eq("user_id", input.userId)
-    .eq("role", "super_admin_bba")
-    .not("tenant_apotek_id", "in", `(${input.tenantApotekIds.join(",")})`);
-  if (delMem) return { success: false, error: delMem.message };
+    .eq("role", "super_admin_bba");
+  if (fetchMemErr) return { success: false, error: fetchMemErr.message };
+  const staleTenantIds = (existingMemRows ?? [])
+    .map((r) => r.tenant_apotek_id as string)
+    .filter((id) => !input.tenantApotekIds.includes(id));
+  if (staleTenantIds.length > 0) {
+    const { error: delMem } = await supabase
+      .from("tenant_memberships")
+      .delete()
+      .eq("user_id", input.userId)
+      .eq("role", "super_admin_bba")
+      .in("tenant_apotek_id", staleTenantIds);
+    if (delMem) return { success: false, error: delMem.message };
+  }
 
   await logPortalAudit(supabase, {
     actorId: gate.session.userId,
@@ -316,7 +340,7 @@ export async function inviteBbaPortalAnalystAction(input: {
 
   const fullName = input.fullName.trim();
   const email = input.email.trim().toLowerCase();
-  if (!fullName || !email.includes("@")) {
+  if (!fullName || !isValidEmail(email)) {
     return { success: false, error: "Nama dan email wajib diisi." };
   }
   if (input.tenantApotekIds.length === 0) {

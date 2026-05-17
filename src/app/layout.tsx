@@ -20,6 +20,8 @@ export const metadata: Metadata = {
 };
 
 import { Toaster } from "sonner";
+import { Suspense } from "react";
+import { NavigationProgress } from "@/components/shared/navigation-progress";
 
 export default async function RootLayout({
   children,
@@ -40,6 +42,9 @@ export default async function RootLayout({
       className={`${nunito.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-slate-50 text-slate-900">
+        <Suspense fallback={null}>
+          <NavigationProgress />
+        </Suspense>
         <Toaster position="top-right" richColors theme="light" />
         {children}
       </body>

@@ -4,7 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { BbaDashboardTab } from "@/lib/bba-dashboard-metrics";
-import { GlassCard } from "@/components/shared/glass-card";
+import { Building2, CalendarDays, BarChart2, Wrench } from "lucide-react";
 
 type TenantOpt = { id: string; code: string; name: string };
 
@@ -16,6 +16,8 @@ function buildQuery(tenant: string, month: number, year: number, tab: BbaDashboa
   q.set("tab", tab);
   return q.toString();
 }
+
+const MONTH_SHORT = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
 
 export function BbaDashboardTenantSelect({
   tenants,
@@ -32,7 +34,6 @@ export function BbaDashboardTenantSelect({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-
   const tenantParam = tenantId === "all" ? "all" : tenantId;
 
   const push = useCallback(
@@ -54,80 +55,71 @@ export function BbaDashboardTenantSelect({
   }, []);
 
   return (
-    <GlassCard className="!p-4 flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end bg-slate-50/50">
-      <div className="flex flex-col gap-1 min-w-[200px]">
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tenant</label>
+    <div className="flex flex-wrap items-center gap-2 p-2 bg-white rounded-2xl border border-slate-100 shadow-sm">
+      {/* Tenant */}
+      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 min-w-[180px] flex-1">
+        <Building2 size={13} className="text-slate-400 shrink-0" />
         <select
-          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800"
+          className="flex-1 bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer"
           value={tenantParam}
-          onChange={(e) => {
-            const v = e.target.value;
-            push({ tenant: v === "all" ? "all" : v });
-          }}
+          onChange={(e) => push({ tenant: e.target.value === "all" ? "all" : e.target.value })}
         >
           <option value="all">Semua cabang</option>
           {tenants.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.code} — {t.name}
-            </option>
+            <option key={t.id} value={t.id}>{t.code} — {t.name}</option>
           ))}
         </select>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Bulan</label>
-          <select
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 min-w-[120px]"
-            value={month}
-            onChange={(e) => push({ month: Number(e.target.value) })}
-          >
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-              <option key={m} value={m}>
-                {new Date(2000, m - 1, 1).toLocaleString("id-ID", { month: "long" })}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tahun</label>
-          <select
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 min-w-[100px]"
-            value={year}
-            onChange={(e) => push({ year: Number(e.target.value) })}
-          >
-            {yearOptions.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* Period */}
+      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+        <CalendarDays size={13} className="text-slate-400 shrink-0" />
+        <select
+          className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer"
+          value={month}
+          onChange={(e) => push({ month: Number(e.target.value) })}
+        >
+          {MONTH_SHORT.map((m, i) => (
+            <option key={i + 1} value={i + 1}>{m}</option>
+          ))}
+        </select>
+        <div className="w-px h-3.5 bg-slate-300" />
+        <select
+          className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer"
+          value={year}
+          onChange={(e) => push({ year: Number(e.target.value) })}
+        >
+          {yearOptions.map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
       </div>
 
-      <div className="flex flex-col gap-1 flex-1 min-w-[220px]">
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tampilan</label>
-        <div className="flex rounded-xl border border-slate-200 bg-white p-1 gap-1">
-          {(
-            [
-              { id: "sales" as const, label: "Penjualan & kinerja" },
-              { id: "ops" as const, label: "Operasional & tugas" },
-            ] as const
-          ).map((item) => (
+      {/* Tab switcher */}
+      <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-1 ml-auto">
+        {([
+          { id: "sales" as const, label: "Penjualan", icon: BarChart2 },
+          { id: "ops" as const, label: "Operasional", icon: Wrench },
+        ] as const).map((item) => {
+          const Icon = item.icon;
+          return (
             <button
               key={item.id}
               type="button"
               onClick={() => push({ tab: item.id })}
               className={cn(
-                "flex-1 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-wide transition-all",
-                tab === item.id ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-50",
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition-all",
+                tab === item.id
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                  : "text-slate-500 hover:text-slate-700",
               )}
             >
+              <Icon size={11} />
               {item.label}
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
-    </GlassCard>
+    </div>
   );
 }

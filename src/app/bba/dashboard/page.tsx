@@ -27,6 +27,8 @@ import {
   Clock,
   LayoutGrid,
   TrendingUp,
+  Users,
+  Bell,
 } from "lucide-react";
 import { CustomLineChart } from "@/components/dashboard/custom-line-chart";
 import { BbaDashboardLeaderboard, type LeaderboardRow } from "./bba-dashboard-leaderboard";
@@ -350,65 +352,53 @@ export default async function BbaControlDashboardPage({
   const tenantOpts = tenants.map((t) => ({ id: t.id, code: t.code, name: t.name }));
 
   return (
-    <AnimatedPage className="space-y-8 pb-10">
-      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest mb-3 border border-indigo-100">
-            <Activity size={12} /> BBA Control
+    <AnimatedPage className="space-y-5 pb-10">
+      {/* ── Compact header ── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shrink-0">
+            <Activity size={14} />
           </div>
-          <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight uppercase">
-            Dashboard <span className="text-indigo-600">BBA</span>
-          </h1>
-          <p className="text-slate-500 text-sm mt-1 font-medium max-w-xl">
-            Pantau penjualan per periode dan beban operasional verifikasi lintas cabang.
-          </p>
+          <div className="min-w-0">
+            <h1 className="text-base font-black text-slate-900 uppercase tracking-tight leading-none">
+              Dashboard <span className="text-indigo-600">BBA</span>
+            </h1>
+            <p className="text-[10px] font-medium text-slate-400 mt-0.5 truncate">
+              {reminderWindow.dateKey} · cut-off {reminderWindow.cutoffHour}.00 {reminderWindow.timezoneLabel}
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-col items-stretch sm:items-end gap-3">
-          <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            <span>Periode KPI</span>
-            <div className="flex rounded-xl border border-slate-200 bg-white overflow-hidden">
-              <Link
-                href={dashboardHref({
-                  tenant: tenantQueryForLinks,
-                  month: prevPeriod.month,
-                  year: prevPeriod.year,
-                  tab,
-                })}
-                className="p-2 hover:bg-slate-50 text-slate-600"
-                aria-label="Bulan sebelumnya"
-              >
-                <ChevronLeft size={18} />
-              </Link>
-              <Link
-                href={dashboardHref({
-                  tenant: tenantQueryForLinks,
-                  month: nextPeriod.month,
-                  year: nextPeriod.year,
-                  tab,
-                })}
-                className="p-2 hover:bg-slate-50 text-slate-600 border-l border-slate-100"
-                aria-label="Bulan berikutnya"
-              >
-                <ChevronRight size={18} />
-              </Link>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hari operasional (WIB)</p>
-            <p className="text-sm font-bold text-slate-800">{reminderWindow.dateKey}</p>
-            <p className="text-[10px] text-slate-400">
-              Cut-off pengingat {reminderWindow.cutoffHour}.00 {reminderWindow.timezoneLabel}
-            </p>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:block">
+            {periodLabel}
+          </span>
+          <div className="flex rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+            <Link
+              href={dashboardHref({ tenant: tenantQueryForLinks, month: prevPeriod.month, year: prevPeriod.year, tab })}
+              className="p-1.5 hover:bg-slate-50 text-slate-500 transition-colors"
+              aria-label="Bulan sebelumnya"
+            >
+              <ChevronLeft size={16} />
+            </Link>
+            <span className="px-3 flex items-center text-[11px] font-black text-slate-700 border-x border-slate-100">
+              {periodLabel}
+            </span>
+            <Link
+              href={dashboardHref({ tenant: tenantQueryForLinks, month: nextPeriod.month, year: nextPeriod.year, tab })}
+              className="p-1.5 hover:bg-slate-50 text-slate-500 transition-colors"
+              aria-label="Bulan berikutnya"
+            >
+              <ChevronRight size={16} />
+            </Link>
           </div>
         </div>
       </div>
 
+      {/* ── Filter strip ── */}
       <Suspense
         fallback={
-          <GlassCard className="!p-4 h-24 animate-pulse bg-slate-100/80 border border-slate-100">
-            <span className="sr-only">Memuat filter…</span>
-          </GlassCard>
+          <div className="h-12 rounded-2xl bg-slate-100 animate-pulse" />
         }
       >
         <BbaDashboardTenantSelect
@@ -422,143 +412,161 @@ export default async function BbaControlDashboardPage({
 
       {tab === "ops" ? (
         <>
-          <div className="grid gap-4 md:grid-cols-2">
-            <GlassCard interactive className="group">
-              <div className="flex justify-between items-start mb-3">
-                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 group-hover:bg-slate-900 group-hover:text-white transition-all">
-                  <LayoutGrid size={20} />
+          {/* ── 4-stat strip ── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <GlassCard interactive className="group !py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-slate-800 group-hover:text-white transition-all shrink-0">
+                  <LayoutGrid size={14} />
                 </div>
-                <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase">
-                  Antrean
-                </span>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Open queue</p>
               </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Open queue</p>
-              <p className="mt-1 text-3xl font-black text-slate-900 tracking-tight">
+              <p className="text-2xl font-black text-slate-900 tracking-tight">
                 {numberFormatter.format(totals.openQueue)}
               </p>
             </GlassCard>
-            <GlassCard interactive className="group">
-              <div className="flex justify-between items-start mb-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 group-hover:bg-rose-600 group-hover:text-white transition-all">
-                  <Clock size={20} />
+
+            <GlassCard interactive className="group !py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500 group-hover:bg-rose-600 group-hover:text-white transition-all shrink-0">
+                  <Clock size={14} />
                 </div>
-                <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2 py-1 rounded-full uppercase">
-                  SLA
-                </span>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Overdue</p>
               </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Overdue</p>
-              <p className="mt-1 text-3xl font-black text-rose-600 tracking-tight">
+              <p className="text-2xl font-black text-rose-600 tracking-tight">
                 {numberFormatter.format(totals.overdueQueue)}
+              </p>
+            </GlassCard>
+
+            <GlassCard interactive className="group !py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center text-amber-500 group-hover:bg-amber-500 group-hover:text-white transition-all shrink-0">
+                  <Bell size={14} />
+                </div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Reminder 7h</p>
+              </div>
+              <p className="text-2xl font-black text-slate-900 tracking-tight">
+                {numberFormatter.format(totals.reminders7d)}
+              </p>
+            </GlassCard>
+
+            <GlassCard interactive className="group !py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500 group-hover:bg-indigo-600 group-hover:text-white transition-all shrink-0">
+                  <Users size={14} />
+                </div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Assignment</p>
+              </div>
+              <p className="text-2xl font-black text-slate-900 tracking-tight">
+                {numberFormatter.format(totals.assignments)}
               </p>
             </GlassCard>
           </div>
 
-          {priorityBranches.length > 0 ? (
-            <GlassCard>
-              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-3">
-                Prioritas cabang
-              </h2>
-              <ul className="divide-y divide-slate-100">
-                {priorityBranches.map((row) => (
-                  <li key={row.tenantId} className="py-3 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-black text-slate-900">{row.tenantCode}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">{row.tenantName}</p>
-                    </div>
-                    <div className="flex gap-3 text-xs font-bold">
-                      <span className="text-slate-600">Open {numberFormatter.format(row.openQueue)}</span>
-                      <span className="text-rose-600">Overdue {numberFormatter.format(row.overdueQueue)}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </GlassCard>
-          ) : null}
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <GlassCard>
-              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
-                <Calendar size={16} className="text-indigo-600" />
-                Reminder & assignment (7 hari)
-              </h2>
-              <p className="text-sm text-slate-600">
-                <span className="font-black text-slate-900">{numberFormatter.format(totals.reminders7d)}</span>{" "}
-                event reminder terkirim ·{" "}
-                <span className="font-black text-slate-900">{numberFormatter.format(totals.assignments)}</span>{" "}
-                penugasan aktif (scoped tenant).
-              </p>
-            </GlassCard>
+          {/* ── Publish progress + Priority branches ── */}
+          <div className="grid gap-4 lg:grid-cols-3">
             <GlassCard className="border-indigo-100/50">
-              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-indigo-600" />
-                Kesiapan insentif ({periodLabel})
-              </h2>
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 size={14} className="text-indigo-600 shrink-0" />
+                <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                  Kesiapan insentif
+                </h2>
+              </div>
               <div className="flex justify-between items-end mb-2">
-                <div>
-                  <p className="text-3xl font-black text-slate-900">{publishProgressPercent}%</p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Sudah publish appraisal</p>
-                </div>
-                <p className="text-xs font-bold text-indigo-600">
-                  {numberFormatter.format(publishedCrewCount)} / {numberFormatter.format(totalCrewCount ?? 0)} crew
+                <p className="text-3xl font-black text-slate-900">{publishProgressPercent}%</p>
+                <p className="text-[10px] font-bold text-indigo-600">
+                  {numberFormatter.format(publishedCrewCount)}/{numberFormatter.format(totalCrewCount ?? 0)} crew
                 </p>
               </div>
-              <div className="h-3 rounded-full bg-slate-100 overflow-hidden border border-slate-200 p-0.5">
+              <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-indigo-600 transition-all"
                   style={{ width: `${publishProgressPercent}%` }}
                 />
               </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2">{periodLabel}</p>
             </GlassCard>
+
+            {priorityBranches.length > 0 && (
+              <GlassCard className="lg:col-span-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <Building2 size={14} className="text-indigo-600 shrink-0" />
+                  <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                    Cabang prioritas
+                  </h2>
+                </div>
+                <ul className="divide-y divide-slate-100">
+                  {priorityBranches.map((row) => (
+                    <li key={row.tenantId} className="py-2 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black text-slate-800">{row.tenantCode}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">{row.tenantName}</p>
+                      </div>
+                      <div className="flex gap-3">
+                        <span className="text-[10px] font-bold text-slate-500">
+                          Open <span className="text-slate-800 font-black">{numberFormatter.format(row.openQueue)}</span>
+                        </span>
+                        <span className={cn(
+                          "text-[10px] font-bold",
+                          row.overdueQueue > 0 ? "text-rose-600" : "text-emerald-600",
+                        )}>
+                          Overdue <span className="font-black">{numberFormatter.format(row.overdueQueue)}</span>
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </GlassCard>
+            )}
           </div>
 
+          {/* ── Full ops table ── */}
           <GlassCard className="!p-0 overflow-hidden border-indigo-100/50">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                <Building2 size={16} className="text-indigo-600" />
-                Ringkasan operasional per tenant
+                <Building2 size={14} className="text-indigo-600" />
+                Ringkasan operasional per cabang
               </h2>
               <Link
                 href={auditHrefThisPeriod}
                 className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline"
               >
-                Buka audit periode ini →
+                Buka audit →
               </Link>
             </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <table className="min-w-full text-left">
+                <thead className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                   <tr>
-                    <th className="px-6 py-4">Cabang</th>
-                    <th className="px-6 py-4">Antrean terbuka</th>
-                    <th className="px-6 py-4">Lewat batas</th>
-                    <th className="px-6 py-4">Reminder 7h</th>
-                    <th className="px-6 py-4">Assignment</th>
+                    <th className="px-5 py-3">Cabang</th>
+                    <th className="px-5 py-3">Antrean</th>
+                    <th className="px-5 py-3">Overdue</th>
+                    <th className="px-5 py-3">Reminder 7h</th>
+                    <th className="px-5 py-3">Assignment</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {tenantRows.map((row) => (
-                    <tr key={row.tenantId} className="hover:bg-slate-50/50 transition-all">
-                      <td className="px-6 py-4">
-                        <p className="font-black text-slate-800">{row.tenantCode}</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">{row.tenantName}</p>
+                    <tr key={row.tenantId} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-5 py-3">
+                        <p className="text-xs font-black text-slate-800">{row.tenantCode}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">{row.tenantName}</p>
                       </td>
-                      <td className="px-6 py-4 font-bold text-slate-700">
+                      <td className="px-5 py-3 text-xs font-bold text-slate-700">
                         {numberFormatter.format(row.openQueue)}
                       </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={cn(
-                            "font-black text-[10px] uppercase",
-                            row.overdueQueue > 0 ? "text-rose-600" : "text-emerald-600",
-                          )}
-                        >
+                      <td className="px-5 py-3">
+                        <span className={cn(
+                          "text-xs font-black",
+                          row.overdueQueue > 0 ? "text-rose-600" : "text-emerald-600",
+                        )}>
                           {numberFormatter.format(row.overdueQueue)}
                         </span>
                       </td>
-                      <td className="px-6 py-4 font-bold text-slate-700">
+                      <td className="px-5 py-3 text-xs font-bold text-slate-700">
                         {numberFormatter.format(row.reminders7d)}
                       </td>
-                      <td className="px-6 py-4 font-bold text-slate-700">
+                      <td className="px-5 py-3 text-xs font-bold text-slate-700">
                         {numberFormatter.format(row.assignments)}
                       </td>
                     </tr>
@@ -570,40 +578,77 @@ export default async function BbaControlDashboardPage({
         </>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <GlassCard>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Omzet (s.d. {periodEnd})</p>
-              <p className="mt-1 text-2xl font-black text-slate-900">{currencyFormatter.format(kpis.omzet)}</p>
-              <p className="text-[10px] text-slate-500 mt-1 font-bold">
-                vs target prorata {currencyFormatter.format(Math.round(proratedTargetOmzet))}
+          {/* ── Hero omzet card ── */}
+          <GlassCard className="border-indigo-100/50">
+            <div className="flex flex-wrap gap-6 items-start">
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                  Total omzet · s.d. {periodEnd}
+                </p>
+                <p className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-none">
+                  {currencyFormatter.format(kpis.omzet)}
+                </p>
+                <p className="text-[10px] font-bold text-slate-400 mt-2">
+                  Target prorata {currencyFormatter.format(Math.round(proratedTargetOmzet))} · {mtdDays} hari
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Capaian</p>
+                <p className={cn(
+                  "text-3xl md:text-4xl font-black tracking-tight leading-none",
+                  capaianPct >= 100 ? "text-emerald-600" : capaianPct >= 75 ? "text-indigo-600" : "text-amber-600",
+                )}>
+                  {capaianPct}%
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all",
+                  capaianPct >= 100 ? "bg-emerald-500" : capaianPct >= 75 ? "bg-indigo-600" : "bg-amber-500",
+                )}
+                style={{ width: `${Math.min(100, capaianPct)}%` }}
+              />
+            </div>
+          </GlassCard>
+
+          {/* ── Secondary KPIs ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <GlassCard className="!py-4">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">ATV aktual</p>
+              <p className="mt-1 text-xl font-black text-slate-900">{currencyFormatter.format(kpis.atv)}</p>
+              <p className="text-[9px] font-bold text-slate-400 mt-1">
+                Target {avgTargetAtv > 0 ? currencyFormatter.format(avgTargetAtv) : "—"}
               </p>
             </GlassCard>
-            <GlassCard>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Capaian prorata</p>
-              <p className="mt-1 text-2xl font-black text-indigo-600">{capaianPct}%</p>
-              <p className="text-[10px] text-slate-500 mt-1 font-bold">{mtdDays} hari dalam bulan</p>
-            </GlassCard>
-            <GlassCard>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ATV aktual</p>
-              <p className="mt-1 text-2xl font-black text-slate-900">{currencyFormatter.format(kpis.atv)}</p>
-              <p className="text-[10px] text-slate-500 mt-1 font-bold">
-                Target avg {avgTargetAtv > 0 ? currencyFormatter.format(avgTargetAtv) : "—"}
+            <GlassCard className="!py-4">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">ATU aktual</p>
+              <p className="mt-1 text-xl font-black text-slate-900">{kpis.atu.toFixed(2)}</p>
+              <p className="text-[9px] font-bold text-slate-400 mt-1">
+                Target {avgTargetAtu > 0 ? avgTargetAtu.toFixed(2) : "—"}
               </p>
             </GlassCard>
-            <GlassCard>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ATU aktual</p>
-              <p className="mt-1 text-2xl font-black text-slate-900">{kpis.atu.toFixed(2)}</p>
-              <p className="text-[10px] text-slate-500 mt-1 font-bold">
-                Target avg {avgTargetAtu > 0 ? avgTargetAtu.toFixed(2) : "—"}
+            <GlassCard className="!py-4">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pelanggan hilang</p>
+              <p className="mt-1 text-xl font-black text-amber-700">
+                {numberFormatter.format(kpis.lostCustomers)}
               </p>
+              <Link
+                href={auditHrefThisPeriod}
+                className="text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:underline mt-1 inline-block"
+              >
+                Audit →
+              </Link>
             </GlassCard>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <GlassCard className="lg:col-span-2 !p-0 overflow-hidden border-indigo-100/50">
-              <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between gap-3">
-                <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                  <TrendingUp size={16} className="text-indigo-600" />
+          {/* ── Chart + Leaderboard ── */}
+          <div className="grid gap-4 lg:grid-cols-5">
+            <GlassCard className="lg:col-span-3 !p-0 overflow-hidden border-indigo-100/50">
+              <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                <TrendingUp size={14} className="text-indigo-600 shrink-0" />
+                <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
                   Omzet harian — {periodLabel}
                 </h2>
               </div>
@@ -611,73 +656,58 @@ export default async function BbaControlDashboardPage({
                 <CustomLineChart points={dailySeries} />
               </div>
             </GlassCard>
-            <GlassCard>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pelanggan hilang</p>
-              <p className="mt-2 text-3xl font-black text-amber-700">
-                {numberFormatter.format(kpis.lostCustomers)}
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                Akumulasi kolom penolakan / pelanggan tidak jadi beli pada submission terverifikasi di periode ini.
-              </p>
-              <Link
-                href={auditHrefThisPeriod}
-                className="mt-4 inline-flex text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline"
-              >
-                Audit & approval →
-              </Link>
-            </GlassCard>
+
+            <div className="lg:col-span-2">
+              <BbaDashboardLeaderboard
+                periodLabel={`s.d. ${periodEnd}`}
+                rows={leaderboardRows}
+                currencyFormatter={currencyFormatter}
+              />
+            </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <BbaDashboardLeaderboard
-              periodLabel={`${periodLabel} (s.d. ${periodEnd})`}
-              rows={leaderboardRows}
-              currencyFormatter={currencyFormatter}
-            />
-            <GlassCard className="!p-0 overflow-hidden border-indigo-100/50">
-              <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-                <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                  Riwayat omzet harian
-                </h2>
-              </div>
-              <div className="max-h-[420px] overflow-y-auto overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="sticky top-0 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest z-10">
-                    <tr>
-                      <th className="px-4 py-3">Tanggal</th>
-                      <th className="px-4 py-3">Omzet</th>
-                      <th className="px-4 py-3">Δ harian</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {[...dailySeries].reverse().map((row, idx, arr) => {
-                      const prev = arr[idx + 1];
-                      const delta = prev ? row.amount - prev.amount : 0;
-                      return (
-                        <tr key={row.dateKey} className="hover:bg-slate-50/50">
-                          <td className="px-4 py-2 font-bold text-slate-700">{row.dateKey}</td>
-                          <td className="px-4 py-2 font-bold text-slate-900">
-                            {currencyFormatter.format(row.amount)}
-                          </td>
-                          <td className="px-4 py-2">
-                            <span
-                              className={cn(
-                                "inline-flex items-center gap-1 text-[10px] font-black uppercase",
-                                delta >= 0 ? "text-emerald-600" : "text-rose-600",
-                              )}
-                            >
-                              {delta >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                              {currencyFormatter.format(Math.abs(delta))}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </GlassCard>
-          </div>
+          {/* ── Daily history table ── */}
+          <GlassCard className="!p-0 overflow-hidden border-indigo-100/50">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50">
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                Riwayat omzet harian
+              </h2>
+            </div>
+            <div className="max-h-80 overflow-y-auto overflow-x-auto">
+              <table className="min-w-full text-left">
+                <thead className="sticky top-0 bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest z-10">
+                  <tr>
+                    <th className="px-5 py-3">Tanggal</th>
+                    <th className="px-5 py-3">Omzet</th>
+                    <th className="px-5 py-3">Δ harian</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {[...dailySeries].reverse().map((row, idx, arr) => {
+                    const prev = arr[idx + 1];
+                    const delta = prev ? row.amount - prev.amount : 0;
+                    return (
+                      <tr key={row.dateKey} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-5 py-2.5 text-xs font-bold text-slate-600">{row.dateKey}</td>
+                        <td className="px-5 py-2.5 text-xs font-bold text-slate-900">
+                          {currencyFormatter.format(row.amount)}
+                        </td>
+                        <td className="px-5 py-2.5">
+                          <span className={cn(
+                            "inline-flex items-center gap-1 text-[10px] font-black",
+                            delta >= 0 ? "text-emerald-600" : "text-rose-600",
+                          )}>
+                            {delta >= 0 ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+                            {currencyFormatter.format(Math.abs(delta))}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
         </>
       )}
     </AnimatedPage>

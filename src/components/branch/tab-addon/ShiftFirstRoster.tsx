@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useTransition, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, X, ChevronDown, Clock, Users, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -175,6 +175,11 @@ export function ShiftFirstRoster({
   const [assignments, setAssignments] = useState<ShiftAssignment[]>(() =>
     inferTemplateFromRoster(roster, currentMonth, currentYear)
   );
+
+  useEffect(() => {
+    setAssignments(inferTemplateFromRoster(roster, currentMonth, currentYear));
+  }, [roster, currentMonth, currentYear]);
+
   const [expandedOverrides, setExpandedOverrides] = useState<Set<string>>(new Set());
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();

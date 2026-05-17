@@ -1236,16 +1236,16 @@ export async function copyRosterAction(formData: FormData) {
   }
 
   // 2. Map and Insert (Simple day-to-day mapping)
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const targetDays = new Date(year, month, 0).getDate();
   const newRoster = prevRoster.map(r => {
-    const d = new Date(r.schedule_date);
-    const newDate = new Date(year, month - 1, d.getDate());
-    // Ensure the day is valid for the target month
-    if (newDate.getMonth() + 1 !== month) return null;
+    const dayNum = parseInt((r.schedule_date as string).split("-")[2]!, 10);
+    if (isNaN(dayNum) || dayNum < 1 || dayNum > targetDays) return null;
 
     return {
       tenant_apotek_id: tenantId,
       user_id: r.user_id,
-      schedule_date: newDate.toISOString().split('T')[0],
+      schedule_date: `${year}-${pad2(month)}-${pad2(dayNum)}`,
       shift_id: r.shift_id,
       is_off: r.is_off
     };
@@ -1285,7 +1285,21 @@ export async function applyShiftTemplateAction(prevState: any, formData: FormDat
 
   if (!branchId || !month || !year) return { error: "Data tidak valid." };
 
-  const entries: { userId: string; date: string; shiftId: string }[] = JSON.parse(entriesJson);
+  // Verify actor has access to this specific branch (non-global admins are branch-scoped).
+  if (!gate.session?.isGlobalSuperAdmin) {
+    const hasBranchAccess = (gate.session?.memberships ?? []).some(
+      (m) => m.tenantId === branchId && m.role === "super_admin_bba",
+    );
+    if (!hasBranchAccess) return { error: "Akses ditolak untuk cabang ini." };
+  }
+
+  let entries: { userId: string; date: string; shiftId: string }[];
+  try {
+    entries = JSON.parse(entriesJson);
+    if (!Array.isArray(entries)) throw new Error("bukan array");
+  } catch {
+    return { error: "Format data jadwal tidak valid." };
+  }
 
   const supabase = createAdminClient();
   const daysInMonth = new Date(year, month, 0).getDate();

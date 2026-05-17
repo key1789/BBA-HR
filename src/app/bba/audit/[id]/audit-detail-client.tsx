@@ -1729,6 +1729,28 @@ export function AuditDetailClient({
         </div>
       ) : null}
 
+      {/* BELUM FINAL BANNER — owner only */}
+      {portalMode === "owner" && (
+        raportPeriodPublished ? (
+          <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
+            <p className="text-[11px] font-bold text-emerald-800">
+              Data periode ini sudah <span className="font-black">final</span> — rapor telah dipublish oleh tim BBA.
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <Calendar size={16} className="mt-0.5 shrink-0 text-amber-600" />
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-widest text-amber-800">Belum Final</p>
+              <p className="mt-0.5 text-[11px] font-medium leading-snug text-amber-700">
+                Data ini masih berjalan dan belum dikunci. Angka bonus dapat berubah sampai rapor dipublish oleh tim BBA.
+              </p>
+            </div>
+          </div>
+        )
+      )}
+
       {/* CONTENT AREA */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-10">
         <AnimatePresence mode="wait">

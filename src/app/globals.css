@@ -92,3 +92,17 @@ textarea {
 .custom-scrollbar:hover::-webkit-scrollbar-thumb {
   background: #94a3b8;
 }
+
+@keyframes nav-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.nav-progress-bar {
+  width: 40%;
+  animation: nav-progress-slide 0.9s ease-in-out infinite;
+}
