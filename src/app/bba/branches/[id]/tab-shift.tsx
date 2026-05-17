@@ -3,7 +3,7 @@
 
 import { useTransition, useEffect, useState } from "react";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Clock, Plus, Edit2, Trash2, Loader2, CalendarClock, ChevronRight, X, AlertCircle } from "lucide-react";
+import { Clock, Plus, Edit2, Trash2, Loader2, CalendarClock, ChevronRight, X, AlertCircle, ShieldAlert } from "lucide-react";
 import { saveShiftAction, deleteShiftAction } from "./actions";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,6 +12,8 @@ export function TabShift({ branchId, shifts }: { branchId: string, shifts: any[]
   const [isPending, startTransition] = useTransition();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<any>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -34,6 +36,18 @@ export function TabShift({ branchId, shifts }: { branchId: string, shifts: any[]
   const handleAddNew = () => {
     setEditingShift(null);
     setIsModalOpen(true);
+  };
+
+  const handleDeleteConfirmed = async (shiftId: string) => {
+    setIsDeleting(true);
+    const fd = new FormData();
+    fd.set("shiftId", shiftId);
+    fd.set("tenantId", branchId);
+    const res = await deleteShiftAction(fd);
+    setIsDeleting(false);
+    setConfirmDeleteId(null);
+    if (res.success) toast.success(res.message);
+    else toast.error(res.error);
   };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -107,25 +121,19 @@ export function TabShift({ branchId, shifts }: { branchId: string, shifts: any[]
                       <Clock size={24} />
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0">
-                      <button 
+                      <button
                         onClick={() => handleEdit(shift)}
                         className="p-2 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-xl transition-all"
                       >
                         <Edit2 size={16} />
                       </button>
-                      <form action={async (formData) => {
-                        if(confirm("Hapus shift ini?")) {
-                          const res = await deleteShiftAction(formData);
-                          if(res.success) toast.success(res.message);
-                          else toast.error(res.error);
-                        }
-                      }}>
-                        <input type="hidden" name="shiftId" value={shift.id} />
-                        <input type="hidden" name="tenantId" value={branchId} />
-                        <button className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all">
-                          <Trash2 size={16} />
-                        </button>
-                      </form>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(shift.id)}
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </div>
 
@@ -174,6 +182,59 @@ export function TabShift({ branchId, shifts }: { branchId: string, shifts: any[]
         </div>
 
       )}
+
+      {/* CONFIRM DELETE MODAL */}
+      <AnimatePresence>
+        {confirmDeleteId && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isDeleting && setConfirmDeleteId(null)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden"
+            >
+              <div className="p-6 flex flex-col items-center text-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-rose-50 flex items-center justify-center">
+                  <ShieldAlert size={28} className="text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-base">Hapus Shift Ini?</h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Shift yang masih dipakai di jadwal ke depan tidak bisa dihapus.
+                    Shift dengan riwayat lama (sudah lewat) boleh dihapus.
+                  </p>
+                </div>
+                <div className="flex gap-3 w-full pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(null)}
+                    disabled={isDeleting}
+                    className="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteConfirmed(confirmDeleteId)}
+                    disabled={isDeleting}
+                    className="flex-1 px-4 py-2.5 rounded-xl font-black text-sm text-white bg-rose-600 hover:bg-rose-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    Hapus
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* MODAL FORM */}
       <AnimatePresence>

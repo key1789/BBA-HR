@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { createDailySubmissionAction } from "@/actions/operational";
+import { useActionState, useState } from "react";
+import { createDailySubmissionAction, type InputFormState } from "@/actions/operational";
 import { Button } from "@/components/shared/button";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { Input } from "@/components/shared/input";
@@ -33,7 +33,6 @@ type Props = {
   addonProdukFokusEnabled: boolean;
   focusProducts: FocusProduct[];
   recentSubmissions: SubmissionRow[];
-  feedbackState: { status: string | null; message: string | null } | null;
 };
 
 export function CrewInputForm({
@@ -41,8 +40,11 @@ export function CrewInputForm({
   addonProdukFokusEnabled,
   focusProducts,
   recentSubmissions,
-  feedbackState,
 }: Props) {
+  const [state, formAction] = useActionState<InputFormState, FormData>(
+    createDailySubmissionAction,
+    null,
+  );
   const formatId = (digits: string) => {
     const cleaned = digits.replace(/[^\d]/g, "");
     if (!cleaned) return "";
@@ -97,14 +99,14 @@ export function CrewInputForm({
 
   const formContent = (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {feedbackState?.status && feedbackState.message ? (
+      {state?.message ? (
         <InlineAlert
-          tone={feedbackState.status === "success" ? "success" : "error"}
-          message={feedbackState.message}
+          tone={state.status === "error" ? "error" : "success"}
+          message={state.message}
         />
       ) : null}
 
-      <form action={createDailySubmissionAction} className="space-y-6">
+      <form action={formAction} className="space-y-6">
         <input type="hidden" name="editSubmissionId" value={activeEditingSubmissionId} />
         {/* KARTU 1: Informasi Waktu */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm relative z-20">

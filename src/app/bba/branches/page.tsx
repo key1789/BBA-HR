@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { isBranchOperationalPersonnel } from "@/lib/branch-personnel";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AnimatedPage } from "@/components/shared/animated-page";
 import { GlassCard } from "@/components/shared/glass-card";
@@ -18,43 +19,22 @@ export default async function BbaBranchesPage() {
         id, 
         role, 
         is_active,
-        app_users(full_name)
+        user_id,
+        app_users(full_name, is_branch_desk_account)
       ),
       addon_settings(addon_key, is_enabled)
     `)
     .order("created_at", { ascending: false });
 
 
-  // DUAL FETCHING UNTUK OWNER
-  // 1. Fetch from Auth (untuk owner baru yang belum di-assign)
-  const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
-  const newOwnerIds = authUsers?.users
-    .filter(u => u.user_metadata?.role === "owner")
-    .map(u => u.id) || [];
-
-  // 2. Fetch dari tenant_memberships (untuk owner existing yang sudah di-assign)
-  const { data: assignedOwners } = await supabaseAdmin
-    .from("tenant_memberships")
-    .select("user_id")
-    .eq("role", "owner");
-  const assignedOwnerIds = assignedOwners?.map(m => m.user_id) || [];
-
-  // Gabungkan semua ID owner dan hapus duplikat
-  const allOwnerIds = Array.from(new Set([...newOwnerIds, ...assignedOwnerIds]));
-
-  // 3. Fetch profil lengkap owner dari app_users
-  const { data: appUsersData } = await supabaseAdmin
-    .from("app_users")
-    .select("id, full_name")
-    .in("id", allOwnerIds);
-
-  const ownersList = appUsersData || [];
-
   // Map branches with actual crew count and addons
   const displayData = branches?.map(branch => {
-    const activeCrewCount = branch.tenant_memberships?.filter((m: any) => 
-      (m.role === 'crew' || m.role === 'admin_apotek') && m.is_active
-    ).length || 0;
+    const activeCrewCount =
+      branch.tenant_memberships?.filter((m: any) => {
+        if (!m.is_active) return false;
+        const au = Array.isArray(m.app_users) ? m.app_users[0] : m.app_users;
+        return isBranchOperationalPersonnel({ role: m.role, app_users: au });
+      }).length || 0;
 
     const isAddonEnabled = (key: string) => branch.addon_settings?.some((a: any) => a.addon_key === key && a.is_enabled);
 
@@ -82,7 +62,7 @@ export default async function BbaBranchesPage() {
           <h1 className="text-xl font-black text-slate-800">Master Apotek (Cabang)</h1>
           <p className="text-sm text-slate-500 mt-1">Kelola data tenant, target KPI, dan konfigurasi cabang.</p>
         </div>
-        <AddBranchButton owners={ownersList} />
+        <AddBranchButton />
       </GlassCard>
 
       {/* QUICK STATS */}

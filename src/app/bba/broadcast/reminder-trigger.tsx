@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { triggerUnreadCriticalReminderAction } from "./actions";
 
 function TriggerButton() {
@@ -17,7 +18,7 @@ function TriggerButton() {
 }
 
 export function ReminderTrigger() {
-  const [state, action] = useFormState(triggerUnreadCriticalReminderAction, null);
+  const [state, action] = useActionState(triggerUnreadCriticalReminderAction, null);
   return (
     <form action={action} className="space-y-2">
       <TriggerButton />

@@ -7,7 +7,7 @@ export function getDefaultPortalPath(role: Role): string {
     case "admin_apotek":
       return "/admin/dashboard";
     case "owner":
-      return "/owner/dashboard";
+      return "/owner/penjualan-kinerja";
     case "super_admin_bba":
       return "/bba/dashboard";
     default:

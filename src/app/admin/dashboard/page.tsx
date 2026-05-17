@@ -89,15 +89,19 @@ export default async function AdminDashboardPage() {
         };
 
   if (queueValue > 0 || followupValue > 0) {
-    await recordReminderDispatch(supabase, {
-      tenantApotekId: active.tenantId,
-      actorUserId: user?.id ?? null,
-      reminderDate: reminderWindow.dateKey,
-      phase: reminderWindow.phase,
-      scope: "admin_dashboard",
-      reasonCode: "verification_backlog",
-      payload: { queueCount: queueValue, followupCount: followupValue, draftCount: draftValue },
-    });
+    try {
+      await recordReminderDispatch(supabase, {
+        tenantApotekId: active.tenantId,
+        actorUserId: user?.id ?? null,
+        reminderDate: reminderWindow.dateKey,
+        phase: reminderWindow.phase,
+        scope: "admin_dashboard",
+        reasonCode: "verification_backlog",
+        payload: { queueCount: queueValue, followupCount: followupValue, draftCount: draftValue },
+      });
+    } catch {
+      // Non-critical: reminder dispatch failure must not break the dashboard
+    }
   }
 
   return (

@@ -1,4 +1,5 @@
 import { getSessionContext } from "@/lib/auth-context";
+import { getUnreadNotificationCount } from "@/lib/notifications";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Home, ClipboardCheck, BarChart3, LogOut, ShieldCheck, UserCircle2, Megaphone } from "lucide-react";
@@ -16,9 +17,12 @@ export default async function AdminLayout({
     redirect("/");
   }
 
+  const unreadCount = await getUnreadNotificationCount(session.userId);
+  const unreadBadge = unreadCount > 0 ? Math.min(unreadCount, 99) : 0;
+
   const navItems = [
     { name: "Dashboard", path: "/admin/dashboard", icon: <Home size={22} /> },
-    { name: "Verifikasi", path: "/admin/verifikasi", icon: <ClipboardCheck size={22} /> },
+    { name: "Verifikasi crew", path: "/admin/verifikasi", icon: <ClipboardCheck size={22} />, badge: unreadBadge },
     { name: "Laporan", path: "/admin/laporan", icon: <BarChart3 size={22} /> },
     { name: "Pengumuman", path: "/admin/pengumuman", icon: <Megaphone size={22} /> },
   ];
@@ -75,7 +79,14 @@ export default async function AdminLayout({
               href={item.path}
               className={`flex flex-col items-center p-2 rounded-2xl min-w-[64px] transition-all duration-300 text-slate-400 opacity-60 hover:opacity-100 hover:text-indigo-600`}
             >
-              <div>{item.icon}</div>
+              <div className="relative">
+                {item.icon}
+                {"badge" in item && (item.badge ?? 0) > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center leading-none">
+                    {item.badge}
+                  </span>
+                )}
+              </div>
               <span className={`text-[9px] font-black mt-1 uppercase tracking-tighter text-slate-500`}>
                 {item.name}
               </span>

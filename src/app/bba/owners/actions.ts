@@ -6,8 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getAppUrl } from "@/lib/app-url";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
+import { assertGlobalBbaPortalManager } from "@/lib/bba-portal-guard";
 
 export async function createOwnerAction(prevState: any, formData: FormData) {
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
   const fullName = formData.get("fullName") as string;
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
@@ -59,6 +63,9 @@ export async function createOwnerAction(prevState: any, formData: FormData) {
 }
 
 export async function toggleOwnerStatusAction(userId: string, currentStatus: boolean) {
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
   const supabaseAdmin = createAdminClient();
   
   const { error } = await supabaseAdmin
@@ -75,6 +82,9 @@ export async function toggleOwnerStatusAction(userId: string, currentStatus: boo
 }
 
 export async function editOwnerAction(prevState: any, formData: FormData) {
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
   const userId = formData.get("userId") as string;
   const fullName = formData.get("fullName") as string;
   const email = formData.get("email") as string;
@@ -125,6 +135,9 @@ export async function editOwnerAction(prevState: any, formData: FormData) {
 
 /** Link `/set-password/[token]` — sama pola dengan tab pegawai; tenant opsional untuk owner tanpa membership. */
 export async function createOwnerPasswordResetLinkAction(formData: FormData) {
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
   const userId = formData.get("userId") as string;
   if (!userId) return { error: "Data user tidak valid." };
 
@@ -188,6 +201,9 @@ export async function createOwnerPasswordResetLinkAction(formData: FormData) {
 /** Undangan owner global (tanpa tenant): sama pola dengan staff_invitations di tab pegawai. */
 export async function createOwnerInvitationAction(prevState: any, formData: FormData) {
   void prevState;
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
   const fullName = (formData.get("fullName") as string)?.trim();
   const email = (formData.get("email") as string)?.trim().toLowerCase();
 
@@ -248,6 +264,9 @@ export async function createOwnerInvitationAction(prevState: any, formData: Form
 }
 
 export async function getPendingOwnerInvitationsAction() {
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
   const supabaseAdmin = createAdminClient();
   const nowIso = new Date().toISOString();
 
@@ -274,6 +293,9 @@ export async function getPendingOwnerInvitationsAction() {
 }
 
 export async function regenerateOwnerInvitationAction(invitationId: string) {
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
   if (!invitationId) return { error: "Undangan tidak valid." };
 
   const supabaseAdmin = createAdminClient();
@@ -325,7 +347,7 @@ export async function completeInvitationAction(prevState: any, formData: FormDat
     .select("*")
     .eq("token", token)
     .eq("status", "pending")
-    .single();
+    .maybeSingle();
 
   if (invError || !inv) {
     return { error: "Link undangan tidak valid atau sudah kadaluwarsa." };

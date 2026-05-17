@@ -4,6 +4,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { assertGlobalBbaPortalManager } from "@/lib/bba-portal-guard";
 
 const BRANCH_BOOTSTRAP_ADDONS = [
   "produk_fokus",
@@ -20,6 +21,9 @@ const BRANCH_BOOTSTRAP_SHIFTS = [
 ] as const;
 
 export async function createBranchAction(prevState: any, formData: FormData) {
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
   const name = formData.get("name") as string;
   const code = formData.get("code") as string;
   const ownerId = formData.get("ownerId") as string;
@@ -139,6 +143,9 @@ export async function createBranchAction(prevState: any, formData: FormData) {
 }
 
 export async function toggleBranchStatusAction(formData: FormData) {
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
   const branchId = formData.get("branchId") as string;
   const currentStatus = formData.get("currentStatus") as string;
 

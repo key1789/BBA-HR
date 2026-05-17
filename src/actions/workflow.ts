@@ -26,59 +26,65 @@ export async function updateCandidateStatusAction(formData: FormData) {
   const status = formData.get("status")?.toString();
 
   if (!candidateId || !status || !isCandidateStatus(status)) {
-    return;
+    return { error: "Data tidak valid." };
   }
 
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role === "owner") {
-    return;
+    return { error: "Akses ditolak." };
   }
 
   const supabase = await createClient();
-  await supabase
+  const { error } = await supabase
     .from("candidates")
     .update({ status })
     .eq("id", candidateId)
     .eq("tenant_apotek_id", active.tenantId);
 
+  if (error) return { error: error.message };
+
   revalidatePath("/candidates");
   revalidatePath("/dashboard");
+  return { success: true };
 }
 
 export async function submitTaskAction(formData: FormData) {
   const taskId = formData.get("taskId")?.toString();
   if (!taskId) {
-    return;
+    return { error: "Data tidak valid." };
   }
 
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role === "owner") {
-    return;
+    return { error: "Akses ditolak." };
   }
 
   const supabase = await createClient();
-  await supabase
+  const { error } = await supabase
     .from("tasks")
     .update({ status: "submitted", submitted_at: new Date().toISOString() })
     .eq("id", taskId)
     .eq("tenant_apotek_id", active.tenantId);
 
+  if (error) return { error: error.message };
+
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  return { success: true };
 }
 
 export async function requestTaskRevisionAction(formData: FormData) {
   const taskId = formData.get("taskId")?.toString();
   if (!taskId) {
-    return;
+    return { error: "Data tidak valid." };
   }
 
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "admin_apotek") {
-    return;
+    return { error: "Akses ditolak." };
   }
 
   const supabase = await createClient();
@@ -87,10 +93,10 @@ export async function requestTaskRevisionAction(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return;
+    return { error: "Sesi tidak valid." };
   }
 
-  await supabase
+  const { error: approvalError } = await supabase
     .from("task_approvals")
     .insert({
       task_id: taskId,
@@ -99,30 +105,35 @@ export async function requestTaskRevisionAction(formData: FormData) {
       notes: "Perlu revisi dari reviewer.",
     });
 
-  await supabase
+  if (approvalError) return { error: approvalError.message };
+
+  const { error: taskError } = await supabase
     .from("tasks")
     .update({ status: "revision_required" })
     .eq("id", taskId)
     .eq("tenant_apotek_id", active.tenantId);
 
+  if (taskError) return { error: taskError.message };
+
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  return { success: true };
 }
 
 export async function approveTaskAction(formData: FormData) {
   const taskId = formData.get("taskId")?.toString();
   if (!taskId) {
-    return;
+    return { error: "Data tidak valid." };
   }
 
   const session = await getSessionContext();
   if (session?.bbaPortalStaffRole === "analyst") {
-    return;
+    return { error: "Akses ditolak." };
   }
 
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return;
+    return { error: "Akses ditolak." };
   }
 
   const supabase = await createClient();
@@ -131,10 +142,10 @@ export async function approveTaskAction(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return;
+    return { error: "Sesi tidak valid." };
   }
 
-  await supabase
+  const { error: approvalError } = await supabase
     .from("task_approvals")
     .insert({
       task_id: taskId,
@@ -143,12 +154,17 @@ export async function approveTaskAction(formData: FormData) {
       notes: "Final approval oleh Super Admin BBA.",
     });
 
-  await supabase
+  if (approvalError) return { error: approvalError.message };
+
+  const { error: taskError } = await supabase
     .from("tasks")
     .update({ status: "approved", approved_at: new Date().toISOString() })
     .eq("id", taskId)
     .eq("tenant_apotek_id", active.tenantId);
 
+  if (taskError) return { error: taskError.message };
+
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  return { success: true };
 }

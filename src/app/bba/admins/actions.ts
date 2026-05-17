@@ -2,7 +2,6 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionContext } from "@/lib/auth-context";
 import { getAppUrl } from "@/lib/app-url";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
@@ -10,15 +9,8 @@ import {
   isKnownBbaPortalMenuKey,
   type BbaPortalMenuKey,
 } from "@/lib/bba-portal-menus";
+import { assertGlobalBbaPortalManager } from "@/lib/bba-portal-guard";
 import { AUDIT_PAGE_SIZE, AUDIT_EXPORT_MAX, parseAuditDateRange, toAuditDisplayRow, escapeCsvField } from "./bba-portal-audit-shared";
-
-async function assertGlobalBbaPortalManager() {
-  const session = await getSessionContext();
-  if (!session?.isGlobalSuperAdmin) {
-    return { ok: false as const, error: "Hanya super admin global yang dapat melakukan aksi ini." };
-  }
-  return { ok: true as const, session };
-}
 
 async function logPortalAudit(
   supabase: ReturnType<typeof createAdminClient>,
@@ -260,20 +252,22 @@ export async function updateAnalystPortalAccessAction(input: {
     return { success: false, error: "Hanya akun analyst yang dapat diedit di sini." };
   }
 
-  const { error: delMenu } = await supabase.from("bba_portal_user_menus").delete().eq("user_id", input.userId);
-  if (delMenu) return { success: false, error: delMenu.message };
-
+  // Insert new menus first; only delete stale rows after success so a failed
+  // insert never leaves the user with zero menu access.
   const menuRows = menuKeys.map((menu_key) => ({ user_id: input.userId, menu_key }));
-  const { error: insMenu } = await supabase.from("bba_portal_user_menus").insert(menuRows);
+  const { error: insMenu } = await supabase
+    .from("bba_portal_user_menus")
+    .upsert(menuRows, { onConflict: "user_id,menu_key" });
   if (insMenu) return { success: false, error: insMenu.message };
 
-  const { error: delMem } = await supabase
-    .from("tenant_memberships")
+  const { error: delMenu } = await supabase
+    .from("bba_portal_user_menus")
     .delete()
     .eq("user_id", input.userId)
-    .eq("role", "super_admin_bba");
-  if (delMem) return { success: false, error: delMem.message };
+    .not("menu_key", "in", `(${menuKeys.join(",")})`);
+  if (delMenu) return { success: false, error: delMenu.message };
 
+  // Same pattern for memberships: upsert first, then delete stale tenants.
   const membershipRows = input.tenantApotekIds.map((tenant_apotek_id) => ({
     user_id: input.userId,
     tenant_apotek_id,
@@ -284,6 +278,14 @@ export async function updateAnalystPortalAccessAction(input: {
     onConflict: "tenant_apotek_id,user_id,role",
   });
   if (memErr) return { success: false, error: memErr.message };
+
+  const { error: delMem } = await supabase
+    .from("tenant_memberships")
+    .delete()
+    .eq("user_id", input.userId)
+    .eq("role", "super_admin_bba")
+    .not("tenant_apotek_id", "in", `(${input.tenantApotekIds.join(",")})`);
+  if (delMem) return { success: false, error: delMem.message };
 
   await logPortalAudit(supabase, {
     actorId: gate.session.userId,

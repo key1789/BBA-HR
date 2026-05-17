@@ -3,11 +3,12 @@
 
 import { useTransition, useState } from "react";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Store, MapPin, Phone, Hash, Loader2, Check, X, User as UserIcon, Mail, Settings, Target, Puzzle, Users, Clock, AlertCircle, ShieldCheck, Banknote, Star, ClipboardCheck } from "lucide-react";
+import { Store, MapPin, Phone, Hash, Loader2, Check, X, User as UserIcon, Mail, Settings, Target, Puzzle, Users, Clock, AlertCircle, ShieldCheck, Banknote, Star, ClipboardCheck, Settings2, Calendar, User } from "lucide-react";
 import { updateBranchAction } from "./actions";
 import { toast } from "sonner";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { isBranchDeskAdminAccount } from "@/lib/branch-personnel";
 
 export function TabOverview({ 
   branch, users, kpi, addons, shifts, products, productFokus, roster, payrollConfigs, availableOwners 
@@ -25,8 +26,17 @@ export function TabOverview({
   void payrollConfigs;
   const ownerData = ownerMembership?.app_users;
   const isOwnerActive = !!(ownerMembership?.is_active && ownerData?.is_active);
-  const activeCrewCount = users.filter((u) => u.role === "crew" && u.is_active && u.app_users?.is_active).length;
-  const activeAdminCount = users.filter((u) => u.role === "admin_apotek" && u.is_active && u.app_users?.is_active).length;
+  const activeCrewCount = users.filter(
+    (u) => u.role === "crew" && u.is_active && u.app_users?.is_active,
+  ).length;
+  const activeAdminCount = users.filter(
+    (u) =>
+      u.role === "admin_apotek" &&
+      u.is_active &&
+      u.app_users?.is_active &&
+      !u.app_users?.is_branch_desk_account,
+  ).length;
+  const deskAdminAccountCount = users.filter((u) => isBranchDeskAdminAccount(u) && u.is_active && u.app_users?.is_active).length;
 
   const handleUpdateBranch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -63,7 +73,10 @@ export function TabOverview({
 
   const activeAddons = addons.filter((a) => a.is_enabled);
   const activeAddonsCount = activeAddons.length;
+  // Add-ons that have no required settings — always considered "configured"
+  const NO_SETTINGS_REQUIRED = new Set(["review_pelanggan", "payroll"]);
   const activeUnsetAddonsCount = activeAddons.filter((a) => {
+    if (NO_SETTINGS_REQUIRED.has(a.addon_key)) return false;
     const settings = a.settings;
     if (settings === null || settings === undefined) return true;
     if (Array.isArray(settings)) return settings.length === 0;
@@ -96,19 +109,24 @@ export function TabOverview({
               
               <h3 className="text-4xl font-black text-slate-800 tracking-tighter mb-1">
                 {activeCrewCount + activeAdminCount}
-                <span className="text-sm font-bold text-slate-400 ml-2 uppercase">Personil</span>
+                <span className="text-sm font-bold text-slate-400 ml-2 uppercase">Operasional</span>
               </h3>
               
               <div className="flex gap-2 mt-4">
                 <div className="flex-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
                   <p className="text-lg font-black text-indigo-600 leading-none mb-1">{activeAdminCount}</p>
-                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Admin</p>
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Admin (orang)</p>
                 </div>
                 <div className="flex-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
                   <p className="text-lg font-black text-indigo-600 leading-none mb-1">{activeCrewCount}</p>
                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Crew</p>
                 </div>
               </div>
+              {deskAdminAccountCount > 0 ? (
+                <p className="text-[10px] text-slate-500 font-medium mt-3">
+                  + {deskAdminAccountCount} akun portal admin cabang (tidak dihitung sebagai pegawai operasional)
+                </p>
+              ) : null}
             </div>
           </GlassCard>
         </motion.div>
@@ -141,6 +159,64 @@ export function TabOverview({
                        <span className="text-[11px] font-black text-slate-700">{targetAtu.toLocaleString('id-ID')} Pcs</span>
                     </div>
                   </div>
+
+                  {kpi?.bonus_config_v2 && (
+                    <div className="mt-6 p-5 bg-gradient-to-r from-sky-50 to-indigo-50 rounded-2xl border border-sky-100">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <Settings2 size={14} />
+                        Skema Bonus Aktif Periode Ini
+                      </h4>
+
+                      {kpi.bonus_config_v2.team_monthly?.enabled ||
+                      kpi.bonus_config_v2.team_daily?.enabled ||
+                      kpi.bonus_config_v2.individual_monthly?.enabled ||
+                      kpi.bonus_config_v2.individual_daily?.enabled ? (
+                        <div className="flex flex-wrap gap-2">
+                          {kpi.bonus_config_v2.team_monthly?.enabled && (
+                            <div className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-[11px] font-black uppercase flex items-center gap-2 shadow-sm">
+                              <Users size={14} />
+                              Team Bulanan
+                              <span className="opacity-75 text-[9px]">
+                                ({kpi.bonus_config_v2.team_monthly.bonus_type === "flat" ? "Flat" : "Kelipatan"})
+                              </span>
+                            </div>
+                          )}
+                          {kpi.bonus_config_v2.team_daily?.enabled && (
+                            <div className="px-4 py-2 bg-sky-500 text-white rounded-xl text-[11px] font-black uppercase flex items-center gap-2 shadow-sm">
+                              <Calendar size={14} />
+                              Team Harian
+                              <span className="opacity-75 text-[9px]">
+                                ({kpi.bonus_config_v2.team_daily.bonus_type === "flat" ? "Flat" : "Kelipatan"})
+                              </span>
+                            </div>
+                          )}
+                          {kpi.bonus_config_v2.individual_monthly?.enabled && (
+                            <div className="px-4 py-2 bg-indigo-500 text-white rounded-xl text-[11px] font-black uppercase flex items-center gap-2 shadow-sm">
+                              <User size={14} />
+                              Individu Bulanan
+                              <span className="opacity-75 text-[9px]">
+                                ({kpi.bonus_config_v2.individual_monthly.target_distribution === "rata" ? "Rata" : "Manual"})
+                              </span>
+                            </div>
+                          )}
+                          {kpi.bonus_config_v2.individual_daily?.enabled && (
+                            <div className="px-4 py-2 bg-purple-500 text-white rounded-xl text-[11px] font-black uppercase flex items-center gap-2 shadow-sm">
+                              <Clock size={14} />
+                              Individu Harian
+                              <span className="opacity-75 text-[9px]">
+                                ({kpi.bonus_config_v2.individual_daily.target_distribution === "rata" ? "Rata" : "Manual"})
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-slate-500 text-sm">
+                          <AlertCircle size={16} />
+                          <span>Belum ada skema bonus aktif untuk periode ini</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="py-6 flex flex-col items-center justify-center text-center">

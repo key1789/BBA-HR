@@ -3,6 +3,10 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionContext } from "@/lib/auth-context";
+import { assertBbaAccess } from "@/lib/bba-portal-guard";
+import { createDefaultKpiV2Config, mergeKpiConfigs } from "@/lib/kpi-v2/utils";
+import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { getAppUrl } from "@/lib/app-url";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
@@ -24,13 +28,16 @@ async function logActivity(supabase: any, tenantId: string, actorId: string, ent
 }
 
 export async function createCrewAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const fullName = formData.get("fullName") as string;
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
-  const role = formData.get("role") as string;
   const tenantId = formData.get("tenantId") as string;
+  const role = "crew" as const;
 
-  if (!fullName || !email || !password || !role || !tenantId) {
+  if (!fullName || !email || !password || !tenantId) {
     return { error: "Semua kolom wajib diisi." };
   }
 
@@ -51,7 +58,11 @@ export async function createCrewAction(prevState: any, formData: FormData) {
     return { error: `Gagal membuat akun Auth: ${authError.message}` };
   }
 
-  const userId = authData.user.id;
+  const userId = authData.user?.id;
+  if (!userId) {
+    return { error: "Gagal membuat akun: tidak ada ID pengguna." };
+  }
+
   const now = new Date().toISOString();
 
   // 2. Insert into app_users
@@ -62,6 +73,7 @@ export async function createCrewAction(prevState: any, formData: FormData) {
       full_name: fullName,
       email: email,
       is_active: true,
+      is_branch_desk_account: false,
       created_at: now,
       updated_at: now
     });
@@ -85,10 +97,13 @@ export async function createCrewAction(prevState: any, formData: FormData) {
   }
 
   revalidatePath(`/bba/branches/${tenantId}`);
-  return { success: true, message: "Pegawai berhasil ditambahkan ke cabang ini!" };
+  return { success: true, message: "Crew berhasil ditambahkan ke cabang ini!" };
 }
 
 export async function getAvailableUsersForBranch(tenantId: string) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return [];
+
   const supabaseAdmin = createAdminClient();
 
   const { data: inThisBranch } = await supabaseAdmin
@@ -118,7 +133,7 @@ export async function getAvailableUsersForBranch(tenantId: string) {
 
   const { data: availableUsers, error } = await supabaseAdmin
     .from("app_users")
-    .select("id, full_name, email")
+    .select("id, full_name, email, is_branch_desk_account")
     .eq("is_active", true)
     .in("id", eligibleUserIds)
     .order("full_name", { ascending: true });
@@ -128,17 +143,21 @@ export async function getAvailableUsersForBranch(tenantId: string) {
     return [];
   }
 
-  return availableUsers || [];
+  return (availableUsers || []).filter((u: { is_branch_desk_account?: boolean }) => !u.is_branch_desk_account);
 }
 
 export async function assignExistingCrewAction(formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const userId = formData.get("userId") as string;
-  const role = formData.get("role") as string;
   const tenantId = formData.get("tenantId") as string;
 
-  if (!userId || !role || !tenantId) {
+  if (!userId || !tenantId) {
     return { error: "Semua kolom wajib diisi." };
   }
+
+  const role = "crew" as const;
 
   const supabaseAdmin = createAdminClient();
 
@@ -160,11 +179,14 @@ export async function assignExistingCrewAction(formData: FormData) {
   }
 
   revalidatePath(`/bba/branches/${tenantId}`);
-  return { success: true, message: "Pegawai existing berhasil ditugaskan ke cabang ini!" };
+  return { success: true, message: "Crew berhasil ditugaskan ke cabang ini!" };
 }
 
 export async function createStaffInvitationAction(prevState: any, formData: FormData) {
   void prevState;
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const tenantId = formData.get("tenantId") as string;
   const fullName = formData.get("fullName") as string;
   const email = (formData.get("email") as string)?.trim().toLowerCase();
@@ -174,8 +196,8 @@ export async function createStaffInvitationAction(prevState: any, formData: Form
     return { error: "Data undangan tidak lengkap." };
   }
 
-  if (!["crew", "admin_apotek"].includes(role)) {
-    return { error: "Role undangan tidak valid." };
+  if (role !== "crew" && role !== "admin_apotek") {
+    return { error: "Role tidak valid." };
   }
 
   const supabaseAdmin = createAdminClient();
@@ -228,6 +250,9 @@ export async function createStaffInvitationAction(prevState: any, formData: Form
 }
 
 export async function getPendingStaffInvitationsAction(tenantId: string) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   if (!tenantId) return { error: "Cabang tidak valid." };
 
   const supabaseAdmin = createAdminClient();
@@ -259,6 +284,9 @@ export async function getPendingStaffInvitationsAction(tenantId: string) {
 }
 
 export async function regenerateStaffInvitationAction(invitationId: string) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   if (!invitationId) return { error: "Undangan tidak valid." };
 
   const supabaseAdmin = createAdminClient();
@@ -327,11 +355,13 @@ export async function completeStaffInvitationAction(prevState: any, formData: Fo
     return { error: "Link undangan sudah kadaluwarsa." };
   }
 
+  const isDeskAdmin = inv.role === "admin_apotek";
+
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email: inv.email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: inv.full_name, role: inv.role },
+    user_metadata: { full_name: inv.full_name, role: inv.role, branch_desk_admin: isDeskAdmin },
   });
 
   if (authError) {
@@ -341,7 +371,11 @@ export async function completeStaffInvitationAction(prevState: any, formData: Fo
     return { error: `Gagal membuat akun: ${authError.message}` };
   }
 
-  const userId = authData.user.id;
+  const userId = authData.user?.id;
+  if (!userId) {
+    return { error: "Gagal membuat akun: tidak ada ID pengguna." };
+  }
+
   const now = new Date().toISOString();
 
   const { error: appUserError } = await supabaseAdmin
@@ -351,6 +385,7 @@ export async function completeStaffInvitationAction(prevState: any, formData: Fo
       full_name: inv.full_name,
       email: inv.email,
       is_active: true,
+      is_branch_desk_account: isDeskAdmin,
       created_at: now,
       updated_at: now,
     });
@@ -385,232 +420,147 @@ export async function completeStaffInvitationAction(prevState: any, formData: Fo
   return { success: true, message: "Akun berhasil diaktifkan. Silakan login." };
 }
 
-export async function saveKpiAction(prevState: any, formData: FormData) {
-  const tenantId = formData.get("tenantId") as string;
-  const month = parseInt(formData.get("month") as string);
-  const year = parseInt(formData.get("year") as string);
-  
-  const targetOmzet = parseFloat(formData.get("targetOmzet") as string);
-  const targetAtv = parseFloat(formData.get("targetAtv") as string) || 0;
-  const targetAtu = parseFloat(formData.get("targetAtu") as string) || 0;
-
-  // New fields
-  const isAtvEnabled = formData.get("isAtvEnabled") === "on";
-  const isAtuEnabled = formData.get("isAtuEnabled") === "on";
-  const weightOmzet = parseInt(formData.get("weightOmzet") as string) || 0;
-  const weightAtv = parseInt(formData.get("weightAtv") as string) || 0;
-  const weightAtu = parseInt(formData.get("weightAtu") as string) || 0;
-
-  const bonusType = formData.get("bonusType") as string; // 'flat' or 'kelipatan'
-  const targetDistribution = formData.get("targetDistribution") as string || "rata";
-  const bonusDistribution = formData.get("bonusDistribution") as string || "global";
-  const flatNominal = parseFloat(formData.get("flatNominal") as string) || 0;
-  const kelipatanStep = parseFloat(formData.get("kelipatanStep") as string) || 0;
-  const kelipatanReward = parseFloat(formData.get("kelipatanReward") as string) || 0;
-
-  let userConfigs = {};
-  try {
-    const ucStr = formData.get("userConfigs") as string;
-    if (ucStr) userConfigs = JSON.parse(ucStr);
-  } catch (e) {
-    console.error("Failed to parse user configs", e);
+async function requireBbaSuperAdminActor(): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const session = await getSessionContext();
+  if (!session?.userId) return { ok: false, error: "Tidak terautentikasi." };
+  const active = session.activeMembership;
+  if (!session.isGlobalSuperAdmin && active?.role !== "super_admin_bba") {
+    return { ok: false, error: "Hanya super admin BBA yang dapat melakukan aksi ini." };
   }
-
-  if (!tenantId || isNaN(month) || isNaN(year) || isNaN(targetOmzet)) {
-    return { error: "Data KPI tidak valid." };
-  }
-
-  const supabaseAdmin = createAdminClient();
-
-  const { data: existing } = await supabaseAdmin
-    .from("kpi_configs")
-    .select("*")
-    .eq("tenant_apotek_id", tenantId)
-    .eq("period_month", month)
-    .eq("period_year", year)
-    .maybeSingle();
-
-  const prevBc = (existing?.bonus_config && typeof existing.bonus_config === "object")
-    ? (existing.bonus_config as Record<string, unknown>)
-    : {};
-
-  const parsePrevInt = (key: string, fallback: number) => {
-    const v = prevBc[key];
-    if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
-    if (typeof v === "string" && v.trim() !== "") {
-      const n = parseInt(v, 10);
-      return Number.isFinite(n) ? n : fallback;
-    }
-    return fallback;
-  };
-
-  const parsePrevFloat = (key: string, fallback: number) => {
-    const v = prevBc[key];
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-    if (typeof v === "string" && v.trim() !== "") {
-      const n = parseFloat(v);
-      return Number.isFinite(n) ? n : fallback;
-    }
-    return fallback;
-  };
-
-  // Mode global: input bobot ada di form. Mode manual: input itu tidak di-render — jangan validasi total 0%.
-  if (bonusDistribution === "global") {
-    const totalWeight = weightOmzet + (isAtvEnabled ? weightAtv : 0) + (isAtuEnabled ? weightAtu : 0);
-    if (totalWeight !== 100) {
-      return { error: `Total bobot persentase harus 100% (saat ini ${totalWeight}%).` };
-    }
-  }
-
-  const bonusTypeNormalized =
-    bonusType === "kelipatan" ? "kelipatan" : bonusType === "flat" ? "flat" : null;
-
-  let resolvedBonusType: string;
-  let resolvedWeightOmzet: number;
-  let resolvedWeightAtv: number;
-  let resolvedWeightAtu: number;
-  let resolvedFlatNominal: number;
-  let resolvedKelipatanStep: number;
-  let resolvedKelipatanReward: number;
-
-  if (bonusDistribution === "global") {
-    resolvedBonusType = bonusTypeNormalized || "flat";
-    resolvedWeightOmzet = weightOmzet;
-    resolvedWeightAtv = isAtvEnabled ? weightAtv : 0;
-    resolvedWeightAtu = isAtuEnabled ? weightAtu : 0;
-    resolvedFlatNominal = flatNominal;
-    resolvedKelipatanStep = kelipatanStep;
-    resolvedKelipatanReward = kelipatanReward;
-  } else {
-    // Manual: pertahankan snapshot global terakhir dari DB (toggle bolak-balik), atau default aman.
-    const pwO = parsePrevInt("weight_omzet", NaN);
-    const pwA = parsePrevInt("weight_atv", NaN);
-    const pwU = parsePrevInt("weight_atu", NaN);
-    const prevSum =
-      (Number.isFinite(pwO) ? pwO : 0) +
-      (isAtvEnabled && Number.isFinite(pwA) ? pwA : 0) +
-      (isAtuEnabled && Number.isFinite(pwU) ? pwU : 0);
-    if (
-      prevSum === 100 &&
-      Number.isFinite(pwO) &&
-      (!isAtvEnabled || Number.isFinite(pwA)) &&
-      (!isAtuEnabled || Number.isFinite(pwU))
-    ) {
-      resolvedWeightOmzet = pwO;
-      resolvedWeightAtv = isAtvEnabled ? pwA : 0;
-      resolvedWeightAtu = isAtuEnabled ? pwU : 0;
-    } else {
-      resolvedWeightOmzet = 100;
-      resolvedWeightAtv = 0;
-      resolvedWeightAtu = 0;
-    }
-
-    const prevBt = prevBc["bonus_type"];
-    resolvedBonusType =
-      prevBt === "kelipatan" || prevBt === "flat"
-        ? prevBt
-        : "flat";
-
-    resolvedFlatNominal = parsePrevFloat("flat_nominal", 0);
-    resolvedKelipatanStep = parsePrevFloat("kelipatan_step", 0);
-    resolvedKelipatanReward = parsePrevFloat("kelipatan_reward", 0);
-  }
-
-  const now = new Date().toISOString();
-
-  const bonusConfig = {
-    bonus_type: resolvedBonusType,
-    is_atv_enabled: isAtvEnabled,
-    is_atu_enabled: isAtuEnabled,
-    weight_omzet: resolvedWeightOmzet,
-    weight_atv: isAtvEnabled ? resolvedWeightAtv : 0,
-    weight_atu: isAtuEnabled ? resolvedWeightAtu : 0,
-    flat_nominal: resolvedFlatNominal,
-    kelipatan_step: resolvedKelipatanStep,
-    kelipatan_reward: resolvedKelipatanReward,
-    target_distribution: targetDistribution,
-    bonus_distribution: bonusDistribution,
-    user_configs: userConfigs,
-  };
-
-  const payload = {
-    tenant_apotek_id: tenantId,
-    period_month: month,
-    period_year: year,
-    target_omzet: targetOmzet,
-    target_atv: targetAtv,
-    target_atu: targetAtu,
-    bonus_mode: "fixed_plus_progressive", // Use valid enum value
-    bonus_config: bonusConfig,
-    updated_at: now,
-  };
-
-  const supabaseClient = await createClient();
-  const { data: { user: currentUser } } = await supabaseClient.auth.getUser();
-
-  let error;
-  if (existing) {
-    const { error: updateError } = await supabaseAdmin
-      .from("kpi_configs")
-      .update(payload)
-      .eq("id", existing.id);
-    error = updateError;
-  } else {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      return { error: "Sesi tidak valid. Silakan login kembali." };
-    }
-
-    const { error: insertError } = await supabaseAdmin
-      .from("kpi_configs")
-      .insert({
-        ...payload,
-        created_by_user_id: user?.id,
-        created_at: now
-      });
-    error = insertError;
-  }
-
-  if (error) {
-    return { error: `Gagal menyimpan KPI: ${error.message}` };
-  }
-
-  if (currentUser) {
-    await logActivity(supabaseAdmin, tenantId, currentUser.id, 'kpi_configs', existing ? existing.id : tenantId, existing ? 'UPDATE' : 'CREATE', existing, payload);
-  }
-
-  revalidatePath(`/bba/branches/${tenantId}`);
-  return { success: true, message: `KPI untuk ${month}/${year} berhasil disimpan!` };
+  return { ok: true, userId: session.userId };
 }
 
-export async function getPreviousKpiAction(tenantId: string, currentMonth: number, currentYear: number) {
+export type BranchDeskAdminActionState =
+  | undefined
+  | { error: string }
+  | { success: true; message: string };
+
+export async function createBranchDeskAdminAccountAction(
+  _prev: BranchDeskAdminActionState,
+  formData: FormData,
+): Promise<BranchDeskAdminActionState> {
+  const gate = await requireBbaSuperAdminActor();
+  if (!gate.ok) return { error: gate.error };
+
+  const tenantId = formData.get("tenantId")?.toString()?.trim();
+  const email = formData.get("email")?.toString()?.trim().toLowerCase();
+  const password = formData.get("password")?.toString() ?? "";
+
+  if (!tenantId || !email || password.length < 8) {
+    return { error: "Lengkapi email dan password (minimal 8 karakter)." };
+  }
+
   const supabaseAdmin = createAdminClient();
-  
-  let prevMonth = currentMonth - 1;
-  let prevYear = currentYear;
-  if (prevMonth === 0) {
-    prevMonth = 12;
-    prevYear -= 1;
-  }
 
-  const { data, error } = await supabaseAdmin
-    .from("kpi_configs")
-    .select("*")
-    .eq("tenant_apotek_id", tenantId)
-    .eq("period_month", prevMonth)
-    .eq("period_year", prevYear)
+  const { data: branchRow } = await supabaseAdmin
+    .from("tenant_apotek")
+    .select("name, code")
+    .eq("id", tenantId)
     .maybeSingle();
+  const branchLabel = (branchRow?.name || branchRow?.code || "Cabang").trim();
+  const fullName = `Admin cabang — ${branchLabel}`.slice(0, 120);
 
-  if (error || !data) {
-    return { error: "Data bulan sebelumnya tidak ditemukan." };
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: fullName, role: "admin_apotek", branch_desk_admin: true },
+  });
+
+  if (authError || !authData.user?.id) {
+    if (authError?.message?.includes("already registered")) {
+      return { error: "Email ini sudah terdaftar." };
+    }
+    return { error: `Gagal membuat akun: ${authError?.message ?? "unknown"}` };
   }
 
-  return { success: true, data };
+  const userId = authData.user.id;
+  const now = new Date().toISOString();
+
+  const { error: appUserError } = await supabaseAdmin.from("app_users").insert({
+    id: userId,
+    full_name: fullName,
+    email,
+    is_active: true,
+    is_branch_desk_account: true,
+    created_at: now,
+    updated_at: now,
+  });
+
+  if (appUserError) {
+    await supabaseAdmin.auth.admin.deleteUser(userId);
+    return { error: `Gagal menyimpan profil: ${appUserError.message}` };
+  }
+
+  const { error: membershipError } = await supabaseAdmin.from("tenant_memberships").insert({
+    user_id: userId,
+    tenant_apotek_id: tenantId,
+    role: "admin_apotek",
+    is_active: true,
+  });
+
+  if (membershipError) {
+    await supabaseAdmin.from("app_users").delete().eq("id", userId);
+    await supabaseAdmin.auth.admin.deleteUser(userId);
+    return { error: `Gagal menempatkan cabang: ${membershipError.message}` };
+  }
+
+  await logActivity(supabaseAdmin, tenantId, gate.userId, "app_users", userId, "CREATE", null, {
+    branch_desk_admin: true,
+    email,
+  });
+
+  revalidatePath(`/bba/branches/${tenantId}`);
+  return { success: true, message: "Akun portal admin cabang berhasil dibuat." };
+}
+
+export async function resetBranchDeskAdminPasswordAction(
+  _prev: BranchDeskAdminActionState,
+  formData: FormData,
+): Promise<BranchDeskAdminActionState> {
+  const gate = await requireBbaSuperAdminActor();
+  if (!gate.ok) return { error: gate.error };
+
+  const tenantId = formData.get("tenantId")?.toString()?.trim();
+  const userId = formData.get("userId")?.toString()?.trim();
+  const password = formData.get("password")?.toString() ?? "";
+
+  if (!tenantId || !userId || password.length < 8) {
+    return { error: "Data tidak valid (password minimal 8 karakter)." };
+  }
+
+  const supabaseAdmin = createAdminClient();
+
+  const [{ data: profile }, { data: mem }] = await Promise.all([
+    supabaseAdmin.from("app_users").select("is_branch_desk_account").eq("id", userId).maybeSingle(),
+    supabaseAdmin
+      .from("tenant_memberships")
+      .select("id")
+      .eq("tenant_apotek_id", tenantId)
+      .eq("user_id", userId)
+      .eq("role", "admin_apotek")
+      .maybeSingle(),
+  ]);
+
+  if (!profile?.is_branch_desk_account || !mem?.id) {
+    return { error: "Akun bukan admin meja cabang di tenant ini." };
+  }
+
+  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
+  if (error) return { error: error.message };
+
+  revalidatePath(`/bba/branches/${tenantId}`);
+  return { success: true, message: "Password akun admin cabang telah diperbarui." };
 }
 
 export async function saveAddonAction(prevState: any, formData: FormData) {
+  void prevState;
+  const session = await getSessionContext();
+  const activeRole = session?.activeMembership?.role;
+  if (activeRole !== "admin_apotek" && activeRole !== "super_admin_bba") {
+    return { error: "Hanya akun admin yang dapat mengubah pengaturan add-on." };
+  }
+
   const tenantId = formData.get("tenantId") as string;
   const produkFokus = formData.get("produk_fokus") === "on";
   const payroll = formData.get("payroll") === "on";
@@ -669,6 +619,9 @@ export async function saveAddonAction(prevState: any, formData: FormData) {
 }
 
 export async function updateBranchAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const tenantId = formData.get("tenantId") as string;
   const name = formData.get("name") as string;
   const code = formData.get("code") as string;
@@ -715,6 +668,9 @@ export async function updateBranchAction(prevState: any, formData: FormData) {
 }
 
 export async function transferBranchOwnershipAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const tenantId = formData.get("tenantId") as string;
   const newOwnerId = formData.get("newOwnerId") as string;
 
@@ -791,6 +747,9 @@ export async function transferBranchOwnershipAction(prevState: any, formData: Fo
 
 
 export async function toggleMembershipStatusAction(formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const membershipId = formData.get("membershipId") as string;
   const currentStatus = formData.get("currentStatus") === "true";
   const branchId = formData.get("branchId") as string;
@@ -814,6 +773,9 @@ export async function toggleMembershipStatusAction(formData: FormData) {
 }
 
 export async function editCrewAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const membershipId = formData.get("membershipId") as string;
   const userId = formData.get("userId") as string;
   const branchId = formData.get("tenantId") as string;
@@ -872,6 +834,9 @@ export async function editCrewAction(prevState: any, formData: FormData) {
 }
 
 export async function saveShiftAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const tenantId = formData.get("tenantId") as string;
   const shiftId = formData.get("shiftId") as string;
   const shiftName = formData.get("shiftName") as string;
@@ -937,6 +902,9 @@ export async function saveShiftAction(prevState: any, formData: FormData) {
 }
 
 export async function deleteShiftAction(formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const shiftId = formData.get("shiftId") as string;
   const tenantId = formData.get("tenantId") as string;
 
@@ -945,6 +913,21 @@ export async function deleteShiftAction(formData: FormData) {
   const supabaseAdmin = createAdminClient();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // Block deletion if shift is still used in upcoming or current-month roster entries
+  const today = new Date().toISOString().slice(0, 10);
+  const { count: futureCount } = await supabaseAdmin
+    .from("shift_schedules")
+    .select("id", { count: "exact", head: true })
+    .eq("shift_id", shiftId)
+    .gte("schedule_date", today);
+
+  if (futureCount && futureCount > 0) {
+    return {
+      error: `Shift ini masih digunakan di ${futureCount} jadwal ke depan. Hapus atau ubah jadwal tersebut terlebih dahulu sebelum menghapus shift ini.`,
+    };
+  }
+
   const { data: oldShift } = await supabaseAdmin
     .from("master_shifts")
     .select("*")
@@ -968,6 +951,12 @@ export async function deleteShiftAction(formData: FormData) {
 
 export async function saveAddonSettingsAction(prevState: any, formData: FormData) {
   void prevState;
+  const session = await getSessionContext();
+  const activeRole = session?.activeMembership?.role;
+  if (activeRole !== "admin_apotek" && activeRole !== "super_admin_bba") {
+    return { error: "Hanya akun admin yang dapat mengubah konfigurasi add-on." };
+  }
+
   const tenantId = formData.get("tenantId") as string;
   const addonKey = formData.get("addonKey") as string;
   let patch: Record<string, unknown>;
@@ -978,6 +967,11 @@ export async function saveAddonSettingsAction(prevState: any, formData: FormData
   }
 
   if (!tenantId || !addonKey) return { error: "Data tidak valid." };
+  if (addonKey === "review_pelanggan") {
+    return {
+      error: "Review pelanggan tidak perlu diset manual lagi. Akses input mengikuti akun admin.",
+    };
+  }
 
   const supabaseAdmin = createAdminClient();
   const supabase = await createClient();
@@ -1037,6 +1031,9 @@ export async function saveAddonSettingsAction(prevState: any, formData: FormData
 
 export async function saveProductFokusAction(prevState: any, formData: FormData) {
   void prevState;
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const tenantId = formData.get("tenantId") as string;
   const productId = formData.get("productId") as string;
   const targetType = formData.get("targetType") as string; // 'item' or 'nominal'
@@ -1112,6 +1109,9 @@ export async function saveProductFokusAction(prevState: any, formData: FormData)
 }
 
 export async function deleteProductFokusAction(formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const configId = formData.get("configId") as string;
   const tenantId = formData.get("tenantId") as string;
 
@@ -1153,6 +1153,9 @@ export async function deleteProductFokusAction(formData: FormData) {
 }
 
 export async function saveRosterAction(formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const tenantId = formData.get("tenantId") as string;
   const userId = formData.get("userId") as string;
   const date = formData.get("date") as string;
@@ -1204,6 +1207,9 @@ export async function saveRosterAction(formData: FormData) {
 }
 
 export async function copyRosterAction(formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const tenantId = formData.get("tenantId") as string;
   const month = parseInt(formData.get("month") as string);
   const year = parseInt(formData.get("year") as string);
@@ -1267,7 +1273,56 @@ export async function copyRosterAction(formData: FormData) {
   revalidatePath(`/bba/branches/${tenantId}`);
   return { success: true, message: "Roster berhasil disalin!" };
 }
+
+export async function applyShiftTemplateAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
+  const branchId = formData.get("branchId") as string;
+  const month = parseInt(formData.get("month") as string);
+  const year = parseInt(formData.get("year") as string);
+  const entriesJson = formData.get("entriesJson") as string;
+
+  if (!branchId || !month || !year) return { error: "Data tidak valid." };
+
+  const entries: { userId: string; date: string; shiftId: string }[] = JSON.parse(entriesJson);
+
+  const supabase = createAdminClient();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+  // Delete existing shift_schedules for this month at this branch
+  const { error: deleteError } = await supabase
+    .from("shift_schedules")
+    .delete()
+    .eq("tenant_apotek_id", branchId)
+    .gte("schedule_date", firstDay)
+    .lte("schedule_date", lastDay);
+
+  if (deleteError) return { error: `Gagal reset jadwal: ${deleteError.message}` };
+
+  // Bulk insert new entries
+  if (entries.length > 0) {
+    const rows = entries.map((e) => ({
+      tenant_apotek_id: branchId,
+      user_id: e.userId,
+      schedule_date: e.date,
+      shift_id: e.shiftId,
+      is_off: false,
+    }));
+    const { error: insertError } = await supabase.from("shift_schedules").insert(rows);
+    if (insertError) return { error: `Gagal menyimpan jadwal: ${insertError.message}` };
+  }
+
+  revalidatePath(`/bba/branches/${branchId}`);
+  return { success: true, message: `${entries.length} jadwal shift berhasil diterapkan.` };
+}
+
 export async function savePayrollConfigAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const tenantId = formData.get("tenantId") as string;
   const userId = formData.get("userId") as string;
   const baseSalary = parseFloat(formData.get("baseSalary") as string) || 0;
@@ -1320,6 +1375,9 @@ export async function savePayrollConfigAction(prevState: any, formData: FormData
 }
 
 export async function resetCrewPasswordAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const userId = formData.get("userId") as string;
   const newPassword = formData.get("password") as string;
 
@@ -1341,6 +1399,9 @@ export async function resetCrewPasswordAction(prevState: any, formData: FormData
 }
 
 export async function createStaffPasswordResetLinkAction(formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const userId = formData.get("userId") as string;
   const tenantId = formData.get("tenantId") as string;
   if (!userId || !tenantId) return { error: "Data user/cabang tidak valid." };
@@ -1427,7 +1488,48 @@ export async function completeStaffPasswordResetWithTokenAction(prevState: any, 
   return { success: true, message: "Password berhasil diperbarui. Silakan login." };
 }
 
+/** KPI V2 untuk cabang tujuan: salin skema, kosongkan user_configs individu, sinkronkan target kolom numerik. */
+function buildClonedBonusConfigV2(sourceKpi: {
+  target_omzet?: unknown;
+  target_atv?: unknown;
+  target_atu?: unknown;
+  bonus_config_v2?: unknown;
+}): KpiConfigV2 {
+  const base = createDefaultKpiV2Config();
+  const raw = sourceKpi.bonus_config_v2;
+  let merged = base;
+  if (raw && typeof raw === "object" && (raw as KpiConfigV2).version === "2.0") {
+    merged = mergeKpiConfigs(base, raw as Partial<KpiConfigV2>);
+  }
+  const g = merged.global;
+  const next = mergeKpiConfigs(merged, {
+    global: {
+      ...g,
+      target_omzet: Number(sourceKpi.target_omzet) || g.target_omzet,
+      target_atv: Number(sourceKpi.target_atv) || g.target_atv,
+      target_atu: Number(sourceKpi.target_atu) || g.target_atu,
+    },
+    individual_monthly: {
+      ...merged.individual_monthly,
+      user_configs: {},
+    },
+    individual_daily: {
+      ...merged.individual_daily,
+      user_configs: {},
+    },
+  });
+  const active_schemes: KpiConfigV2["active_schemes"] = [];
+  if (next.team_monthly.enabled) active_schemes.push("team_monthly");
+  if (next.team_daily.enabled) active_schemes.push("team_daily");
+  if (next.individual_monthly.enabled) active_schemes.push("individual_monthly");
+  if (next.individual_daily.enabled) active_schemes.push("individual_daily");
+  return { ...next, active_schemes };
+}
+
 export async function getOtherBranchesAction(currentBranchId: string) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const supabaseAdmin = createAdminClient();
   const { data, error } = await supabaseAdmin
     .from("tenant_apotek")
@@ -1441,6 +1543,9 @@ export async function getOtherBranchesAction(currentBranchId: string) {
 }
 
 export async function cloneBranchConfigAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
   const targetBranchId = formData.get("targetBranchId") as string;
   const sourceBranchId = formData.get("sourceBranchId") as string;
   
@@ -1524,10 +1629,11 @@ export async function cloneBranchConfigAction(prevState: any, formData: FormData
           .eq("period_month", sourceKpi.period_month)
           .eq("period_year", sourceKpi.period_year);
 
-        // Strip user_configs from bonus_config
+        const bonusConfigV2 = buildClonedBonusConfigV2(sourceKpi);
+
         let bonusConfig = sourceKpi.bonus_config || {};
-        if (typeof bonusConfig === 'object' && 'user_configs' in bonusConfig) {
-          bonusConfig = { ...bonusConfig, user_configs: {} }; // Clear user specific targets/bonuses
+        if (typeof bonusConfig === "object" && "user_configs" in bonusConfig) {
+          bonusConfig = { ...bonusConfig, user_configs: {} };
         }
 
         await supabaseAdmin.from("kpi_configs").insert({
@@ -1537,11 +1643,11 @@ export async function cloneBranchConfigAction(prevState: any, formData: FormData
           target_omzet: sourceKpi.target_omzet,
           target_atv: sourceKpi.target_atv,
           target_atu: sourceKpi.target_atu,
-          bonus_mode: sourceKpi.bonus_mode,
           bonus_config: bonusConfig,
+          bonus_config_v2: bonusConfigV2,
           created_by_user_id: user?.id,
           created_at: now,
-          updated_at: now
+          updated_at: now,
         });
       }
     }
@@ -1579,4 +1685,151 @@ export async function cloneBranchConfigAction(prevState: any, formData: FormData
     console.error("Clone error:", err);
     return { error: `Terjadi kesalahan saat menyalin data: ${err.message}` };
   }
+}
+
+// ─── PAYROLL RUN ────────────────────────────────────────────────────────────
+
+export type PayrollRunItem = {
+  userId: string;
+  hariMasuk: number;
+  baseSalary: number;
+  positionAllowance: number;
+  mealRate: number;
+  mealTotal: number;
+  transport: number;
+  bpjs: number;
+  customAdditions: number;
+  customDeductions: number;
+  netTotal: number;
+};
+
+export async function getPayrollRunDataAction(
+  branchId: string,
+  month: number,
+  year: number,
+): Promise<
+  | { error: string }
+  | {
+      isAbsensiEnabled: boolean;
+      attendanceCounts: Record<string, number>;
+      existingPeriod: { id: string; status: string; submitted_at: string | null } | null;
+    }
+> {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
+  const supabaseAdmin = createAdminClient();
+
+  const { data: addon } = await supabaseAdmin
+    .from("addon_settings")
+    .select("is_enabled")
+    .eq("tenant_apotek_id", branchId)
+    .eq("addon_key", "absensi_shift")
+    .maybeSingle();
+
+  const isAbsensiEnabled = addon?.is_enabled ?? false;
+
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+  const attendanceCounts: Record<string, number> = {};
+  if (isAbsensiEnabled) {
+    const { data: logs } = await supabaseAdmin
+      .from("attendance_logs")
+      .select("user_id")
+      .eq("tenant_apotek_id", branchId)
+      .gte("clock_in_time", `${startDate}T00:00:00`)
+      .lte("clock_in_time", `${endDate}T23:59:59`)
+      .not("clock_in_time", "is", null);
+
+    for (const log of logs || []) {
+      attendanceCounts[log.user_id] = (attendanceCounts[log.user_id] || 0) + 1;
+    }
+  }
+
+  const { data: period } = await supabaseAdmin
+    .from("payroll_periods")
+    .select("id, status, submitted_at")
+    .eq("tenant_apotek_id", branchId)
+    .eq("period_start", startDate)
+    .eq("period_end", endDate)
+    .maybeSingle();
+
+  return {
+    isAbsensiEnabled,
+    attendanceCounts,
+    existingPeriod: period ?? null,
+  };
+}
+
+export async function savePayrollRunAction(
+  _prev: { success?: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ success?: boolean; error?: string; message?: string }> {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Tidak terautentikasi." };
+
+  const supabaseAdmin = createAdminClient();
+
+  const branchId = (formData.get("branchId") as string)?.trim();
+  const month = Number(formData.get("month"));
+  const year = Number(formData.get("year"));
+  const itemsJson = formData.get("itemsJson") as string;
+
+  if (!branchId || !month || !year || !itemsJson) return { error: "Data tidak lengkap." };
+
+  let items: PayrollRunItem[];
+  try {
+    items = JSON.parse(itemsJson);
+  } catch {
+    return { error: "Data payroll tidak valid." };
+  }
+
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  const now = new Date().toISOString();
+
+  const { data: period, error: periodError } = await supabaseAdmin
+    .from("payroll_periods")
+    .upsert(
+      {
+        tenant_apotek_id: branchId,
+        period_start: startDate,
+        period_end: endDate,
+        status: "draft",
+        submitted_by_user_id: user.id,
+        submitted_at: now,
+      },
+      { onConflict: "tenant_apotek_id,period_start,period_end" },
+    )
+    .select("id")
+    .single();
+
+  if (periodError) return { error: `Gagal membuat periode: ${periodError.message}` };
+
+  for (const item of items) {
+    const { error: itemError } = await supabaseAdmin
+      .from("payroll_items")
+      .upsert(
+        {
+          payroll_period_id: period.id,
+          employee_profile_id: item.userId,
+          base_salary: item.baseSalary,
+          allowance: item.positionAllowance + item.mealTotal + item.transport + item.customAdditions,
+          deduction: item.bpjs + item.customDeductions,
+        },
+        { onConflict: "payroll_period_id,employee_profile_id" },
+      );
+
+    if (itemError) return { error: `Gagal menyimpan data pegawai: ${itemError.message}` };
+  }
+
+  revalidatePath(`/bba/branches/${branchId}`);
+  return { success: true, message: "Data payroll bulanan berhasil disimpan." };
 }

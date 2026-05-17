@@ -14,13 +14,20 @@ export async function writeAuditLog(
   supabase: SupabaseClient,
   payload: AuditPayload,
 ) {
-  await supabase.from("activity_logs").insert({
-    tenant_apotek_id: payload.tenantApotekId,
-    actor_user_id: payload.actorUserId,
-    entity_type: payload.entityType,
-    entity_id: payload.entityId,
-    action: payload.action,
-    old_value: payload.oldValue ?? null,
-    new_value: payload.newValue ?? null,
-  });
+  try {
+    const { error } = await supabase.from("activity_logs").insert({
+      tenant_apotek_id: payload.tenantApotekId,
+      actor_user_id: payload.actorUserId,
+      entity_type: payload.entityType,
+      entity_id: payload.entityId,
+      action: payload.action,
+      old_value: payload.oldValue ?? null,
+      new_value: payload.newValue ?? null,
+    });
+    if (error) {
+      console.error("[audit-log] insert failed:", payload.action, error.message);
+    }
+  } catch (err) {
+    console.error("[audit-log] unexpected error:", payload.action, err);
+  }
 }

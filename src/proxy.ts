@@ -47,6 +47,7 @@ export async function proxy(request: NextRequest) {
       headers: request.headers,
     },
   });
+  response.headers.set("x-pathname", pathname);
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {

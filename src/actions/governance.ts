@@ -5,6 +5,9 @@ import type { BbaPortalMenuKey } from "@/lib/bba-portal-menus";
 import { writeAuditLog } from "@/lib/audit-log";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { syncMonthlyAppraisalsForPeriod } from "@/lib/kpi-v2/sync-monthly-appraisals";
+import { createDefaultKpiV2Config, mergeKpiConfigs } from "@/lib/kpi-v2/utils";
+import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -48,6 +51,30 @@ function assertAnalystPortalMenu(
   if (session.isGlobalSuperAdmin) return;
   if (session.bbaPortalMenuKeys?.includes(menuKey)) return;
   redirectWithFeedback(redirectPath, "error", "access_denied");
+}
+
+function resolvePayrollTenantId(
+  formData: FormData,
+  active: NonNullable<SessionContext["activeMembership"]>,
+): string | null {
+  const fromForm = formData.get("tenantId")?.toString()?.trim();
+  if (fromForm) return fromForm;
+  if (active.tenantId) return active.tenantId;
+  return null;
+}
+
+function payrollRedirect(
+  formData: FormData,
+  active: NonNullable<SessionContext["activeMembership"]>,
+  status: FeedbackStatus,
+  message: string,
+  extra: Record<string, string | undefined> = {},
+): never {
+  const tenantId = resolvePayrollTenantId(formData, active);
+  return redirectWithFeedback("/bba/payroll", status, message, {
+    tenant: tenantId ?? undefined,
+    ...extra,
+  });
 }
 
 export async function createExportJobAction(formData: FormData) {
@@ -119,6 +146,11 @@ export async function lockPayrollPeriodAction(formData: FormData) {
   }
   assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
 
+  const tenantId = resolvePayrollTenantId(formData, active);
+  if (!tenantId) {
+    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+  }
+
   const periodId = formData.get("periodId")?.toString();
   const reason = formData.get("reason")?.toString()?.trim();
   if (!periodId) {
@@ -140,7 +172,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
     .from("payroll_periods")
     .select("status")
     .eq("id", periodId)
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .maybeSingle();
 
   if (currentError || !currentPeriod?.status) {
@@ -154,7 +186,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
     .from("payroll_periods")
     .update({ status: "locked" })
     .eq("id", periodId)
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .select("id")
     .maybeSingle();
 
@@ -165,7 +197,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
   const { error: lockEventError } = await supabase
     .from("payroll_unlock_events")
     .insert({
-      tenant_apotek_id: active.tenantId,
+      tenant_apotek_id: tenantId,
       payroll_period_id: periodId,
       event_type: "lock",
       actor_user_id: user.id,
@@ -176,7 +208,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
   }
 
   await writeAuditLog(supabase, {
-    tenantApotekId: active.tenantId,
+    tenantApotekId: tenantId,
     actorUserId: user.id,
     entityType: "payroll_periods",
     entityId: periodId,
@@ -186,7 +218,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
 
   revalidatePath("/bba/payroll");
   revalidatePath("/bba/audit-log");
-  return redirectWithFeedback("/bba/payroll", "success", "period_locked");
+  return payrollRedirect(formData, active, "success", "period_locked");
 }
 
 export async function unlockPayrollPeriodAction(formData: FormData) {
@@ -196,6 +228,11 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
   assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
+
+  const tenantId = resolvePayrollTenantId(formData, active);
+  if (!tenantId) {
+    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+  }
 
   const periodId = formData.get("periodId")?.toString();
   const reason = formData.get("reason")?.toString()?.trim();
@@ -215,7 +252,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     .from("payroll_periods")
     .select("status")
     .eq("id", periodId)
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .maybeSingle();
 
   if (currentError || !currentPeriod?.status) {
@@ -229,7 +266,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     .from("payroll_periods")
     .update({ status: "unlocked_by_bba_admin", notes: reason })
     .eq("id", periodId)
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .select("id")
     .maybeSingle();
 
@@ -240,7 +277,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
   const { error: unlockEventError } = await supabase
     .from("payroll_unlock_events")
     .insert({
-      tenant_apotek_id: active.tenantId,
+      tenant_apotek_id: tenantId,
       payroll_period_id: periodId,
       event_type: "unlock",
       actor_user_id: user.id,
@@ -251,7 +288,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
   }
 
   await writeAuditLog(supabase, {
-    tenantApotekId: active.tenantId,
+    tenantApotekId: tenantId,
     actorUserId: user.id,
     entityType: "payroll_periods",
     entityId: periodId,
@@ -261,7 +298,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
 
   revalidatePath("/bba/payroll");
   revalidatePath("/bba/audit-log");
-  return redirectWithFeedback("/bba/payroll", "success", "period_unlocked");
+  return payrollRedirect(formData, active, "success", "period_unlocked");
 }
 
 export async function recalculateMonthlyAppraisalDraftAction(formData: FormData) {
@@ -271,6 +308,11 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
     return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
   assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
+
+  const tenantId = resolvePayrollTenantId(formData, active);
+  if (!tenantId) {
+    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+  }
 
   const periodMonth = Number(formData.get("periodMonth")?.toString() ?? "");
   const periodYear = Number(formData.get("periodYear")?.toString() ?? "");
@@ -314,45 +356,13 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
     upsertedRowCount: number;
   }[] = [];
 
+  let lastCalcVersion = "kpi";
+
   for (const targetPeriod of periods) {
-    const periodStart = `${targetPeriod.periodYear}-${String(targetPeriod.periodMonth).padStart(2, "0")}-01`;
-    const periodEnd = `${targetPeriod.periodYear}-${String(targetPeriod.periodMonth).padStart(2, "0")}-${String(
-      new Date(targetPeriod.periodYear, targetPeriod.periodMonth, 0).getDate(),
-    ).padStart(2, "0")}`;
-
-    const { data: crewMembershipData, error: crewMembershipError } = await supabase
-      .from("tenant_memberships")
-      .select("user_id")
-      .eq("tenant_apotek_id", active.tenantId)
-      .eq("role", "crew")
-      .eq("is_active", true);
-    if (crewMembershipError) {
-      return redirectWithFeedback("/bba/payroll", "error", "appraisal_recalc_failed");
-    }
-
-    const crewUserIds = Array.from(
-      new Set((crewMembershipData ?? []).map((row) => row.user_id).filter(Boolean)),
-    );
-    if (crewUserIds.length === 0) {
-      return redirectWithFeedback("/bba/payroll", "error", "no_crew_members");
-    }
-
-    const { data: approvedSubmissionData, error: approvedSubmissionError } = await supabase
-      .from("daily_submissions")
-      .select("user_id, omzet_total")
-      .eq("tenant_apotek_id", active.tenantId)
-      .in("status", ["approved", "edited_by_admin"])
-      .in("user_id", crewUserIds)
-      .gte("submission_date", periodStart)
-      .lte("submission_date", periodEnd);
-    if (approvedSubmissionError) {
-      return redirectWithFeedback("/bba/payroll", "error", "appraisal_recalc_failed");
-    }
-
     const { data: existingAppraisalData, error: existingAppraisalError } = await supabase
       .from("monthly_appraisals")
-      .select("crew_user_id, addon_manual_total, bba_adjustment, is_published, published_at, published_by_user_id")
-      .eq("tenant_apotek_id", active.tenantId)
+      .select("is_published")
+      .eq("tenant_apotek_id", tenantId)
       .eq("period_month", targetPeriod.periodMonth)
       .eq("period_year", targetPeriod.periodYear);
     if (existingAppraisalError) {
@@ -368,84 +378,33 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
       return redirectWithFeedback("/bba/payroll", "error", "appraisal_already_published");
     }
 
-    const existingMap = new Map(
-      (existingAppraisalData ?? []).map((row) => [
-        row.crew_user_id,
-        {
-          addonManualTotal: Number(row.addon_manual_total ?? 0),
-          bbaAdjustment: Number(row.bba_adjustment ?? 0),
-          isPublished: Boolean(row.is_published),
-          publishedAt: row.published_at ?? null,
-          publishedByUserId: row.published_by_user_id ?? null,
-        },
-      ]),
-    );
-    const aggregationMap = new Map<
-      string,
-      { approvedSubmissionCount: number; approvedOmzetTotal: number }
-    >();
-    for (const row of approvedSubmissionData ?? []) {
-      const current = aggregationMap.get(row.user_id) ?? {
-        approvedSubmissionCount: 0,
-        approvedOmzetTotal: 0,
-      };
-      current.approvedSubmissionCount += 1;
-      current.approvedOmzetTotal += Number(row.omzet_total ?? 0);
-      aggregationMap.set(row.user_id, current);
-    }
-
-    const upsertPayload = crewUserIds.map((crewUserId) => {
-      const agg = aggregationMap.get(crewUserId) ?? {
-        approvedSubmissionCount: 0,
-        approvedOmzetTotal: 0,
-      };
-      const existing = existingMap.get(crewUserId);
-      const addonManualTotal = existing?.addonManualTotal ?? 0;
-      const bbaAdjustment = existing?.bbaAdjustment ?? 0;
-      const calcBreakdown = {
-        approvedSubmissionCount: agg.approvedSubmissionCount,
-        approvedOmzetTotal: agg.approvedOmzetTotal,
-        autoBonusFormula: "v1_baseline",
-        generatedAt: new Date().toISOString(),
-        generatedBy: user.id,
-        periodStart,
-        periodEnd,
-        reason,
-      };
-
-      return {
-        tenant_apotek_id: active.tenantId,
-        crew_user_id: crewUserId,
-        period_month: targetPeriod.periodMonth,
-        period_year: targetPeriod.periodYear,
-        approved_submission_count: agg.approvedSubmissionCount,
-        approved_omzet_total: agg.approvedOmzetTotal,
-        minus_point_total: 0,
-        auto_bonus_accountability: 0,
-        addon_manual_total: addonManualTotal,
-        bba_adjustment: bbaAdjustment,
-        calc_version: "v1_baseline",
-        calc_breakdown: calcBreakdown,
-        is_published: existing?.isPublished ?? false,
-        published_at: existing?.publishedAt ?? null,
-        published_by_user_id: existing?.publishedByUserId ?? null,
-      };
+    const syncResult = await syncMonthlyAppraisalsForPeriod(supabase, {
+      tenantApotekId: tenantId,
+      periodMonth: targetPeriod.periodMonth,
+      periodYear: targetPeriod.periodYear,
+      actorUserId: user.id,
+      reason,
+      source: mode === "rolling" ? "payroll_recalc_rolling" : "payroll_recalc",
+      preservePublishState: true,
+      preserveExistingAdjustments: true,
     });
 
-    const { data: upsertedRows, error: upsertError } = await supabase
-      .from("monthly_appraisals")
-      .upsert(upsertPayload, {
-        onConflict: "tenant_apotek_id,crew_user_id,period_month,period_year",
-      })
-      .select("id");
-    if (upsertError) {
+    if (syncResult.error) {
+      if (syncResult.error.includes("membership crew") && syncResult.affectedUserCount === 0) {
+        return redirectWithFeedback("/bba/payroll", "error", "no_crew_members");
+      }
       return redirectWithFeedback("/bba/payroll", "error", "appraisal_recalc_failed");
     }
+    if (syncResult.affectedUserCount === 0) {
+      return redirectWithFeedback("/bba/payroll", "error", "no_crew_members");
+    }
+
+    lastCalcVersion = syncResult.calcVersion;
     periodResult.push({
       periodMonth: targetPeriod.periodMonth,
       periodYear: targetPeriod.periodYear,
-      affectedUserCount: upsertPayload.length,
-      upsertedRowCount: upsertedRows?.length ?? 0,
+      affectedUserCount: syncResult.affectedUserCount,
+      upsertedRowCount: syncResult.upsertedCount,
     });
   }
 
@@ -454,10 +413,10 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
   }
 
   await writeAuditLog(supabase, {
-    tenantApotekId: active.tenantId,
+    tenantApotekId: tenantId,
     actorUserId: user.id,
     entityType: "monthly_appraisals",
-    entityId: active.tenantId,
+    entityId: tenantId,
     action: mode === "rolling" ? "monthly_appraisal_recalculated_bulk" : "monthly_appraisal_recalculated",
     newValue: {
       mode,
@@ -465,18 +424,20 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
       periods: periodResult.map((item) => `${item.periodYear}-${String(item.periodMonth).padStart(2, "0")}`),
       affectedUserCount: periodResult.reduce((sum, item) => sum + item.affectedUserCount, 0),
       upsertedRowCount: periodResult.reduce((sum, item) => sum + item.upsertedRowCount, 0),
-      formula: "v1_baseline",
+      formula: lastCalcVersion,
     },
   });
 
   revalidatePath("/bba/payroll");
   revalidatePath("/bba/audit-log");
-  return redirectWithFeedback(
-    "/bba/payroll",
-    "success",
-    mode === "rolling" ? "appraisal_recalculated_bulk" : "appraisal_recalculated",
-  );
+  return payrollRedirect(formData, active, "success", mode === "rolling" ? "appraisal_recalculated_bulk" : "appraisal_recalculated", {
+    month: String(periodMonth),
+    year: String(periodYear),
+  });
 }
+
+/** Alias for payroll UI / docs */
+export const recalculateMonthlyAppraisalsAction = recalculateMonthlyAppraisalDraftAction;
 
 export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
   const session = await getSessionContext();
@@ -485,6 +446,11 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
     return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
   assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
+
+  const tenantId = resolvePayrollTenantId(formData, active);
+  if (!tenantId) {
+    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+  }
 
   const periodMonth = Number(formData.get("periodMonth")?.toString() ?? "");
   const periodYear = Number(formData.get("periodYear")?.toString() ?? "");
@@ -513,7 +479,7 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
   const { data: appraisalRows, error: appraisalRowsError } = await supabase
     .from("monthly_appraisals")
     .select("id, is_published")
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .eq("period_month", periodMonth)
     .eq("period_year", periodYear);
   if (appraisalRowsError) {
@@ -537,7 +503,7 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
       published_at: nowIso,
       published_by_user_id: user.id,
     })
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .eq("period_month", periodMonth)
     .eq("period_year", periodYear)
     .eq("is_published", false);
@@ -548,15 +514,29 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
   const { error: lockAddonError } = await supabase
     .from("monthly_addon_appraisals")
     .update({ is_locked: true })
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .eq("period_month", periodMonth)
     .eq("period_year", periodYear);
   if (lockAddonError && lockAddonError.code !== "PGRST116") {
     return redirectWithFeedback("/bba/payroll", "error", "appraisal_publish_failed");
   }
 
+  const { error: publishTrailError } = await supabase
+    .from("monthly_appraisal_publish_events")
+    .insert({
+      tenant_apotek_id: tenantId,
+      period_month: periodMonth,
+      period_year: periodYear,
+      action: "publish",
+      actor_user_id: user.id,
+      reason: reason || null,
+    });
+  if (publishTrailError) {
+    return redirectWithFeedback("/bba/payroll", "error", "appraisal_publish_failed");
+  }
+
   await writeAuditLog(supabase, {
-    tenantApotekId: active.tenantId,
+    tenantApotekId: tenantId,
     actorUserId: user.id,
     entityType: "monthly_appraisals",
     entityId: appraisalRows[0].id,
@@ -566,7 +546,10 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
 
   revalidatePath("/bba/payroll");
   revalidatePath("/bba/audit-log");
-  return redirectWithFeedback("/bba/payroll", "success", "appraisal_published");
+  return payrollRedirect(formData, active, "success", "appraisal_published", {
+    month: String(periodMonth),
+    year: String(periodYear),
+  });
 }
 
 export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) {
@@ -576,6 +559,11 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
     return redirectWithFeedback("/bba/payroll", "error", "access_denied");
   }
   assertAnalystPortalMenu(session, "payroll", "/bba/payroll");
+
+  const tenantId = resolvePayrollTenantId(formData, active);
+  if (!tenantId) {
+    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+  }
 
   const periodMonth = Number(formData.get("periodMonth")?.toString() ?? "");
   const periodYear = Number(formData.get("periodYear")?.toString() ?? "");
@@ -604,7 +592,7 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
   const { data: appraisalRows, error: appraisalRowsError } = await supabase
     .from("monthly_appraisals")
     .select("id, is_published")
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .eq("period_month", periodMonth)
     .eq("period_year", periodYear);
   if (appraisalRowsError) {
@@ -627,7 +615,7 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
       published_at: null,
       published_by_user_id: null,
     })
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .eq("period_month", periodMonth)
     .eq("period_year", periodYear)
     .eq("is_published", true);
@@ -638,15 +626,29 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
   const { error: unlockAddonError } = await supabase
     .from("monthly_addon_appraisals")
     .update({ is_locked: false })
-    .eq("tenant_apotek_id", active.tenantId)
+    .eq("tenant_apotek_id", tenantId)
     .eq("period_month", periodMonth)
     .eq("period_year", periodYear);
   if (unlockAddonError && unlockAddonError.code !== "PGRST116") {
     return redirectWithFeedback("/bba/payroll", "error", "appraisal_unpublish_failed");
   }
 
+  const { error: unpublishTrailError } = await supabase
+    .from("monthly_appraisal_publish_events")
+    .insert({
+      tenant_apotek_id: tenantId,
+      period_month: periodMonth,
+      period_year: periodYear,
+      action: "unpublish",
+      actor_user_id: user.id,
+      reason: reason || null,
+    });
+  if (unpublishTrailError) {
+    return redirectWithFeedback("/bba/payroll", "error", "appraisal_unpublish_failed");
+  }
+
   await writeAuditLog(supabase, {
-    tenantApotekId: active.tenantId,
+    tenantApotekId: tenantId,
     actorUserId: user.id,
     entityType: "monthly_appraisals",
     entityId: appraisalRows[0].id,
@@ -656,7 +658,10 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
 
   revalidatePath("/bba/payroll");
   revalidatePath("/bba/audit-log");
-  return redirectWithFeedback("/bba/payroll", "success", "appraisal_unpublished");
+  return payrollRedirect(formData, active, "success", "appraisal_unpublished", {
+    month: String(periodMonth),
+    year: String(periodYear),
+  });
 }
 
 export async function updateTenantInfoAction(formData: FormData) {
@@ -905,8 +910,6 @@ export async function upsertKpiConfigAction(formData: FormData) {
   const targetOmzet = Number(formData.get("targetOmzet")?.toString() ?? 0);
   const targetAtv = Number(formData.get("targetAtv")?.toString() ?? 0);
   const targetAtu = Number(formData.get("targetAtu")?.toString() ?? 0);
-  const bonusMode = formData.get("bonusMode")?.toString();
-  const allowedModes = ["fixed_only", "progressive_only", "fixed_plus_progressive"];
   const basePath = buildPathWithQuery("/bba/master-apotek", { tenant: tenantId });
 
   if (
@@ -918,9 +921,7 @@ export async function upsertKpiConfigAction(formData: FormData) {
     periodYear < 2000 ||
     targetOmzet < 0 ||
     targetAtv < 0 ||
-    targetAtu < 0 ||
-    !bonusMode ||
-    !allowedModes.includes(bonusMode)
+    targetAtu < 0
   ) {
     return redirectWithFeedback(basePath, "error", "invalid_kpi_payload", {
       scope: "kpi",
@@ -937,6 +938,14 @@ export async function upsertKpiConfigAction(formData: FormData) {
     });
   }
 
+  const bonus_config_v2 = mergeKpiConfigs(createDefaultKpiV2Config(), {
+    global: {
+      target_omzet: targetOmzet,
+      target_atv: targetAtv,
+      target_atu: targetAtu,
+    },
+  } as Partial<KpiConfigV2>);
+
   const { data: upserted, error } = await supabase
     .from("kpi_configs")
     .upsert(
@@ -947,8 +956,8 @@ export async function upsertKpiConfigAction(formData: FormData) {
         target_omzet: targetOmzet,
         target_atv: targetAtv,
         target_atu: targetAtu,
-        bonus_mode: bonusMode,
         bonus_config: {},
+        bonus_config_v2,
         created_by_user_id: user.id,
       },
       {
@@ -976,7 +985,6 @@ export async function upsertKpiConfigAction(formData: FormData) {
       targetOmzet,
       targetAtv,
       targetAtu,
-      bonusMode,
     },
   });
 

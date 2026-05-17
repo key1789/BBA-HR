@@ -1,16 +1,36 @@
+import { Suspense } from "react";
+import Link from "next/link";
 import { getSessionContext } from "@/lib/auth-context";
 import { GlassCard } from "@/components/shared/glass-card";
-import { InlineAlert } from "@/components/shared/inline-alert";
 import { AnimatedPage } from "@/components/shared/animated-page";
 import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
-import { 
-  TrendingUp, Activity, AlertCircle, Users, 
-  ArrowUpRight, ArrowDownRight, LayoutGrid, Building2,
-  Calendar, CheckCircle2, ChevronRight, Clock
+import {
+  BBA_DASHBOARD_OMZET_STATUSES,
+  buildDailyOmzetSeries,
+  clampViewMonthYear,
+  computeDashboardKpis,
+  monthBoundsKeys,
+  parseDashboardTab,
+  type BbaDashboardTab,
+} from "@/lib/bba-dashboard-metrics";
+import {
+  Activity,
+  ArrowDownRight,
+  ArrowUpRight,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  LayoutGrid,
+  TrendingUp,
 } from "lucide-react";
+import { CustomLineChart } from "@/components/dashboard/custom-line-chart";
+import { BbaDashboardLeaderboard, type LeaderboardRow } from "./bba-dashboard-leaderboard";
+import { BbaDashboardTenantSelect } from "./bba-dashboard-tenant-select";
 
 type TenantRow = {
   id: string;
@@ -25,16 +45,41 @@ type ReminderLogRow = {
   created_at: string;
 };
 
-type ApprovedTrendRow = {
+type OmzetSubmissionRow = {
   submission_date: string;
-  omzet_total: number;
-};
-
-type PerformanceRow = {
+  omzet_total: number | null;
+  transaction_total: number | null;
+  product_total: number | null;
+  rejected_customer_total: number | null;
   user_id: string;
-  omzet_total: number;
   user: { full_name: string } | { full_name: string }[] | null;
 };
+
+type KpiConfigRow = {
+  tenant_apotek_id: string;
+  target_omzet: number | null;
+  target_atv: number | null;
+  target_atu: number | null;
+};
+
+function addCalendarMonths(m: number, y: number, delta: number): { month: number; year: number } {
+  const d = new Date(y, m - 1 + delta, 1);
+  return { month: d.getMonth() + 1, year: d.getFullYear() };
+}
+
+function dashboardHref(opts: {
+  tenant: string;
+  month: number;
+  year: number;
+  tab: BbaDashboardTab;
+}): string {
+  const q = new URLSearchParams();
+  q.set("tenant", opts.tenant);
+  q.set("month", String(opts.month));
+  q.set("year", String(opts.year));
+  q.set("tab", opts.tab);
+  return `/bba/dashboard?${q.toString()}`;
+}
 
 async function getQueueStats(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -63,7 +108,7 @@ async function getQueueStats(
 export default async function BbaControlDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tenant?: string }>;
+  searchParams: Promise<{ tenant?: string; month?: string; year?: string; tab?: string }>;
 }) {
   const params = await searchParams;
   const session = await getSessionContext();
@@ -80,46 +125,73 @@ export default async function BbaControlDashboardPage({
     currency: "IDR",
     maximumFractionDigits: 0,
   });
+
   const last7Date = new Date();
   last7Date.setDate(last7Date.getDate() - 7);
   const last7Iso = last7Date.toISOString();
-  const currentDate = new Date(`${reminderWindow.dateKey}T00:00:00+07:00`);
-  const currentMonth = currentDate.getMonth() + 1;
-  const currentYear = currentDate.getFullYear();
-  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-  const monthStartKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
+
+  const wibTodayParts = reminderWindow.dateKey.split("-").map((p) => parseInt(p, 10));
+  const todayYear = wibTodayParts[0] ?? new Date().getFullYear();
+  const todayMonth = wibTodayParts[1] ?? new Date().getMonth() + 1;
+
+  const rawMonth = parseInt(params.month ?? "", 10);
+  const rawYear = parseInt(params.year ?? "", 10);
+  const { month, year } = clampViewMonthYear(
+    Number.isFinite(rawMonth) ? rawMonth : todayMonth,
+    Number.isFinite(rawYear) ? rawYear : todayYear,
+  );
+  const tab = parseDashboardTab(params.tab);
 
   const { data: tenantData } = await supabase
     .from("tenant_apotek")
     .select("id, name, code, status")
     .order("name", { ascending: true });
   const tenants = (tenantData ?? []) as TenantRow[];
-  const selectedTenantId =
-    params.tenant && params.tenant !== "all" ? params.tenant : tenants[0]?.id ?? null;
-  const scopedTenantIds =
-    params.tenant === "all" || !selectedTenantId ? tenants.map((tenant) => tenant.id) : [selectedTenantId];
 
   if (tenants.length === 0) {
     return (
       <AnimatedPage className="space-y-4">
         <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-400 mb-6">
-               <Building2 size={40} />
-            </div>
-            <h1 className="text-2xl font-black text-slate-900 uppercase">BBA Pantauan Harian</h1>
-            <p className="text-slate-500 mt-2">Belum ada tenant apotek yang terdaftar dalam sistem.</p>
+          <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-400 mb-6">
+            <Building2 size={40} />
+          </div>
+          <h1 className="text-2xl font-black text-slate-900 uppercase">BBA Dashboard</h1>
+          <p className="text-slate-500 mt-2">Belum ada tenant apotek yang terdaftar dalam sistem.</p>
         </div>
       </AnimatedPage>
     );
   }
 
+  const selectedTenantId =
+    params.tenant && params.tenant !== "all" ? params.tenant : tenants[0]?.id ?? null;
+  const scopedTenantIds =
+    params.tenant === "all" || !selectedTenantId ? tenants.map((t) => t.id) : [selectedTenantId];
+
+  const tenantQueryForLinks: string =
+    params.tenant === "all" ? "all" : (params.tenant ?? selectedTenantId ?? tenants[0]!.id);
+
+  const { startKey, endKey: monthEndKey } = monthBoundsKeys(year, month);
+  const isViewingCurrentMonth = year === todayYear && month === todayMonth;
+  const periodEnd = isViewingCurrentMonth
+    ? reminderWindow.dateKey <= monthEndKey
+      ? reminderWindow.dateKey
+      : monthEndKey
+    : monthEndKey;
+
+  const prevPeriod = addCalendarMonths(month, year, -1);
+  const nextPeriod = addCalendarMonths(month, year, 1);
+  const periodLabel = new Date(year, month - 1, 1).toLocaleString("id-ID", {
+    month: "long",
+    year: "numeric",
+  });
+  const auditHrefThisPeriod = `/bba/audit?month=${month}&year=${year}`;
+
   const [
     { data: reminderRows },
     assignmentStats,
     perTenantQueue,
-    { data: trendRowsData },
+    { data: omzetRowsData },
     { data: targetRowsData },
-    { data: performanceData },
     { count: totalCrewCount },
     publishedAppraisalResult,
   ] = await Promise.all([
@@ -145,23 +217,19 @@ export default async function BbaControlDashboardPage({
     ),
     supabase
       .from("daily_submissions")
-      .select("submission_date, omzet_total")
+      .select(
+        "submission_date, omzet_total, transaction_total, product_total, rejected_customer_total, user_id, user:user_id(full_name)",
+      )
       .in("tenant_apotek_id", scopedTenantIds)
-      .eq("status", "approved")
-      .gte("submission_date", last7Iso.slice(0, 10)),
+      .in("status", [...BBA_DASHBOARD_OMZET_STATUSES])
+      .gte("submission_date", startKey)
+      .lte("submission_date", periodEnd),
     supabase
       .from("kpi_configs")
-      .select("tenant_apotek_id, target_omzet")
+      .select("tenant_apotek_id, target_omzet, target_atv, target_atu")
       .in("tenant_apotek_id", scopedTenantIds)
-      .eq("period_month", currentMonth)
-      .eq("period_year", currentYear),
-    supabase
-      .from("daily_submissions")
-      .select("user_id, omzet_total, user:user_id(full_name)")
-      .in("tenant_apotek_id", scopedTenantIds)
-      .eq("status", "approved")
-      .gte("submission_date", monthStartKey)
-      .lte("submission_date", reminderWindow.dateKey),
+      .eq("period_month", month)
+      .eq("period_year", year),
     supabase
       .from("tenant_memberships")
       .select("id", { count: "exact", head: true })
@@ -172,14 +240,14 @@ export default async function BbaControlDashboardPage({
       .from("monthly_appraisals")
       .select("crew_user_id")
       .in("tenant_apotek_id", scopedTenantIds)
-      .eq("period_month", currentMonth)
-      .eq("period_year", currentYear)
+      .eq("period_month", month)
+      .eq("period_year", year)
       .eq("is_published", true),
   ]);
+
   const reminderLogs = (reminderRows ?? []) as ReminderLogRow[];
-  const trendRows = (trendRowsData ?? []) as ApprovedTrendRow[];
-  const targetRows = (targetRowsData ?? []) as { tenant_apotek_id: string; target_omzet: number }[];
-  const performanceRows = (performanceData ?? []) as PerformanceRow[];
+  const omzetRows = (omzetRowsData ?? []) as OmzetSubmissionRow[];
+  const targetRows = (targetRowsData ?? []) as KpiConfigRow[];
   const publishedAppraisalRows =
     publishedAppraisalResult.error?.code === "42P01"
       ? []
@@ -228,28 +296,13 @@ export default async function BbaControlDashboardPage({
     .filter((item): item is NonNullable<typeof item> => item !== null)
     .sort((a, b) => b.overdueQueue - a.overdueQueue || b.openQueue - a.openQueue);
 
-  const dateRange = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(currentDate);
-    date.setDate(currentDate.getDate() - (6 - index));
-    return date.toISOString().slice(0, 10);
-  });
-  const trendMap = new Map<string, number>();
-  for (const row of trendRows) {
-    trendMap.set(row.submission_date, (trendMap.get(row.submission_date) ?? 0) + Number(row.omzet_total ?? 0));
-  }
-  const dailyTargetTotal =
-    targetRows.reduce((sum, row) => sum + Number(row.target_omzet ?? 0), 0) / Math.max(1, daysInMonth);
-  const trendSeries = dateRange.map((dateKey) => {
-    const actual = trendMap.get(dateKey) ?? 0;
-    return {
-      dateKey,
-      actual,
-      target: dailyTargetTotal,
-    };
-  });
+  const priorityBranches = tenantRows.slice(0, 6);
+
+  const kpis = computeDashboardKpis(omzetRows);
+  const dailySeries = buildDailyOmzetSeries(omzetRows, startKey, periodEnd);
 
   const performerMap = new Map<string, { name: string; omzet: number }>();
-  for (const row of performanceRows) {
+  for (const row of omzetRows) {
     const actor = Array.isArray(row.user) ? row.user[0] : row.user;
     const current = performerMap.get(row.user_id) ?? {
       name: actor?.full_name ?? "Tanpa nama",
@@ -258,10 +311,25 @@ export default async function BbaControlDashboardPage({
     current.omzet += Number(row.omzet_total ?? 0);
     performerMap.set(row.user_id, current);
   }
-  const topPerformers = Array.from(performerMap.entries())
-    .map(([userId, value]) => ({ userId, ...value }))
+  const leaderboardRows: LeaderboardRow[] = Array.from(performerMap.entries())
+    .map(([userId, value]) => ({ userId, name: value.name, omzet: value.omzet }))
     .sort((a, b) => b.omzet - a.omzet)
-    .slice(0, 3);
+    .slice(0, 12);
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const targetOmzetFull = targetRows.reduce((s, r) => s + Number(r.target_omzet ?? 0), 0);
+  const dStart = new Date(`${startKey}T12:00:00+07:00`).getTime();
+  const dEnd = new Date(`${periodEnd}T12:00:00+07:00`).getTime();
+  const mtdDays = Math.max(1, Math.floor((dEnd - dStart) / 86400000) + 1);
+  const proratedTargetOmzet = targetOmzetFull * (mtdDays / Math.max(1, daysInMonth));
+  const capaianPct =
+    proratedTargetOmzet > 0 ? Math.min(200, Math.round((kpis.omzet / proratedTargetOmzet) * 100)) : 0;
+
+  const atvTargets = targetRows.map((r) => Number(r.target_atv ?? 0)).filter((n) => n > 0);
+  const atuTargets = targetRows.map((r) => Number(r.target_atu ?? 0)).filter((n) => n > 0);
+  const avgTargetAtv = atvTargets.length ? atvTargets.reduce((a, b) => a + b, 0) / atvTargets.length : 0;
+  const avgTargetAtu = atuTargets.length ? atuTargets.reduce((a, b) => a + b, 0) / atuTargets.length : 0;
+
   const publishedCrewCount = new Set(publishedAppraisalRows.map((row) => row.crew_user_id)).size;
   const publishProgressPercent =
     (totalCrewCount ?? 0) > 0
@@ -278,314 +346,340 @@ export default async function BbaControlDashboardPage({
     },
     { openQueue: 0, overdueQueue: 0, reminders7d: 0, assignments: 0 },
   );
-  const actionAlerts: string[] = [];
-  if (totals.overdueQueue > 0) {
-    actionAlerts.push(
-      `${numberFormatter.format(totals.overdueQueue)} antrean melewati batas waktu. Prioritaskan verifikasi hari ini.`,
-    );
-  }
-  if (totals.openQueue > 0) {
-    actionAlerts.push(
-      `${numberFormatter.format(totals.openQueue)} antrean belum selesai. Dorong admin tenant selesaikan sebelum cut-off.`,
-    );
-  }
-  if (totals.reminders7d > 0) {
-    actionAlerts.push(
-      `${numberFormatter.format(totals.reminders7d)} pengingat terkirim 7 hari terakhir. Cek tenant dengan alasan terbanyak.`,
-    );
-  }
-  if (actionAlerts.length === 0) {
-    actionAlerts.push("Kondisi operasional aman. Tidak ada antrean prioritas mendesak.");
-  }
+
+  const tenantOpts = tenants.map((t) => ({ id: t.id, code: t.code, name: t.name }));
 
   return (
     <AnimatedPage className="space-y-8 pb-10">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-         <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest mb-3 border border-indigo-100">
-               <Activity size={12} /> Live Operations
-            </div>
-            <h1 className="text-4xl font-black text-slate-900 tracking-tight uppercase">BBA Pantauan <span className="text-indigo-600">Harian</span></h1>
-            <p className="text-slate-500 text-sm mt-1 font-medium">Ringkasan operasional seluruh cabang apotek dalam satu dashboard.</p>
-         </div>
-         
-         <div className="flex items-center gap-4">
-            <div className="text-right">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Periode Aktif</p>
-               <p className="text-sm font-bold text-slate-800 uppercase">{reminderWindow.dateKey}</p>
-            </div>
-            <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center text-indigo-600">
-               <Calendar size={24} />
-            </div>
-         </div>
-      </div>
-
-      {/* Tenant Quick Filter */}
-      <GlassCard className="!p-2 flex flex-wrap gap-2 bg-slate-50/50">
-        <Link
-          href="/bba/dashboard?tenant=all"
-          className={`rounded-2xl px-5 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${
-            params.tenant === "all" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-white text-slate-600 hover:bg-white/80"
-          }`}
-        >
-          Semua Tenant
-        </Link>
-        {tenants.map((tenant) => (
-          <Link
-            key={tenant.id}
-            href={`/bba/dashboard?tenant=${tenant.id}`}
-            className={`rounded-2xl px-5 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${
-              selectedTenantId === tenant.id && params.tenant !== "all"
-                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200"
-                : "bg-white text-slate-600 hover:bg-white/80"
-            }`}
-          >
-            {tenant.code}
-          </Link>
-        ))}
-      </GlassCard>
-
-      {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-4">
-        <GlassCard interactive className="group">
-          <div className="flex justify-between items-start mb-4">
-             <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 group-hover:bg-slate-900 group-hover:text-white transition-all">
-                <LayoutGrid size={20} />
-             </div>
-             <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase">Normal</span>
+      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest mb-3 border border-indigo-100">
+            <Activity size={12} /> BBA Control
           </div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Open Queue</p>
-          <p className="mt-1 text-3xl font-black text-slate-900 tracking-tight">
-            {numberFormatter.format(totals.openQueue)}
+          <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight uppercase">
+            Dashboard <span className="text-indigo-600">BBA</span>
+          </h1>
+          <p className="text-slate-500 text-sm mt-1 font-medium max-w-xl">
+            Pantau penjualan per periode dan beban operasional verifikasi lintas cabang.
           </p>
-        </GlassCard>
+        </div>
 
-        <GlassCard interactive className="group">
-          <div className="flex justify-between items-start mb-4">
-             <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 group-hover:bg-rose-600 group-hover:text-white transition-all">
-                <Clock size={20} />
-             </div>
-             <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2 py-1 rounded-full uppercase">SLA Breach</span>
-          </div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Overdue</p>
-          <p className="mt-1 text-3xl font-black text-rose-600 tracking-tight">
-            {numberFormatter.format(totals.overdueQueue)}
-          </p>
-        </GlassCard>
-
-        <GlassCard interactive className="group">
-          <div className="flex justify-between items-start mb-4">
-             <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-all">
-                <AlertCircle size={20} />
-             </div>
-             <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-full uppercase">Reminders</span>
-          </div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Events (7D)</p>
-          <p className="mt-1 text-3xl font-black text-slate-900 tracking-tight">
-            {numberFormatter.format(totals.reminders7d)}
-          </p>
-        </GlassCard>
-
-        <GlassCard interactive className="group">
-          <div className="flex justify-between items-start mb-4">
-             <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                <Users size={20} />
-             </div>
-             <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase">Team</span>
-          </div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Assignments</p>
-          <p className="mt-1 text-3xl font-black text-slate-900 tracking-tight">
-            {numberFormatter.format(totals.assignments)}
-          </p>
-        </GlassCard>
-      </div>
-
-      <InlineAlert
-        tone="info"
-        message={`Fokus hari ini: ${actionAlerts[0]} Waktu monitoring ${reminderWindow.dateKey} (WIB), cut-off ${reminderWindow.cutoffHour}.00 WIB.`}
-      />
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <GlassCard className="lg:col-span-2 !p-0 overflow-hidden border-indigo-100/50">
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-             <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-               <TrendingUp size={16} className="text-indigo-600" /> Tren Omzet 7 Hari
-             </h2>
-             <span className="text-[10px] font-bold text-slate-400">Aktual vs Target Harian</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <tr>
-                  <th className="px-6 py-4">Tanggal</th>
-                  <th className="px-6 py-4">Omzet Aktual</th>
-                  <th className="px-6 py-4">Target</th>
-                  <th className="px-6 py-4">Selisih</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {trendSeries.map((item) => {
-                  const variance = item.actual - item.target;
-                  return (
-                    <tr key={item.dateKey} className="hover:bg-slate-50/50 transition-all group">
-                      <td className="px-6 py-4 font-bold text-slate-700">{item.dateKey}</td>
-                      <td className="px-6 py-4 font-bold text-slate-900">{currencyFormatter.format(item.actual)}</td>
-                      <td className="px-6 py-4 text-slate-400">{currencyFormatter.format(item.target)}</td>
-                      <td className="px-6 py-4">
-                        <div className={cn(
-                          "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px]",
-                          variance >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
-                        )}>
-                           {variance >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                           {currencyFormatter.format(Math.abs(variance))}
-                        </div>
-                      </td>
-                    </tr>
-                  );
+        <div className="flex flex-col items-stretch sm:items-end gap-3">
+          <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            <span>Periode KPI</span>
+            <div className="flex rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <Link
+                href={dashboardHref({
+                  tenant: tenantQueryForLinks,
+                  month: prevPeriod.month,
+                  year: prevPeriod.year,
+                  tab,
                 })}
-              </tbody>
-            </table>
+                className="p-2 hover:bg-slate-50 text-slate-600"
+                aria-label="Bulan sebelumnya"
+              >
+                <ChevronLeft size={18} />
+              </Link>
+              <Link
+                href={dashboardHref({
+                  tenant: tenantQueryForLinks,
+                  month: nextPeriod.month,
+                  year: nextPeriod.year,
+                  tab,
+                })}
+                className="p-2 hover:bg-slate-50 text-slate-600 border-l border-slate-100"
+                aria-label="Bulan berikutnya"
+              >
+                <ChevronRight size={18} />
+              </Link>
+            </div>
           </div>
-        </GlassCard>
-
-        <div className="space-y-6">
-           <GlassCard className="border-indigo-100/50">
-             <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-4 flex items-center gap-2">
-               <Activity size={16} className="text-indigo-600" /> Kesiapan Insentif
-             </h2>
-             <div className="flex justify-between items-end mb-2">
-                <div>
-                   <p className="text-3xl font-black text-slate-900">{publishProgressPercent}%</p>
-                   <p className="text-[10px] font-bold text-slate-400 uppercase">Sudah Publish Appraisal</p>
-                </div>
-                <p className="text-xs font-bold text-indigo-600">{numberFormatter.format(publishedCrewCount)} / {numberFormatter.format(totalCrewCount ?? 0)} Crew</p>
-             </div>
-             <div className="h-3 rounded-full bg-slate-100 overflow-hidden border border-slate-200 p-0.5">
-               <div
-                 className="h-full rounded-full bg-indigo-600 transition-all shadow-[0_0_10px_rgba(79,70,229,0.4)]"
-                 style={{ width: `${publishProgressPercent}%` }}
-               />
-             </div>
-           </GlassCard>
-
-           <GlassCard className="border-indigo-100/50">
-             <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-4 flex items-center gap-2">
-               <CheckCircle2 size={16} className="text-emerald-600" /> Top Performer
-             </h2>
-             <div className="space-y-3">
-               {topPerformers.map((item, index) => (
-                 <div key={item.userId} className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                    <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center font-black text-xs text-indigo-600 border border-indigo-50">
-                       #{index + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                       <p className="text-xs font-black text-slate-800 truncate">{item.name}</p>
-                       <p className="text-[10px] font-bold text-emerald-600">{currencyFormatter.format(item.omzet)}</p>
-                    </div>
-                 </div>
-               ))}
-             </div>
-           </GlassCard>
+          <div className="text-right">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hari operasional (WIB)</p>
+            <p className="text-sm font-bold text-slate-800">{reminderWindow.dateKey}</p>
+            <p className="text-[10px] text-slate-400">
+              Cut-off pengingat {reminderWindow.cutoffHour}.00 {reminderWindow.timezoneLabel}
+            </p>
+          </div>
         </div>
       </div>
 
-      <GlassCard className="!p-0 overflow-hidden border-indigo-100/50">
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-             <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-               <Building2 size={16} className="text-indigo-600" /> Performa per Tenant
-             </h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <tr>
-                  <th className="px-6 py-4">Tenant Apotek</th>
-                  <th className="px-6 py-4">Open Queue</th>
-                  <th className="px-6 py-4">SLA Status</th>
-                  <th className="px-6 py-4">Reminders (7D)</th>
-                  <th className="px-6 py-4">Assignments</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {tenantRows.map((row) => (
-                  <tr key={row.tenantId} className="hover:bg-slate-50/50 transition-all group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                         <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-xs uppercase">
-                            {row.tenantCode.slice(0, 2)}
-                         </div>
-                         <div>
-                            <p className="font-black text-slate-800 leading-none mb-1">{row.tenantCode}</p>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{row.tenantName}</p>
-                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-bold text-slate-700">{numberFormatter.format(row.openQueue)}</td>
-                    <td className="px-6 py-4">
-                      <div className={cn(
-                        "inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-black text-[10px] uppercase tracking-widest",
-                        row.overdueQueue > 0 ? "bg-rose-50 text-rose-600 border border-rose-100" : "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                      )}>
-                        {row.overdueQueue > 0 ? <Clock size={12} /> : <CheckCircle2 size={12} />}
-                        {row.overdueQueue > 0 ? `${row.overdueQueue} Overdue` : "On Track"}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-bold text-slate-700">{numberFormatter.format(row.reminders7d)}</td>
-                    <td className="px-6 py-4 font-bold text-slate-700">{numberFormatter.format(row.assignments)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-      </GlassCard>
+      <Suspense
+        fallback={
+          <GlassCard className="!p-4 h-24 animate-pulse bg-slate-100/80 border border-slate-100">
+            <span className="sr-only">Memuat filter…</span>
+          </GlassCard>
+        }
+      >
+        <BbaDashboardTenantSelect
+          tenants={tenantOpts}
+          tenantId={params.tenant === "all" ? "all" : (params.tenant ?? selectedTenantId ?? tenants[0]!.id)}
+          month={month}
+          year={year}
+          tab={tab}
+        />
+      </Suspense>
 
-      <div className="grid gap-6 md:grid-cols-4">
-        <Link href="/bba/owners" className="group">
-           <GlassCard interactive className="!p-4 flex items-center justify-between border-slate-100 bg-white/40">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                    <Building2 size={18} />
-                 </div>
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Kelola Owner</p>
+      {tab === "ops" ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            <GlassCard interactive className="group">
+              <div className="flex justify-between items-start mb-3">
+                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 group-hover:bg-slate-900 group-hover:text-white transition-all">
+                  <LayoutGrid size={20} />
+                </div>
+                <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase">
+                  Antrean
+                </span>
               </div>
-              <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-600 transition-all" />
-           </GlassCard>
-        </Link>
-        <Link href="/bba/branches" className="group">
-           <GlassCard interactive className="!p-4 flex items-center justify-between border-slate-100 bg-white/40">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                    <LayoutGrid size={18} />
-                 </div>
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Master Apotek</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Open queue</p>
+              <p className="mt-1 text-3xl font-black text-slate-900 tracking-tight">
+                {numberFormatter.format(totals.openQueue)}
+              </p>
+            </GlassCard>
+            <GlassCard interactive className="group">
+              <div className="flex justify-between items-start mb-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 group-hover:bg-rose-600 group-hover:text-white transition-all">
+                  <Clock size={20} />
+                </div>
+                <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2 py-1 rounded-full uppercase">
+                  SLA
+                </span>
               </div>
-              <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-600 transition-all" />
-           </GlassCard>
-        </Link>
-        <Link href="/bba/audit" className="group">
-           <GlassCard interactive className="!p-4 flex items-center justify-between border-slate-100 bg-white/40">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                    <CheckCircle2 size={18} />
-                 </div>
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Approval & Audit</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Overdue</p>
+              <p className="mt-1 text-3xl font-black text-rose-600 tracking-tight">
+                {numberFormatter.format(totals.overdueQueue)}
+              </p>
+            </GlassCard>
+          </div>
+
+          {priorityBranches.length > 0 ? (
+            <GlassCard>
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-3">
+                Prioritas cabang
+              </h2>
+              <ul className="divide-y divide-slate-100">
+                {priorityBranches.map((row) => (
+                  <li key={row.tenantId} className="py-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-black text-slate-900">{row.tenantCode}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">{row.tenantName}</p>
+                    </div>
+                    <div className="flex gap-3 text-xs font-bold">
+                      <span className="text-slate-600">Open {numberFormatter.format(row.openQueue)}</span>
+                      <span className="text-rose-600">Overdue {numberFormatter.format(row.overdueQueue)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </GlassCard>
+          ) : null}
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <GlassCard>
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
+                <Calendar size={16} className="text-indigo-600" />
+                Reminder & assignment (7 hari)
+              </h2>
+              <p className="text-sm text-slate-600">
+                <span className="font-black text-slate-900">{numberFormatter.format(totals.reminders7d)}</span>{" "}
+                event reminder terkirim ·{" "}
+                <span className="font-black text-slate-900">{numberFormatter.format(totals.assignments)}</span>{" "}
+                penugasan aktif (scoped tenant).
+              </p>
+            </GlassCard>
+            <GlassCard className="border-indigo-100/50">
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-indigo-600" />
+                Kesiapan insentif ({periodLabel})
+              </h2>
+              <div className="flex justify-between items-end mb-2">
+                <div>
+                  <p className="text-3xl font-black text-slate-900">{publishProgressPercent}%</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Sudah publish appraisal</p>
+                </div>
+                <p className="text-xs font-bold text-indigo-600">
+                  {numberFormatter.format(publishedCrewCount)} / {numberFormatter.format(totalCrewCount ?? 0)} crew
+                </p>
               </div>
-              <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-600 transition-all" />
-           </GlassCard>
-        </Link>
-        <Link href="/bba/export" className="group">
-           <GlassCard interactive className="!p-4 flex items-center justify-between border-slate-100 bg-white/40">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                    <Clock size={18} />
-                 </div>
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Pusat Unduhan</p>
+              <div className="h-3 rounded-full bg-slate-100 overflow-hidden border border-slate-200 p-0.5">
+                <div
+                  className="h-full rounded-full bg-indigo-600 transition-all"
+                  style={{ width: `${publishProgressPercent}%` }}
+                />
               </div>
-              <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-600 transition-all" />
-           </GlassCard>
-        </Link>
-      </div>
+            </GlassCard>
+          </div>
+
+          <GlassCard className="!p-0 overflow-hidden border-indigo-100/50">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                <Building2 size={16} className="text-indigo-600" />
+                Ringkasan operasional per tenant
+              </h2>
+              <Link
+                href={auditHrefThisPeriod}
+                className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline"
+              >
+                Buka audit periode ini →
+              </Link>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <tr>
+                    <th className="px-6 py-4">Cabang</th>
+                    <th className="px-6 py-4">Antrean terbuka</th>
+                    <th className="px-6 py-4">Lewat batas</th>
+                    <th className="px-6 py-4">Reminder 7h</th>
+                    <th className="px-6 py-4">Assignment</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {tenantRows.map((row) => (
+                    <tr key={row.tenantId} className="hover:bg-slate-50/50 transition-all">
+                      <td className="px-6 py-4">
+                        <p className="font-black text-slate-800">{row.tenantCode}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">{row.tenantName}</p>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-slate-700">
+                        {numberFormatter.format(row.openQueue)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={cn(
+                            "font-black text-[10px] uppercase",
+                            row.overdueQueue > 0 ? "text-rose-600" : "text-emerald-600",
+                          )}
+                        >
+                          {numberFormatter.format(row.overdueQueue)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-slate-700">
+                        {numberFormatter.format(row.reminders7d)}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-slate-700">
+                        {numberFormatter.format(row.assignments)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
+        </>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <GlassCard>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Omzet (s.d. {periodEnd})</p>
+              <p className="mt-1 text-2xl font-black text-slate-900">{currencyFormatter.format(kpis.omzet)}</p>
+              <p className="text-[10px] text-slate-500 mt-1 font-bold">
+                vs target prorata {currencyFormatter.format(Math.round(proratedTargetOmzet))}
+              </p>
+            </GlassCard>
+            <GlassCard>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Capaian prorata</p>
+              <p className="mt-1 text-2xl font-black text-indigo-600">{capaianPct}%</p>
+              <p className="text-[10px] text-slate-500 mt-1 font-bold">{mtdDays} hari dalam bulan</p>
+            </GlassCard>
+            <GlassCard>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ATV aktual</p>
+              <p className="mt-1 text-2xl font-black text-slate-900">{currencyFormatter.format(kpis.atv)}</p>
+              <p className="text-[10px] text-slate-500 mt-1 font-bold">
+                Target avg {avgTargetAtv > 0 ? currencyFormatter.format(avgTargetAtv) : "—"}
+              </p>
+            </GlassCard>
+            <GlassCard>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ATU aktual</p>
+              <p className="mt-1 text-2xl font-black text-slate-900">{kpis.atu.toFixed(2)}</p>
+              <p className="text-[10px] text-slate-500 mt-1 font-bold">
+                Target avg {avgTargetAtu > 0 ? avgTargetAtu.toFixed(2) : "—"}
+              </p>
+            </GlassCard>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <GlassCard className="lg:col-span-2 !p-0 overflow-hidden border-indigo-100/50">
+              <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between gap-3">
+                <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                  <TrendingUp size={16} className="text-indigo-600" />
+                  Omzet harian — {periodLabel}
+                </h2>
+              </div>
+              <div className="p-4">
+                <CustomLineChart points={dailySeries} />
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pelanggan hilang</p>
+              <p className="mt-2 text-3xl font-black text-amber-700">
+                {numberFormatter.format(kpis.lostCustomers)}
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Akumulasi kolom penolakan / pelanggan tidak jadi beli pada submission terverifikasi di periode ini.
+              </p>
+              <Link
+                href={auditHrefThisPeriod}
+                className="mt-4 inline-flex text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline"
+              >
+                Audit & approval →
+              </Link>
+            </GlassCard>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <BbaDashboardLeaderboard
+              periodLabel={`${periodLabel} (s.d. ${periodEnd})`}
+              rows={leaderboardRows}
+              currencyFormatter={currencyFormatter}
+            />
+            <GlassCard className="!p-0 overflow-hidden border-indigo-100/50">
+              <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                  Riwayat omzet harian
+                </h2>
+              </div>
+              <div className="max-h-[420px] overflow-y-auto overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest z-10">
+                    <tr>
+                      <th className="px-4 py-3">Tanggal</th>
+                      <th className="px-4 py-3">Omzet</th>
+                      <th className="px-4 py-3">Δ harian</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {[...dailySeries].reverse().map((row, idx, arr) => {
+                      const prev = arr[idx + 1];
+                      const delta = prev ? row.amount - prev.amount : 0;
+                      return (
+                        <tr key={row.dateKey} className="hover:bg-slate-50/50">
+                          <td className="px-4 py-2 font-bold text-slate-700">{row.dateKey}</td>
+                          <td className="px-4 py-2 font-bold text-slate-900">
+                            {currencyFormatter.format(row.amount)}
+                          </td>
+                          <td className="px-4 py-2">
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 text-[10px] font-black uppercase",
+                                delta >= 0 ? "text-emerald-600" : "text-rose-600",
+                              )}
+                            >
+                              {delta >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                              {currencyFormatter.format(Math.abs(delta))}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </GlassCard>
+          </div>
+        </>
+      )}
     </AnimatedPage>
   );
 }

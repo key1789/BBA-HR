@@ -1,7 +1,7 @@
 import { getSessionContext } from "@/lib/auth-context";
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { LogOut, Crown, TrendingUp } from "lucide-react";
+import { LogOut, Crown } from "lucide-react";
+import { OwnerPortalNav } from "@/components/owner/owner-portal-nav";
 import { createClient } from "@/lib/supabase/server";
 import { logoutAction } from "@/actions/auth";
 
@@ -24,11 +24,6 @@ export default async function OwnerLayout({
     .from("app_users")
     .update({ last_login_at: new Date().toISOString() })
     .eq("id", session.userId);
-
-  const navItems = [
-
-    { name: "Ringkasan & Laporan", path: "/owner/dashboard", icon: <TrendingUp size={22} /> },
-  ];
 
   async function handleLogout() {
     "use server";
@@ -55,15 +50,7 @@ export default async function OwnerLayout({
         </div>
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
-          {navItems.map((item) => (
-            <Link
-              key={item.path}
-              href={item.path}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
-            >
-              {item.icon} {item.name}
-            </Link>
-          ))}
+          <OwnerPortalNav variant="sidebar" />
         </nav>
 
         <div className="p-4 border-t border-slate-800">
@@ -99,17 +86,8 @@ export default async function OwnerLayout({
       </main>
 
       {/* MOBILE BOTTOM NAVIGATION */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-white px-2 py-2 flex justify-around items-center z-50 pb-safe border-t border-slate-800">
-        {navItems.map((item) => (
-          <Link
-            key={item.path}
-            href={item.path}
-            className="flex flex-col items-center p-2 rounded-xl min-w-[64px] transition-all text-slate-300 hover:text-white"
-          >
-            <div className="p-2">{item.icon}</div>
-            <span className="text-[9px] font-bold mt-1 text-slate-300">{item.name}</span>
-          </Link>
-        ))}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-white px-1 py-2 flex justify-between items-stretch z-50 pb-safe border-t border-slate-800 gap-0.5">
+        <OwnerPortalNav variant="bottom" />
       </nav>
     </div>
   );

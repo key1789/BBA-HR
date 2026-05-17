@@ -5,12 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CrewInputForm } from "./crew-input-form";
 
-export default async function CrewInputHarianPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ feedback?: string; message?: string }>;
-}) {
-  const params = await searchParams;
+export default async function CrewInputHarianPage() {
   const session = await getSessionContext();
   const active = session?.activeMembership;
 
@@ -128,23 +123,6 @@ export default async function CrewInputHarianPage({
     focus_items: productBySubmission.get(row.id) ?? [],
   }));
 
-  // 5. Handle Feedback
-  const feedbackStatus = params.feedback === "success" || params.feedback === "error" ? params.feedback : null;
-  const feedbackMessageMap: Record<string, string> = {
-    draft_saved: "Draft berhasil disimpan.",
-    submission_submitted: "Laporan harian berhasil dikirim untuk verifikasi.",
-    submission_updated: "Laporan berhasil diperbarui.",
-    invalid_input: "Input tidak valid. Mohon periksa kembali kolom isian.",
-    user_not_found: "Sesi user tidak ditemukan. Silakan login ulang.",
-    save_failed: "Gagal menyimpan laporan. Coba lagi beberapa saat.",
-    focus_save_failed: "Laporan utama tersimpan, tetapi detail produk fokus gagal tersimpan. Coba simpan ulang.",
-    approved_locked: "Laporan sudah disetujui, tidak bisa diubah dari portal crew.",
-    duplicate_exists: "Tanggal + shift ini sudah punya laporan. Gunakan tombol Edit pada log jika ingin mengubah.",
-  };
-  const feedbackMessage = feedbackStatus && params.message
-    ? feedbackMessageMap[params.message] ?? "Aksi selesai."
-    : null;
-
   return (
     <section className="space-y-4">
       <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 relative z-20 mb-2">
@@ -152,12 +130,11 @@ export default async function CrewInputHarianPage({
          <p className="text-slate-500 text-sm mt-1 font-medium">Input metrik penjualan dan laporan shift dengan cepat.</p>
       </div>
 
-      <CrewInputForm 
+      <CrewInputForm
         shifts={shifts}
         addonProdukFokusEnabled={addonProdukFokusEnabled}
         focusProducts={focusProducts}
         recentSubmissions={recentSubmissionsWithDetails}
-        feedbackState={feedbackStatus && feedbackMessage ? { status: feedbackStatus, message: feedbackMessage } : null}
       />
     </section>
   );

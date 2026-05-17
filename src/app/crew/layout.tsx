@@ -18,6 +18,10 @@ export default async function CrewLayout({
     redirect("/");
   }
 
+  if (session.isBranchDeskAccount && activeRole === "admin_apotek") {
+    redirect("/admin/dashboard");
+  }
+
   const supabase = await createClient();
   
   // Ambil konfigurasi add-on dari database

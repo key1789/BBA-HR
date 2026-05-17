@@ -36,13 +36,15 @@ export function EditCrewModal({ isOpen, onClose, branchId, branchName, userData 
   if (!userData) return null;
 
   return (
-    <AnimatedModal isOpen={isOpen} onClose={onClose} title="Edit Data Pegawai">
+    <AnimatedModal isOpen={isOpen} onClose={onClose} title="Edit data crew">
       <form onSubmit={handleSubmit} className="space-y-5">
         
         {/* Hidden inputs to pass branch context and user IDs */}
         <input type="hidden" name="tenantId" value={branchId} />
         <input type="hidden" name="membershipId" value={userData.id} />
         <input type="hidden" name="userId" value={userData.app_users?.id || userData.user_id || ""} />
+
+        <input type="hidden" name="role" value={userData.role} />
 
         <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center">
@@ -89,22 +91,17 @@ export function EditCrewModal({ isOpen, onClose, branchId, branchName, userData 
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Role Akses</label>
-          <select 
-            name="role"
-            required
-            defaultValue={userData.role}
-            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium"
-          >
-            <option value="crew">Crew</option>
-            <option value="admin_apotek">Admin Apotek</option>
-          </select>
+          <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Peran di cabang ini</label>
+          <p className="text-sm font-bold text-slate-800 capitalize">{String(userData.role || "").replace("_", " ")}</p>
+          <p className="text-[11px] text-slate-500">
+            Peran tidak diubah dari sini. Admin meja: tab «Akun admin cabang».
+          </p>
         </div>
 
         <div className="flex items-start gap-2 bg-amber-50 text-amber-700 p-3 rounded-xl border border-amber-100">
           <Info size={16} className="shrink-0 mt-0.5" />
           <p className="text-xs font-medium leading-relaxed">
-            Perubahan nama dan role akan otomatis diperbarui di seluruh sistem.
+            Perubahan nama dan email akan disinkronkan ke akun login.
           </p>
         </div>
 

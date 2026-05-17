@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState, useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
 import type { AnnouncementPriority, AnnouncementRow, AnnouncementTargetRole } from "@/lib/announcements";
 import { ANNOUNCEMENT_PRIORITY_LABEL } from "@/lib/announcements";
 import { saveAnnouncementAction } from "./actions";
@@ -31,7 +31,7 @@ export function BroadcastComposer({
   tenants: TenantOption[];
   editing?: (AnnouncementRow & { targets: AnnouncementTarget[] }) | null;
 }) {
-  const [state, action] = useFormState(saveAnnouncementAction, null);
+  const [state, action] = useActionState(saveAnnouncementAction, null);
   const initialTargets = editing?.targets ?? [{ target_role: "admin_apotek", tenant_apotek_id: null }];
   const [title, setTitle] = useState(editing?.title ?? "");
   const [body, setBody] = useState(editing?.body ?? "");

@@ -3,14 +3,14 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/auth-context";
+import { syncMonthlyAppraisalsForPeriod } from "@/lib/kpi-v2/sync-monthly-appraisals";
 import { revalidatePath } from "next/cache";
 
-const AUDIT_COUNTED_SUBMISSION_STATUSES = ["approved", "edited_by_admin"] as const;
 const ALLOWED_ADDON_KEYS = ["absensi_shift", "review_internal", "review_pelanggan"] as const;
 const MIN_ADDON_NOMINAL = -10_000_000;
 const MAX_ADDON_NOMINAL = 10_000_000;
 const ALLOWED_AUDIT_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ["UNDER_REVIEW", "APPROVED"],
+  DRAFT: ["UNDER_REVIEW"],
   UNDER_REVIEW: ["APPROVED"],
   APPROVED: ["UNDER_REVIEW"],
 };
@@ -75,146 +75,20 @@ async function syncMonthlyAppraisalsForAuditPeriod(
     return { error: "Record audit tidak ditemukan." };
   }
 
-  const tenantId = audit.tenant_apotek_id as string;
-  const periodMonth = Number(audit.period_month);
-  const periodYear = Number(audit.period_year);
-  const periodStart = `${periodYear}-${String(periodMonth).padStart(2, "0")}-01`;
-  const periodEnd = `${periodYear}-${String(periodMonth).padStart(2, "0")}-${String(
-    new Date(periodYear, periodMonth, 0).getDate(),
-  ).padStart(2, "0")}`;
-
-  const { data: crewMembershipData, error: crewMemErr } = await supabaseAdmin
-    .from("tenant_memberships")
-    .select("user_id")
-    .eq("tenant_apotek_id", tenantId)
-    .eq("role", "crew")
-    .eq("is_active", true);
-
-  if (crewMemErr) {
-    return { error: "Gagal membaca membership crew." };
-  }
-
-  const crewUserIds = Array.from(
-    new Set((crewMembershipData ?? []).map((r) => r.user_id as string).filter(Boolean)),
-  );
-  if (crewUserIds.length === 0) {
-    return {};
-  }
-
-  const { data: submissionData, error: subErr } = await supabaseAdmin
-    .from("daily_submissions")
-    .select("user_id, omzet_total")
-    .eq("tenant_apotek_id", tenantId)
-    .in("status", [...AUDIT_COUNTED_SUBMISSION_STATUSES])
-    .in("user_id", crewUserIds)
-    .gte("submission_date", periodStart)
-    .lte("submission_date", periodEnd);
-
-  if (subErr) {
-    return { error: "Gagal membaca submission untuk sinkron rapor." };
-  }
-
-  const { data: crewAuditRows } = await supabaseAdmin
-    .from("monthly_crew_audits")
-    .select("user_id, bba_adjustment")
-    .eq("monthly_audit_id", params.auditId);
-
-  const bbaByUser = new Map<string, number>();
-  for (const row of crewAuditRows ?? []) {
-    const uid = row.user_id as string;
-    if (!uid) continue;
-    bbaByUser.set(uid, Number(row.bba_adjustment ?? 0));
-  }
-
-  const { data: addonRows } = await supabaseAdmin
-    .from("monthly_addon_appraisals")
-    .select("crew_user_id, nominal_manual")
-    .eq("tenant_apotek_id", tenantId)
-    .eq("period_month", periodMonth)
-    .eq("period_year", periodYear);
-
-  const addonSumByUser = new Map<string, number>();
-  for (const row of addonRows ?? []) {
-    const uid = row.crew_user_id as string;
-    if (!uid) continue;
-    addonSumByUser.set(uid, (addonSumByUser.get(uid) ?? 0) + Number(row.nominal_manual ?? 0));
-  }
-
-  const { data: existingAppraisalData, error: exErr } = await supabaseAdmin
-    .from("monthly_appraisals")
-    .select("crew_user_id, is_published")
-    .eq("tenant_apotek_id", tenantId)
-    .eq("period_month", periodMonth)
-    .eq("period_year", periodYear);
-
-  if (exErr) {
-    return { error: "Gagal membaca rapor bulanan (monthly_appraisals)." };
-  }
-
-  const publishedSet = new Set(
-    (existingAppraisalData ?? []).filter((r) => r.is_published).map((r) => r.crew_user_id as string),
-  );
-
-  const aggregationMap = new Map<string, { count: number; omzet: number }>();
-  for (const row of submissionData ?? []) {
-    const uid = row.user_id as string;
-    if (!uid) continue;
-    const cur = aggregationMap.get(uid) ?? { count: 0, omzet: 0 };
-    cur.count += 1;
-    cur.omzet += Number(row.omzet_total ?? 0);
-    aggregationMap.set(uid, cur);
-  }
-
-  const upsertPayload = crewUserIds
-    .filter((crewUserId) => !publishedSet.has(crewUserId))
-    .map((crewUserId) => {
-      const agg = aggregationMap.get(crewUserId) ?? { count: 0, omzet: 0 };
-      const addonManualTotal = addonSumByUser.get(crewUserId) ?? 0;
-      const bbaAdjustment = bbaByUser.get(crewUserId) ?? 0;
-      const calcBreakdown = {
-        approvedSubmissionCount: agg.count,
-        approvedOmzetTotal: agg.omzet,
-        autoBonusFormula: "v1_baseline",
-        generatedAt: new Date().toISOString(),
-        generatedBy: params.actorUserId,
-        periodStart,
-        periodEnd,
-        reason: "audit_finalize_sync",
-        source: "monthly_audit_finalize",
-      };
-
-      return {
-        tenant_apotek_id: tenantId,
-        crew_user_id: crewUserId,
-        period_month: periodMonth,
-        period_year: periodYear,
-        approved_submission_count: agg.count,
-        approved_omzet_total: agg.omzet,
-        minus_point_total: 0,
-        auto_bonus_accountability: 0,
-        addon_manual_total: addonManualTotal,
-        bba_adjustment: bbaAdjustment,
-        calc_version: "v1_baseline",
-        calc_breakdown: calcBreakdown,
-        is_published: false,
-        published_at: null,
-        published_by_user_id: null,
-      };
-    });
-
-  if (upsertPayload.length === 0) {
-    return {};
-  }
-
-  const { error: upsertError } = await supabaseAdmin.from("monthly_appraisals").upsert(upsertPayload, {
-    onConflict: "tenant_apotek_id,crew_user_id,period_month,period_year",
+  const result = await syncMonthlyAppraisalsForPeriod(supabaseAdmin, {
+    tenantApotekId: audit.tenant_apotek_id as string,
+    periodMonth: Number(audit.period_month),
+    periodYear: Number(audit.period_year),
+    actorUserId: params.actorUserId,
+    auditId: params.auditId,
+    reason: "audit_finalize_sync",
+    source: "monthly_audit_finalize",
+    excludePublishedUsers: true,
   });
 
-  if (upsertError) {
-    console.error("syncMonthlyAppraisalsForAuditPeriod", upsertError);
-    return { error: "Gagal menyinkronkan rapor bulanan (monthly_appraisals)." };
+  if (result.error) {
+    return { error: result.error };
   }
-
   return {};
 }
 
@@ -243,17 +117,21 @@ export async function toggleCrewLockAction(auditId: string, userId: string, curr
     .eq("id", auditId)
     .single();
 
+  if (!mainAudit) {
+    return { error: "Data audit tidak ditemukan." };
+  }
+
   const publishCheck = await assertNotPublishedPayrollPeriod(
     supabaseAdmin,
-    String(mainAudit?.tenant_apotek_id ?? ""),
-    Number(mainAudit?.period_month ?? 0),
-    Number(mainAudit?.period_year ?? 0),
+    String(mainAudit.tenant_apotek_id),
+    Number(mainAudit.period_month),
+    Number(mainAudit.period_year),
   );
   if (publishCheck.error) {
     return { error: publishCheck.error };
   }
 
-  if (mainAudit?.status === 'APPROVED' && currentStatus === true) {
+  if (mainAudit.status === 'APPROVED' && currentStatus === true) {
      return { error: "Audit sudah disetujui, tidak dapat membuka kunci." };
   }
 
@@ -348,6 +226,58 @@ export async function updateCrewAuditAction(
   return { success: true, message: "Data berhasil disimpan!" };
 }
 
+export async function submitAuditForReviewAction(auditId: string) {
+  const supabaseAdmin = createAdminClient();
+  const access = await assertAuditMutationAccess();
+  if ("error" in access) return { error: access.error };
+
+  const { data: auditRow } = await supabaseAdmin
+    .from("monthly_audits")
+    .select("id, status, tenant_apotek_id, period_month, period_year")
+    .eq("id", auditId)
+    .maybeSingle();
+
+  if (!auditRow?.id) {
+    return { error: "Audit tidak ditemukan." };
+  }
+  if (auditRow.status === "UNDER_REVIEW") {
+    return { error: "Audit sudah dalam tahap review." };
+  }
+  if (auditRow.status === "APPROVED") {
+    return { error: "Audit sudah disetujui." };
+  }
+  if (!canTransitionAuditState(String(auditRow.status), "UNDER_REVIEW")) {
+    return { error: `Transisi status tidak valid: ${auditRow.status} -> UNDER_REVIEW.` };
+  }
+
+  const publishCheck = await assertNotPublishedPayrollPeriod(
+    supabaseAdmin,
+    String(auditRow.tenant_apotek_id),
+    Number(auditRow.period_month),
+    Number(auditRow.period_year),
+  );
+  if (publishCheck.error) {
+    return { error: publishCheck.error };
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error } = await supabaseAdmin
+    .from("monthly_audits")
+    .update({
+      status: "UNDER_REVIEW",
+      updated_at: nowIso,
+    })
+    .eq("id", auditId);
+
+  if (error) {
+    console.error("submitAuditForReviewAction", error);
+    return { error: "Gagal memulai review audit." };
+  }
+
+  await revalidateAuditDetailForMonthlyAuditId(supabaseAdmin, auditId);
+  return { success: true, message: "Audit dipindahkan ke tahap Under Review." };
+}
+
 export async function finalizeAuditAction(auditId: string) {
   const supabaseAdmin = createAdminClient();
   const supabase = await createClient();
@@ -384,23 +314,16 @@ export async function finalizeAuditAction(auditId: string) {
     return { error: publishCheck.error };
   }
 
-  const syncResult = await syncMonthlyAppraisalsForAuditPeriod(supabaseAdmin, {
-    auditId,
-    actorUserId: user.id,
-  });
-  if (syncResult.error) {
-    return { error: syncResult.error };
-  }
-
-  // Step 1: update audit status.
-  // Step 2: lock crew rows.
-  // If step 2 fails, rollback step 1 to prevent partial finalize.
+  // Step 1: update audit status to APPROVED.
+  // Step 2: lock crew rows — if fails, rollback step 1.
+  // Step 3: sync appraisals — if fails, rollback step 1 + step 2.
+  // This ordering ensures appraisals only sync when the audit is fully locked.
   const nowIso = new Date().toISOString();
   const { error: auditError } = await supabaseAdmin
     .from("monthly_audits")
-    .update({ 
-      status: 'APPROVED', 
-      approved_by: user.id, 
+    .update({
+      status: 'APPROVED',
+      approved_by: user.id,
       approved_at: nowIso,
       updated_at: nowIso
     })
@@ -436,6 +359,29 @@ export async function finalizeAuditAction(auditId: string) {
     return { error: "Finalisasi dibatalkan karena lock baris karyawan gagal. Tidak ada perubahan status final." };
   }
 
+  const syncResult = await syncMonthlyAppraisalsForAuditPeriod(supabaseAdmin, {
+    auditId,
+    actorUserId: user.id,
+  });
+  if (syncResult.error) {
+    console.error("Sync appraisals error after lock:", syncResult.error);
+    // Rollback: revert status and unlock crew
+    await supabaseAdmin
+      .from("monthly_audits")
+      .update({
+        status: String(auditRow.status),
+        approved_by: null,
+        approved_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", auditId);
+    await supabaseAdmin
+      .from("monthly_crew_audits")
+      .update({ is_locked: false, locked_by: null, locked_at: null, updated_at: new Date().toISOString() })
+      .eq("monthly_audit_id", auditId);
+    return { error: `Finalisasi dibatalkan karena sinkronisasi rapor gagal: ${syncResult.error}` };
+  }
+
   await revalidateAuditDetailForMonthlyAuditId(supabaseAdmin, auditId);
   revalidatePath("/bba/payroll");
   return { success: true, message: "Audit berhasil difinalisasi, rapor bulanan disinkronkan, dan dikirim ke Keuangan!" };
@@ -464,7 +410,7 @@ export async function reopenApprovedAuditAsGlobalAdminAction(auditId: string) {
   const supabaseAdmin = createAdminClient();
   const { data: auditRow } = await supabaseAdmin
     .from("monthly_audits")
-    .select("id, status")
+    .select("id, status, approved_by, approved_at")
     .eq("id", auditId)
     .maybeSingle();
 
@@ -506,7 +452,17 @@ export async function reopenApprovedAuditAsGlobalAdminAction(auditId: string) {
 
   if (crewErr) {
     console.error("reopenApprovedAuditAsGlobalAdminAction crew", crewErr);
-    return { error: "Status audit diubah, tetapi gagal membuka kunci baris karyawan." };
+    // Rollback: revert audit status back to APPROVED
+    await supabaseAdmin
+      .from("monthly_audits")
+      .update({
+        status: "APPROVED",
+        approved_by: auditRow.approved_by,
+        approved_at: auditRow.approved_at,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", auditId);
+    return { error: "Gagal membuka kunci baris karyawan. Status audit dikembalikan ke APPROVED." };
   }
 
   await revalidateAuditDetailForMonthlyAuditId(supabaseAdmin, auditId);
@@ -617,4 +573,220 @@ export async function upsertMonthlyAddonAppraisalAction(input: {
 
   revalidatePath(`/bba/audit/${input.tenantApotekId}`);
   return { success: true };
+}
+
+export async function publishAuditAppraisalPeriodAction(auditId: string, reason: string) {
+  const supabaseAdmin = createAdminClient();
+  const supabase = await createClient();
+
+  const access = await assertAuditMutationAccess();
+  if ("error" in access) return { error: access.error };
+
+  if (!reason || reason.trim().length < 3) {
+    return { error: "Alasan publish harus diisi minimal 3 karakter." };
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesi habis, silakan login kembali." };
+
+  const { data: auditRow } = await supabaseAdmin
+    .from("monthly_audits")
+    .select("id, status, tenant_apotek_id, period_month, period_year")
+    .eq("id", auditId)
+    .maybeSingle();
+
+  if (!auditRow) return { error: "Audit tidak ditemukan." };
+  if (auditRow.status !== "APPROVED") return { error: "Audit harus berstatus APPROVED sebelum dapat dipublish." };
+
+  const tenantId = auditRow.tenant_apotek_id as string;
+  const periodMonth = Number(auditRow.period_month);
+  const periodYear = Number(auditRow.period_year);
+
+  const { data: appraisalRows, error: appraisalErr } = await supabaseAdmin
+    .from("monthly_appraisals")
+    .select("id, is_published")
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_month", periodMonth)
+    .eq("period_year", periodYear);
+
+  if (appraisalErr) return { error: "Gagal membaca data rapor." };
+  if (!appraisalRows || appraisalRows.length === 0) {
+    return { error: "Belum ada data rapor. Pastikan finalisasi audit sudah selesai." };
+  }
+  if (appraisalRows.every((r) => r.is_published)) {
+    return { error: "Rapor periode ini sudah dipublish sebelumnya." };
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { error: publishErr } = await supabaseAdmin
+    .from("monthly_appraisals")
+    .update({ is_published: true, published_at: nowIso, published_by_user_id: user.id })
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_month", periodMonth)
+    .eq("period_year", periodYear)
+    .eq("is_published", false);
+
+  if (publishErr) {
+    console.error("publishAuditAppraisalPeriodAction", publishErr);
+    return { error: "Gagal publish rapor." };
+  }
+
+  await supabaseAdmin
+    .from("monthly_addon_appraisals")
+    .update({ is_locked: true })
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_month", periodMonth)
+    .eq("period_year", periodYear);
+
+  await supabaseAdmin
+    .from("monthly_appraisal_publish_events")
+    .insert({
+      tenant_apotek_id: tenantId,
+      period_month: periodMonth,
+      period_year: periodYear,
+      action: "publish",
+      actor_user_id: user.id,
+      reason: reason.trim(),
+    });
+
+  revalidatePath(`/bba/audit/${tenantId}`);
+  revalidatePath("/bba/payroll");
+  return { success: true };
+}
+
+export async function unpublishAuditAppraisalPeriodAction(auditId: string, reason: string) {
+  const supabaseAdmin = createAdminClient();
+  const supabase = await createClient();
+
+  const access = await assertAuditMutationAccess();
+  if ("error" in access) return { error: access.error };
+
+  if (!reason || reason.trim().length < 3) {
+    return { error: "Alasan unpublish harus diisi minimal 3 karakter." };
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesi habis, silakan login kembali." };
+
+  const { data: auditRow } = await supabaseAdmin
+    .from("monthly_audits")
+    .select("id, status, tenant_apotek_id, period_month, period_year")
+    .eq("id", auditId)
+    .maybeSingle();
+
+  if (!auditRow) return { error: "Audit tidak ditemukan." };
+
+  const tenantId = auditRow.tenant_apotek_id as string;
+  const periodMonth = Number(auditRow.period_month);
+  const periodYear = Number(auditRow.period_year);
+
+  const { data: appraisalRows, error: fetchErr } = await supabaseAdmin
+    .from("monthly_appraisals")
+    .select("id, is_published")
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_month", periodMonth)
+    .eq("period_year", periodYear);
+
+  if (fetchErr) return { error: "Gagal membaca data rapor." };
+  if (!appraisalRows || appraisalRows.length === 0) return { error: "Tidak ada rapor untuk periode ini." };
+  if (appraisalRows.every((r) => !r.is_published)) return { error: "Rapor periode ini belum dipublish." };
+
+  const nowIso = new Date().toISOString();
+
+  const { error: unpublishErr } = await supabaseAdmin
+    .from("monthly_appraisals")
+    .update({ is_published: false, published_at: null, published_by_user_id: null })
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_month", periodMonth)
+    .eq("period_year", periodYear)
+    .eq("is_published", true);
+
+  if (unpublishErr) {
+    console.error("unpublishAuditAppraisalPeriodAction", unpublishErr);
+    return { error: "Gagal unpublish rapor." };
+  }
+
+  await supabaseAdmin
+    .from("monthly_addon_appraisals")
+    .update({ is_locked: false })
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_month", periodMonth)
+    .eq("period_year", periodYear);
+
+  await supabaseAdmin
+    .from("monthly_appraisal_publish_events")
+    .insert({
+      tenant_apotek_id: tenantId,
+      period_month: periodMonth,
+      period_year: periodYear,
+      action: "unpublish",
+      actor_user_id: user.id,
+      reason: reason.trim(),
+      created_at: nowIso,
+    });
+
+  revalidatePath(`/bba/audit/${tenantId}`);
+  revalidatePath("/bba/payroll");
+  return { success: true };
+}
+
+export async function recalculateAuditAppraisalAction(auditId: string, reason: string) {
+  const supabaseAdmin = createAdminClient();
+  const supabase = await createClient();
+
+  const access = await assertAuditMutationAccess();
+  if ("error" in access) return { error: access.error };
+
+  if (!reason || reason.trim().length < 3) {
+    return { error: "Alasan recalculate harus diisi minimal 3 karakter." };
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesi habis, silakan login kembali." };
+
+  const { data: auditRow } = await supabaseAdmin
+    .from("monthly_audits")
+    .select("id, status, tenant_apotek_id, period_month, period_year")
+    .eq("id", auditId)
+    .maybeSingle();
+
+  if (!auditRow) return { error: "Audit tidak ditemukan." };
+  if (auditRow.status !== "APPROVED") return { error: "Recalculate hanya bisa dilakukan setelah audit APPROVED." };
+
+  const tenantId = auditRow.tenant_apotek_id as string;
+  const periodMonth = Number(auditRow.period_month);
+  const periodYear = Number(auditRow.period_year);
+
+  const { data: publishedCheck } = await supabaseAdmin
+    .from("monthly_appraisals")
+    .select("is_published")
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_month", periodMonth)
+    .eq("period_year", periodYear)
+    .eq("is_published", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (publishedCheck?.is_published) {
+    return { error: "Rapor sudah dipublish, tidak dapat direcalculate. Unpublish terlebih dahulu." };
+  }
+
+  const result = await syncMonthlyAppraisalsForPeriod(supabaseAdmin, {
+    tenantApotekId: tenantId,
+    periodMonth,
+    periodYear,
+    actorUserId: user.id,
+    auditId,
+    reason,
+    source: "audit_recalculate",
+    excludePublishedUsers: true,
+    preservePublishState: true,
+    preserveExistingAdjustments: false,
+  });
+
+  if (result.error) return { error: result.error };
+
+  revalidatePath(`/bba/audit/${tenantId}`);
+  return { success: true, affectedUserCount: result.affectedUserCount };
 }

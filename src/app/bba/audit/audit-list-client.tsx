@@ -17,6 +17,7 @@ export function AuditListClient({
   branches,
   audits,
   branchMetrics,
+  kpiV2ActiveByBranch = {},
   currentMonth,
   currentYear,
   periodLabel,
@@ -24,6 +25,7 @@ export function AuditListClient({
   branches: any[];
   audits: any[];
   branchMetrics: Record<string, { targetOmzet: number; omzetAchieved: number; crewAdminCount: number }>;
+  kpiV2ActiveByBranch?: Record<string, boolean>;
   currentMonth: number;
   currentYear: number;
   periodLabel: { mtdNote: boolean; effectiveEndDate: string };
@@ -38,7 +40,7 @@ export function AuditListClient({
     const params = new URLSearchParams(searchParams.toString());
     params.set("month", month.toString());
     params.set("year", year.toString());
-    
+
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`);
     });
@@ -55,45 +57,47 @@ export function AuditListClient({
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row gap-6 items-center">
-        {/* Search */}
         <div className="relative flex-1 group w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-600 transition-colors" size={20} />
-          <input 
-            type="text" 
-            placeholder="Cari cabang atau kode..." 
+          <input
+            type="text"
+            placeholder="Cari cabang atau kode..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-3xl focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-600 outline-none transition-all font-bold text-slate-800 shadow-sm"
           />
         </div>
 
-        {/* Global Period Selector */}
         <div className="bg-slate-50 p-1.5 rounded-[28px] border border-slate-200 flex items-center gap-2 w-full lg:w-auto shadow-inner">
           <div className="px-4 flex items-center gap-2">
             <CalendarDays size={18} className="text-slate-400" />
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Periode Audit</span>
           </div>
-          
+
           <div className="flex items-center gap-1 bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
-            <select 
+            <select
               value={currentMonth}
               onChange={(e) => handlePeriodChange(parseInt(e.target.value), currentYear)}
               disabled={isPending}
               className="bg-transparent text-xs font-black text-slate-700 px-3 py-2 outline-none cursor-pointer hover:text-emerald-600 transition-colors disabled:opacity-50"
             >
               {[...Array(12)].map((_, i) => (
-                <option key={i+1} value={i+1}>Bulan {i+1}</option>
+                <option key={i + 1} value={i + 1}>
+                  Bulan {i + 1}
+                </option>
               ))}
             </select>
             <div className="w-px h-5 bg-slate-100" />
-            <select 
+            <select
               value={currentYear}
               onChange={(e) => handlePeriodChange(currentMonth, parseInt(e.target.value))}
               disabled={isPending}
               className="bg-transparent text-xs font-black text-slate-700 px-3 py-2 outline-none cursor-pointer hover:text-emerald-600 transition-colors disabled:opacity-50"
             >
-              {[2024, 2025, 2026, 2027].map(y => (
-                <option key={y} value={y}>{y}</option>
+              {[2024, 2025, 2026, 2027].map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
               ))}
             </select>
             {isPending && <Loader2 size={16} className="animate-spin text-emerald-500 ml-2 mr-2" />}
@@ -104,7 +108,7 @@ export function AuditListClient({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <AnimatePresence mode="popLayout">
           {filteredBranches.map((branch) => {
-            const audit = audits.find(a => a.tenant_apotek_id === branch.id);
+            const audit = audits.find((a) => a.tenant_apotek_id === branch.id);
             const status = String(audit?.status || "DRAFT");
             const statusHelp =
               status === "APPROVED"
@@ -117,6 +121,7 @@ export function AuditListClient({
             const achieved = m.omzetAchieved;
             const pct = target > 0 ? (achieved / target) * 100 : null;
             const crewAdminTotal = m.crewAdminCount;
+            const hasKpiV2 = Boolean(kpiV2ActiveByBranch[branch.id]);
 
             return (
               <motion.div
@@ -127,7 +132,10 @@ export function AuditListClient({
                 exit={{ opacity: 0, scale: 0.95 }}
               >
                 <Link href={`/bba/audit/${branch.id}?month=${currentMonth}&year=${currentYear}`}>
-                  <GlassCard className="p-5 md:p-6 group cursor-pointer hover:border-emerald-200 transition-all hover:shadow-2xl hover:shadow-emerald-600/5 relative overflow-hidden" variant="light">
+                  <GlassCard
+                    className="p-5 md:p-6 group cursor-pointer hover:border-emerald-200 transition-all hover:shadow-2xl hover:shadow-emerald-600/5 relative overflow-hidden"
+                    variant="light"
+                  >
                     <div className="flex flex-col gap-4">
                       <div className="flex justify-between items-start gap-3">
                         <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -147,20 +155,30 @@ export function AuditListClient({
                           </div>
                         </div>
 
-                        <div
-                          className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-1.5 shrink-0 ${getAuditStatusBadgeClass(
-                            status,
-                          )}`}
-                          title={`${statusHelp} SLA rekomendasi: review maksimal H+3.`}
-                        >
-                          {status === "APPROVED" ? (
-                            <CheckCircle2 size={10} />
-                          ) : status === "UNDER_REVIEW" ? (
-                            <Eye size={10} />
-                          ) : (
-                            <AlertCircle size={10} />
-                          )}
-                          {getAuditStatusLabel(status)}
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <div
+                            className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[8px] font-black uppercase tracking-widest ${getAuditStatusBadgeClass(
+                              status,
+                            )}`}
+                            title={`${statusHelp} SLA rekomendasi: review maksimal H+3.`}
+                          >
+                            {status === "APPROVED" ? (
+                              <CheckCircle2 size={10} />
+                            ) : status === "UNDER_REVIEW" ? (
+                              <Eye size={10} />
+                            ) : (
+                              <AlertCircle size={10} />
+                            )}
+                            {getAuditStatusLabel(status)}
+                          </div>
+                          {hasKpiV2 ? (
+                            <span
+                              className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[7px] font-black uppercase tracking-widest text-indigo-700"
+                              title="Cabang memakai skema KPI aktif pada periode ini."
+                            >
+                              KPI
+                            </span>
+                          ) : null}
                         </div>
                       </div>
 
@@ -169,7 +187,10 @@ export function AuditListClient({
                           <p className="mb-0.5 text-[8px] font-bold uppercase tracking-tight text-slate-400 md:text-[9px]">Target omzet</p>
                           <div className="flex items-center gap-1.5 min-h-[2.25rem]">
                             <Target size={12} className="shrink-0 text-slate-300" />
-                            <span className="text-[11px] font-black leading-tight text-slate-800 md:text-xs" title={target > 0 ? String(target) : "Belum diatur"}>
+                            <span
+                              className="text-[11px] font-black leading-tight text-slate-800 md:text-xs"
+                              title={target > 0 ? String(target) : "Belum diatur"}
+                            >
                               {target > 0 ? formatIdr(target) : "—"}
                             </span>
                           </div>

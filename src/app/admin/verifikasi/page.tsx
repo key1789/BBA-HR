@@ -5,6 +5,7 @@ import {
 import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { FlashMessage } from "@/components/shared/flash-message";
 import { Input } from "@/components/shared/input";
 import { PageHeader } from "@/components/shared/page-header";
 import { PendingSubmitButton } from "./submit-buttons";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/labels";
 import { recordReminderDispatch } from "@/lib/reminder-dispatch-log";
 import { getOperationalReminderWindow } from "@/lib/reminder-windows";
+import { readFlashMessage } from "@/lib/flash-message";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
@@ -67,13 +69,10 @@ export default async function AdminVerifikasiPage({
     status?: string;
     from?: string;
     to?: string;
-    feedback?: string;
-    message?: string;
-    count?: string;
-    action?: string;
   }>;
 }) {
   const params = await searchParams;
+  const flash = await readFlashMessage();
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "admin_apotek") {
@@ -209,36 +208,9 @@ export default async function AdminVerifikasiPage({
   }, {});
   const numberFormatter = new Intl.NumberFormat("id-ID");
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
+  const queueTotal = count ?? 0;
   const hasPrev = page > 1;
   const hasNext = page < totalPages;
-  const feedbackStatus =
-    params.feedback === "success" || params.feedback === "error"
-      ? params.feedback
-      : null;
-  const feedbackMessageMap: Record<string, string> = {
-    single_verified: `Aksi verifikasi ${getVerificationActionLabel(params.action ?? "approve")} berhasil diproses.`,
-    single_not_eligible: "Submission tidak memenuhi syarat untuk diverifikasi.",
-    single_insert_failed: "Gagal menyimpan aksi verifikasi. Silakan coba lagi.",
-    single_action_invalid: "Aksi verifikasi tidak valid.",
-    single_invalid_payload: "Payload verifikasi tidak valid.",
-    edit_direct_saved: "Perbaikan admin berhasil disimpan dan laporan difinalkan.",
-    edit_direct_invalid: "Input edit langsung tidak valid.",
-    edit_direct_save_failed: "Gagal menyimpan perbaikan admin. Coba lagi.",
-    bulk_approved: `Persetujuan massal berhasil untuk ${params.count ?? "0"} submission.`,
-    bulk_rejected: `Penolakan massal berhasil untuk ${params.count ?? "0"} submission.`,
-    bulk_edited_directly: `Edit langsung massal berhasil untuk ${params.count ?? "0"} submission.`,
-    bulk_empty: "Pilih minimal satu submission untuk diproses bulk.",
-    bulk_none_eligible: "Submission terpilih tidak memenuhi syarat untuk aksi bulk.",
-    bulk_action_invalid: "Aksi bulk tidak valid.",
-    bulk_fetch_failed: "Gagal membaca data submission terpilih.",
-    bulk_insert_failed: "Bulk approve gagal diproses. Silakan coba lagi.",
-    access_denied: "Akses ditolak untuk aksi ini.",
-    user_not_found: "Sesi user tidak ditemukan. Silakan login ulang.",
-  };
-  const feedbackMessage =
-    feedbackStatus && params.message
-      ? feedbackMessageMap[params.message] ?? "Aksi selesai."
-      : null;
   const reminderTone =
     reminderWindow.phase === "post_cutoff" && (overdueQueueCount ?? 0) > 0
       ? "rose"
@@ -279,8 +251,27 @@ export default async function AdminVerifikasiPage({
         <div>
           <PageHeader
             title="Admin - Verifikasi Data"
-            subtitle="Antrian verifikasi submission crew/admin pada tenant aktif."
+            subtitle="Gate QA cabang: proses submission yang masih menunggu keputusan admin sebelum data masuk ke jalur audit bulanan BBA."
           />
+          <p className="mt-3 max-w-3xl text-xs leading-relaxed text-slate-600">
+            <span className="font-semibold text-slate-700">Bedakan tiga lapisan:</span>{" "}
+            <strong className="font-semibold text-slate-700">Antrian Anda</strong> berisi status{" "}
+            <span className="whitespace-nowrap">Submitted / Edited by Admin</span>
+            — belum dianggap final oleh cabang. Setelah Anda menyetujui (Approved) atau menolak (Rejected),
+            submission tidak lagi menunggu gate ini.
+            Tahap{" "}
+            <strong className="font-semibold text-slate-700">audit &amp; penilaian BBA</strong> dilakukan di portal Super Admin BBA.
+            <strong className="font-semibold text-slate-700"> Publish rapor bulanan</strong>{" "}
+            (termasuk pratinjau THP/bonus) adalah langkah terpisah yang mengunci penyesuaian setelah terbit.
+            {queueTotal > 0 ? (
+              <>
+                {" "}
+                Saat ini ada{" "}
+                <span className="font-semibold text-slate-800">{numberFormatter.format(queueTotal)}</span> submission dalam filter
+                aktif yang masuk antrian verifikasi.
+              </>
+            ) : null}
+          </p>
         </div>
       </div>
       <InlineAlert
@@ -399,9 +390,7 @@ export default async function AdminVerifikasiPage({
           </Link>
         </div>
       </form>
-      {feedbackStatus && feedbackMessage ? (
-        <InlineAlert tone={feedbackStatus === "success" ? "success" : "error"} message={feedbackMessage} />
-      ) : null}
+      <FlashMessage flash={flash} />
       <form className="hidden bg-white rounded-3xl border border-slate-100 p-4 shadow-sm md:block">
         <input type="hidden" name="page" value={String(page)} />
         <input type="hidden" name="status" value={selectedStatus} />

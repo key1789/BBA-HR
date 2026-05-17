@@ -128,7 +128,7 @@ export function AddCrewModal({ isOpen, onClose, branchId, branchName }: Props) {
   };
 
   return (
-    <AnimatedModal isOpen={isOpen} onClose={onClose} title="Tambah Pegawai">
+    <AnimatedModal isOpen={isOpen} onClose={onClose} title="Tambah Crew">
       <div className="mb-5 flex bg-slate-100 p-1 rounded-xl">
         <button
           onClick={() => setActiveTab("new")}
@@ -169,7 +169,11 @@ export function AddCrewModal({ isOpen, onClose, branchId, branchName }: Props) {
       {activeTab === "new" ? (
         <form onSubmit={handleSubmitNew} className="space-y-5">
           <input type="hidden" name="tenantId" value={branchId} />
-          
+          <input type="hidden" name="role" value="crew" />
+
+          <p className="text-xs text-slate-500 font-medium -mt-1">
+            Hanya akun <strong className="text-slate-700">crew</strong> (pegawai operasional). Login admin cabang: tab <strong className="text-slate-700">Akun admin cabang</strong>.
+          </p>
           <div className="space-y-1.5">
             <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Nama Lengkap</label>
             <input 
@@ -192,30 +196,17 @@ export function AddCrewModal({ isOpen, onClose, branchId, branchName }: Props) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Password Awal</label>
-              <input 
-                type="text" 
-                name="password"
-                required
-                defaultValue="12345"
-                className="w-full px-4 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl focus:bg-white transition-colors text-sm font-bold"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Role Akses</label>
-              <select 
-                name="role"
-                required
-                defaultValue="crew"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium"
-              >
-                <option value="crew">Crew</option>
-                <option value="admin_apotek">Admin Apotek</option>
-              </select>
-            </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Password awal</label>
+            <input
+              type="password"
+              name="password"
+              required
+              minLength={6}
+              autoComplete="new-password"
+              placeholder="Minimal 6 karakter"
+              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium"
+            />
           </div>
 
           <div className="pt-4 border-t border-slate-100 flex gap-3">
@@ -242,9 +233,13 @@ export function AddCrewModal({ isOpen, onClose, branchId, branchName }: Props) {
       ) : activeTab === "existing" ? (
         <form onSubmit={handleSubmitExisting} className="space-y-5">
           <input type="hidden" name="tenantId" value={branchId} />
-          
+          <input type="hidden" name="role" value="crew" />
+          <p className="text-xs text-slate-500 font-medium">
+            Pegawai akan ditugaskan sebagai <strong className="text-slate-700">crew</strong> di cabang ini.
+          </p>
+
           <div className="space-y-1.5">
-            <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Pilih Pegawai Terdaftar</label>
+            <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Pilih pegawai terdaftar</label>
             {isLoadingUsers ? (
               <div className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium flex items-center gap-2 text-slate-400">
                 <Loader2 size={16} className="animate-spin" /> Memuat data pegawai...
@@ -265,19 +260,6 @@ export function AddCrewModal({ isOpen, onClose, branchId, branchName }: Props) {
                 ))}
               </select>
             )}
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Role Akses (Di Cabang Ini)</label>
-            <select 
-              name="role"
-              required
-              defaultValue="crew"
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium"
-            >
-              <option value="crew">Crew</option>
-              <option value="admin_apotek">Admin Apotek</option>
-            </select>
           </div>
 
           <div className="pt-4 border-t border-slate-100 flex gap-3">
@@ -304,8 +286,13 @@ export function AddCrewModal({ isOpen, onClose, branchId, branchName }: Props) {
       ) : (
         <div className="space-y-5">
           <form onSubmit={handleSubmitInvite} className="space-y-4">
+            <input type="hidden" name="role" value="crew" />
+            <p className="text-xs text-slate-500 font-medium">
+              Undangan hanya untuk <strong className="text-slate-700">crew</strong>. Link berlaku 48 jam.
+            </p>
+
             <div className="space-y-1.5">
-              <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Nama Lengkap</label>
+              <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Nama lengkap</label>
               <input
                 type="text"
                 name="fullName"
@@ -324,19 +311,6 @@ export function AddCrewModal({ isOpen, onClose, branchId, branchName }: Props) {
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium"
                 placeholder="pegawai@apotek.com"
               />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Role Akses</label>
-              <select
-                name="role"
-                required
-                defaultValue="crew"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium"
-              >
-                <option value="crew">Crew</option>
-                <option value="admin_apotek">Admin Apotek</option>
-              </select>
             </div>
 
             <button
@@ -376,7 +350,7 @@ export function AddCrewModal({ isOpen, onClose, branchId, branchName }: Props) {
                         <p className="text-sm font-bold text-slate-700 truncate">{inv.full_name}</p>
                         <p className="text-xs text-slate-500 truncate">{inv.email}</p>
                         <p className="text-[10px] text-slate-400 uppercase tracking-wide mt-1">
-                          {inv.role === "admin_apotek" ? "Admin Apotek" : "Crew"} - {inv.status}
+                          {inv.role === "admin_apotek" ? "Admin (undangan lama — tidak bisa diterima)" : "Crew"} - {inv.status}
                         </p>
                       </div>
                       <div className="flex gap-2">

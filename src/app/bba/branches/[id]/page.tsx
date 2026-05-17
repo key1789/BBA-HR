@@ -3,12 +3,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import { AnimatedPage } from "@/components/shared/animated-page";
 import { BranchDetailClient } from "./branch-detail-client";
+import { getCurrentKpiV2 } from "@/actions/kpi-v2-actions";
+import { mergeKpiConfigs } from "@/lib/kpi-v2/utils";
+import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
+import { getSessionContext } from "@/lib/auth-context";
+import { hasPermission, mapBbaSessionToAppPermissionRole } from "@/lib/permissions";
 
 export default async function BranchDetailPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams: Promise<{ month?: string, year?: string }> }) {
   const { id } = await params;
   const { month, year } = await searchParams;
   const supabase = await createClient();
   const supabaseAdmin = createAdminClient();
+  const session = await getSessionContext();
+  const permRole = mapBbaSessionToAppPermissionRole(session);
+  const canEditKpi = hasPermission(permRole, "kpi_edit");
+  const canCloneBranch = hasPermission(permRole, "branch_clone");
   const now = new Date();
   
   const monthNum = month ? Number(month) : NaN;
@@ -16,14 +25,14 @@ export default async function BranchDetailPage({ params, searchParams }: { param
   const currentMonth = Number.isInteger(monthNum) && monthNum >= 1 && monthNum <= 12 ? monthNum : now.getMonth() + 1;
   const currentYear = Number.isInteger(yearNum) && yearNum >= 2000 ? yearNum : now.getFullYear();
 
-  // 1. Fetch Branch Info
-  const { data: branch, error: branchError } = await supabase
+  // 1. Fetch Branch Info — BBA global admin pakai service role (RLS tenant_apotek hanya member).
+  const { data: branch } = await supabaseAdmin
     .from("tenant_apotek")
     .select("*")
     .eq("id", id)
-    .single();
+    .maybeSingle();
 
-  if (branchError || !branch) {
+  if (!branch) {
     notFound();
   }
 
@@ -35,7 +44,8 @@ export default async function BranchDetailPage({ params, searchParams }: { param
       id,
       role,
       is_active,
-      app_users (id, full_name, email, phone, is_active)
+      user_id,
+      app_users (id, full_name, email, phone, is_active, is_branch_desk_account)
     `)
     .eq("tenant_apotek_id", id)
     .order("assigned_at", { ascending: false });
@@ -50,6 +60,26 @@ export default async function BranchDetailPage({ params, searchParams }: { param
     .order("created_at", { ascending: false })
     .limit(1)
     .single();
+
+  // KPI Policy deprecated - merged into KPI V2 config (tenant_kpi_policies tidak lagi di-fetch di halaman ini).
+
+  const kpiV2Base = await getCurrentKpiV2(id, currentMonth, currentYear);
+  let kpiConfigV2: KpiConfigV2 = kpiV2Base;
+  if (kpi) {
+    const bc = (
+      kpi.bonus_config && typeof kpi.bonus_config === "object" ? kpi.bonus_config : {}
+    ) as Record<string, unknown>;
+    kpiConfigV2 = mergeKpiConfigs(kpiV2Base, {
+      global: {
+        ...kpiV2Base.global,
+        target_omzet: Number(kpi.target_omzet) || kpiV2Base.global.target_omzet,
+        target_atv: Number(kpi.target_atv) || kpiV2Base.global.target_atv,
+        target_atu: Number(kpi.target_atu) || kpiV2Base.global.target_atu,
+        is_atv_enabled: bc.is_atv_enabled === true,
+        is_atu_enabled: bc.is_atu_enabled === true,
+      },
+    });
+  }
 
   // 4. Fetch Addon Settings
   const { data: addons } = await supabase
@@ -158,7 +188,8 @@ export default async function BranchDetailPage({ params, searchParams }: { param
       <BranchDetailClient 
         branch={branch} 
         users={users || []} 
-        kpi={kpi || null} 
+        kpi={kpi || null}
+        kpiConfigV2={kpiConfigV2}
         addons={addons || []}
         shifts={shifts || []}
         products={products || []}
@@ -169,6 +200,8 @@ export default async function BranchDetailPage({ params, searchParams }: { param
         availableOwners={availableOwnersData || []}
         currentMonth={currentMonth}
         currentYear={currentYear}
+        canEditKpi={canEditKpi}
+        canCloneBranch={canCloneBranch}
       />
     </AnimatedPage>
 

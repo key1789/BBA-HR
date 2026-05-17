@@ -1,28 +1,34 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Info, Users, Target, Puzzle, ArrowLeft, Clock, CalendarDays, Loader2, Banknote, Wand2, CheckSquare, Hash, MapPin } from "lucide-react";
+import { Info, Users, Target, Puzzle, ArrowLeft, Clock, CalendarDays, Loader2, Banknote, Wand2, CheckSquare, Hash, MapPin, KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { TabOverview } from "./tab-overview";
 import { TabPegawai } from "./tab-pegawai";
-import { TabKpi } from "./tab-kpi";
-import { TabAddon } from "./tab-addon";
+import { TabKpiV2 } from "@/components/kpi-v2/TabKpiV2";
+import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
+import { TabAddon } from "@/components/branch/tab-addon";
 import { TabShift } from "./tab-shift";
 import { TabPayroll } from "./tab-payroll";
 import { TabActivity } from "./tab-activity";
+import { TabBranchDeskAdmin } from "./tab-branch-desk-admin";
 import { ScrollText, X } from "lucide-react";
 import { getOtherBranchesAction, cloneBranchConfigAction } from "./actions";
 import { toast } from "sonner";
 
 
 export function BranchDetailClient({ 
-  branch, users, kpi, addons, shifts, products, productFokus, roster, payrollConfigs, activityLogs, availableOwners, currentMonth, currentYear 
+  branch, users, kpi, kpiConfigV2, addons, shifts, products, productFokus, roster, payrollConfigs, activityLogs, availableOwners, currentMonth, currentYear,
+  canEditKpi = true,
+  canCloneBranch = true,
 }: { 
-  branch: any, users: any[], kpi: any, addons: any[], shifts: any[], products: any[], productFokus: any[], roster: any[], payrollConfigs: any[], activityLogs: any[], availableOwners: any[], currentMonth: number, currentYear: number 
+  branch: any, users: any[], kpi: any, kpiConfigV2: KpiConfigV2, addons: any[], shifts: any[], products: any[], productFokus: any[], roster: any[], payrollConfigs: any[], activityLogs: any[], availableOwners: any[], currentMonth: number, currentYear: number,
+  canEditKpi?: boolean,
+  canCloneBranch?: boolean,
 }) {
   const [activeTab, setActiveTab] = useState("info");
   const router = useRouter();
@@ -78,14 +84,20 @@ export function BranchDetailClient({
 
   const isPayrollEnabled = addons.find(a => a.addon_key === 'payroll')?.is_enabled ?? false;
 
+  const yearOptions = useMemo(() => {
+    const y = new Date().getFullYear();
+    return Array.from({ length: 10 }, (_, i) => y - 2 + i);
+  }, []);
+
   const currentTabs = [
     { id: "info", label: "Executive Overview", icon: Info },
-    { id: "pegawai", label: "Manajemen Pegawai", icon: Users },
-    { id: "kpi", label: "Target & KPI", icon: Target },
-    { id: "shift", label: "Pengaturan Shift", icon: Clock },
-    { id: "addon", label: "Add-on Rules", icon: Puzzle },
+    { id: "desk-admin", label: "Akun admin cabang", icon: KeyRound },
+    { id: "shift", label: "Pengaturan shift", icon: Clock },
+    { id: "pegawai", label: "Manajemen crew", icon: Users },
+    { id: "kpi", label: "Target dan KPI", icon: Target },
+    { id: "addon", label: "Add-on rules", icon: Puzzle },
     ...(isPayrollEnabled ? [{ id: "payroll", label: "Setup Payroll", icon: Banknote }] : []),
-    { id: "activity", label: "Log Aktivitas", icon: ScrollText },
+    { id: "activity", label: "Log aktivitas", icon: ScrollText },
   ];
 
   return (
@@ -119,8 +131,10 @@ export function BranchDetailClient({
         {/* ACTIONS & PERIOD SELECTOR */}
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           <button
+            type="button"
             onClick={openCloneModal}
-            className="w-full md:w-auto px-6 py-3 bg-slate-900 hover:bg-black text-white rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-slate-900/20 transition-all hover:-translate-y-0.5 active:scale-95 group"
+            disabled={!canCloneBranch}
+            className="w-full md:w-auto px-6 py-3 bg-slate-900 hover:bg-black text-white rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-slate-900/20 transition-all hover:-translate-y-0.5 active:scale-95 group disabled:opacity-50 disabled:pointer-events-none"
           >
             <div className="w-6 h-6 rounded-lg bg-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
               <Wand2 size={14} />
@@ -153,7 +167,7 @@ export function BranchDetailClient({
                 disabled={isPending}
                 className="bg-transparent text-xs font-black text-slate-700 px-3 py-1.5 outline-none cursor-pointer hover:text-sky-600 transition-colors disabled:opacity-50"
               >
-                {[2024, 2025, 2026, 2027].map(y => (
+                {yearOptions.map((y) => (
                   <option key={y} value={y}>{y}</option>
                 ))}
               </select>
@@ -204,10 +218,20 @@ export function BranchDetailClient({
           >
             {activeTab === "info" && <TabOverview branch={branch} users={users} kpi={kpi} addons={addons} shifts={shifts} products={products} productFokus={productFokus} roster={roster} payrollConfigs={payrollConfigs} availableOwners={availableOwners} />}
             {activeTab === "pegawai" && <TabPegawai branch={branch} users={users} />}
-            {activeTab === "kpi" && <TabKpi branchId={branch.id} currentKpi={kpi} currentMonth={currentMonth} currentYear={currentYear} users={users} />}
+            {activeTab === "desk-admin" && <TabBranchDeskAdmin branch={branch} users={users} />}
+            {activeTab === "kpi" && (
+              <TabKpiV2
+                branchId={branch.id}
+                currentMonth={currentMonth}
+                currentYear={currentYear}
+                users={users}
+                initialConfig={kpiConfigV2}
+                canEditKpi={canEditKpi}
+              />
+            )}
 
             {activeTab === "shift" && <TabShift branchId={branch.id} shifts={shifts} />}
-            {activeTab === "addon" && <TabAddon branchId={branch.id} addons={addons} users={users} shifts={shifts} products={products} productFokus={productFokus} roster={roster} currentMonth={currentMonth} currentYear={currentYear} />}
+            {activeTab === "addon" && <TabAddon branchId={branch.id} addons={addons} users={users} shifts={shifts} products={products} productFokus={productFokus} roster={roster} currentMonth={currentMonth} currentYear={currentYear} onNavigateToTab={setActiveTab} />}
             {activeTab === "payroll" && <TabPayroll branchId={branch.id} users={users} payrollConfigs={payrollConfigs} />}
             {activeTab === "activity" && <TabActivity logs={activityLogs} users={users} />}
           </motion.div>

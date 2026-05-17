@@ -6,6 +6,11 @@ import { writeAuditLog } from "@/lib/audit-log";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { notifyAdmins } from "@/lib/notifications";
+import { setFlashMessage } from "@/lib/flash-message";
+import { getFeedbackMessage } from "@/lib/feedback-messages";
+
+export type InputFormState = { status: "error"; message: string } | null;
 
 function toQueryString(params: Record<string, string | undefined>) {
   const query = new URLSearchParams();
@@ -37,11 +42,14 @@ function getSubmissionPeriod(submissionDate: string): { periodMonth: number; per
   };
 }
 
-export async function createDailySubmissionAction(formData: FormData) {
+export async function createDailySubmissionAction(
+  _prevState: InputFormState,
+  formData: FormData,
+): Promise<InputFormState> {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || (active.role !== "crew" && active.role !== "admin_apotek")) {
-    return;
+    return null;
   }
 
   const toNum = (v: FormDataEntryValue | null): number => {
@@ -72,12 +80,7 @@ export async function createDailySubmissionAction(formData: FormData) {
     (n) => Number.isFinite(n) && n >= 0,
   );
   if (!submissionDate || !numbersAreValid) {
-    return redirect(
-      inputHarianPath(currentRole, {
-        feedback: "error",
-        message: "invalid_input",
-      }),
-    );
+    return { status: "error", message: getFeedbackMessage("invalid_input") };
   }
 
   const supabase = await createClient();
@@ -85,22 +88,12 @@ export async function createDailySubmissionAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirect(
-      inputHarianPath(currentRole, {
-        feedback: "error",
-        message: "user_not_found",
-      }),
-    );
+    return { status: "error", message: getFeedbackMessage("user_not_found") };
   }
 
   const submissionPeriod = getSubmissionPeriod(submissionDate);
   if (!submissionPeriod) {
-    return redirect(
-      inputHarianPath(currentRole, {
-        feedback: "error",
-        message: "invalid_input",
-      }),
-    );
+    return { status: "error", message: getFeedbackMessage("invalid_input") };
   }
 
   // Whitelist product fokus IDs dari konfigurasi tenant + periode submission.
@@ -132,22 +125,12 @@ export async function createDailySubmissionAction(formData: FormData) {
     .maybeSingle();
 
   if (existingSubmission?.status === "approved") {
-    return redirect(
-      inputHarianPath(currentRole, {
-        feedback: "error",
-        message: "approved_locked",
-      }),
-    );
+    return { status: "error", message: getFeedbackMessage("approved_locked") };
   }
 
   // Prevent accidental overwrite: duplicate date+shift must use explicit edit mode.
   if (existingSubmission && (!editSubmissionId || editSubmissionId !== existingSubmission.id)) {
-    return redirect(
-      inputHarianPath(currentRole, {
-        feedback: "error",
-        message: "duplicate_exists",
-      }),
-    );
+    return { status: "error", message: getFeedbackMessage("duplicate_exists") };
   }
 
   const { data: submission, error: submissionError } = await supabase.from("daily_submissions").upsert(
@@ -170,12 +153,7 @@ export async function createDailySubmissionAction(formData: FormData) {
   ).select('id').single();
 
   if (submissionError || !submission) {
-    return redirect(
-      inputHarianPath(currentRole, {
-        feedback: "error",
-        message: "save_failed",
-      }),
-    );
+    return { status: "error", message: getFeedbackMessage("save_failed") };
   }
 
   if (focusProductsData.length > 0) {
@@ -191,12 +169,7 @@ export async function createDailySubmissionAction(formData: FormData) {
       { onConflict: "submission_id,product_id" }
     );
     if (focusUpsertError) {
-      return redirect(
-        inputHarianPath(currentRole, {
-          feedback: "error",
-          message: "focus_save_failed",
-        }),
-      );
+      return { status: "error", message: getFeedbackMessage("focus_save_failed") };
     }
   }
 
@@ -219,16 +192,20 @@ export async function createDailySubmissionAction(formData: FormData) {
     },
   });
 
+  if (submitNow) {
+    const submitterName = session?.userFullName ?? user.email ?? "Crew";
+    await notifyAdmins(active.tenantId, {
+      type: "new_submission",
+      title: "Laporan baru masuk",
+      body: `${submitterName} mengirim laporan harian ${submissionDate}`,
+      payload: { submissionId: submission.id, submissionDate, shiftLabel },
+    });
+  }
+
   revalidatePath("/crew/input-harian");
   revalidatePath("/admin/input-harian");
   revalidatePath(getDefaultPortalPath(currentRole));
-  return redirect(
-    inputHarianPath(currentRole, {
-      feedback: "success",
-      message:
-        existingSubmission ? "submission_updated" : submitNow ? "submission_submitted" : "draft_saved",
-    }),
-  );
+  redirect(inputHarianPath(currentRole, {}));
 }
 
 export async function verifySubmissionAction(formData: FormData) {
@@ -245,9 +222,8 @@ export async function verifySubmissionAction(formData: FormData) {
     to: to || undefined,
   };
   if (!active || active.role !== "admin_apotek") {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "access_denied" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("access_denied") });
+    return redirect(verificationPath(baseParams));
   }
 
   const encoded = formData.get("verification")?.toString() ?? "";
@@ -259,16 +235,14 @@ export async function verifySubmissionAction(formData: FormData) {
   const note = formData.get("note")?.toString() || null;
 
   if (!submissionId || !action) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "single_invalid_payload" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("single_invalid_payload") });
+    return redirect(verificationPath(baseParams));
   }
 
   const allowedActions = ["approve", "reject", "edit_directly"];
   if (!allowedActions.includes(action)) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "single_action_invalid" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("single_action_invalid") });
+    return redirect(verificationPath(baseParams));
   }
 
   const supabase = await createClient();
@@ -276,9 +250,8 @@ export async function verifySubmissionAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "user_not_found" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("user_not_found") });
+    return redirect(verificationPath(baseParams));
   }
 
   const { data: eligibleSubmission } = await supabase
@@ -289,9 +262,8 @@ export async function verifySubmissionAction(formData: FormData) {
     .in("status", ["submitted", "edited_by_admin", "reject"])
     .maybeSingle();
   if (!eligibleSubmission) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "single_not_eligible" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("single_not_eligible") });
+    return redirect(verificationPath(baseParams));
   }
 
   const { error: insertError } = await supabase.from("submission_verifications").insert({
@@ -302,9 +274,8 @@ export async function verifySubmissionAction(formData: FormData) {
     acted_by_user_id: user.id,
   });
   if (insertError) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "single_insert_failed" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("single_insert_failed") });
+    return redirect(verificationPath(baseParams));
   }
 
   await writeAuditLog(supabase, {
@@ -313,24 +284,17 @@ export async function verifySubmissionAction(formData: FormData) {
     entityType: "submission_verifications",
     entityId: submissionId,
     action: `submission_${action}`,
-    newValue: {
-      action,
-      errorCode,
-      note,
-    },
+    newValue: { action, errorCode, note },
   });
 
   revalidatePath("/admin/verifikasi");
   revalidatePath("/crew/riwayat-input");
   revalidatePath("/owner/laporan");
-  return redirect(
-    verificationPath({
-      ...baseParams,
-      feedback: "success",
-      message: "single_verified",
-      action,
-    }),
-  );
+  await setFlashMessage({
+    status: "success",
+    message: `Verifikasi "${action === "approve" ? "Setujui" : "Tolak"}" berhasil diproses.`,
+  });
+  redirect(verificationPath(baseParams));
 }
 
 export async function bulkVerifySubmissionsAction(formData: FormData) {
@@ -349,15 +313,13 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
   };
 
   if (!active || active.role !== "admin_apotek") {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "access_denied" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("access_denied") });
+    return redirect(verificationPath(baseParams));
   }
 
-  if (!["approve", "reject", "edit_directly"].includes(bulkAction)) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "bulk_action_invalid" }),
-    );
+  if (!["approve", "reject"].includes(bulkAction)) {
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("bulk_action_invalid") });
+    return redirect(verificationPath(baseParams));
   }
 
   const selectedIds = Array.from(
@@ -370,7 +332,8 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
   );
 
   if (selectedIds.length === 0) {
-    return redirect(verificationPath({ ...baseParams, feedback: "error", message: "bulk_empty" }));
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("bulk_empty") });
+    return redirect(verificationPath(baseParams));
   }
 
   const supabase = await createClient();
@@ -378,9 +341,8 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "user_not_found" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("user_not_found") });
+    return redirect(verificationPath(baseParams));
   }
 
   const { data: eligibleRows, error: fetchError } = await supabase
@@ -391,34 +353,30 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
     .in("status", ["submitted", "edited_by_admin", "reject"]);
 
   if (fetchError) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "bulk_fetch_failed" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("bulk_fetch_failed") });
+    return redirect(verificationPath(baseParams));
   }
 
   const eligibleIds = (eligibleRows ?? []).map((row) => row.id);
   if (eligibleIds.length === 0) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "bulk_none_eligible" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("bulk_none_eligible") });
+    return redirect(verificationPath(baseParams));
   }
 
   const isReject = bulkAction === "reject";
-  const isEditDirectly = bulkAction === "edit_directly";
   const { error: insertError } = await supabase.from("submission_verifications").insert(
     eligibleIds.map((submissionId) => ({
       submission_id: submissionId,
       action: bulkAction,
       error_code: isReject ? "verification_issue" : null,
-      note: isReject ? "bulk_reject" : isEditDirectly ? "bulk_edit_directly" : "bulk_approve",
+      note: isReject ? "bulk_reject" : "bulk_approve",
       acted_by_user_id: user.id,
     })),
   );
 
   if (insertError) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "bulk_insert_failed" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("bulk_insert_failed") });
+    return redirect(verificationPath(baseParams));
   }
 
   await Promise.all(
@@ -431,7 +389,7 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
         action: `submission_${bulkAction}`,
         newValue: {
           action: bulkAction,
-          note: isReject ? "bulk_reject" : isEditDirectly ? "bulk_edit_directly" : "bulk_approve",
+          note: isReject ? "bulk_reject" : "bulk_approve",
         },
       }),
     ),
@@ -440,14 +398,12 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
   revalidatePath("/admin/verifikasi");
   revalidatePath("/crew/riwayat-input");
   revalidatePath("/owner/laporan");
-  return redirect(
-    verificationPath({
-      ...baseParams,
-      feedback: "success",
-      message: isReject ? "bulk_rejected" : isEditDirectly ? "bulk_edited_directly" : "bulk_approved",
-      count: String(eligibleIds.length),
-    }),
-  );
+  await setFlashMessage({
+    status: "success",
+    message: getFeedbackMessage(isReject ? "bulk_rejected" : "bulk_approved"),
+    count: eligibleIds.length,
+  });
+  redirect(verificationPath(baseParams));
 }
 
 export async function bulkAssignSubmissionsAction(formData: FormData) {
@@ -466,15 +422,13 @@ export async function bulkAssignSubmissionsAction(formData: FormData) {
   };
 
   if (!active || active.role !== "admin_apotek") {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "access_denied" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("access_denied") });
+    return redirect(verificationPath(baseParams));
   }
 
   if (!["assign_unassigned", "take_over"].includes(assignMode)) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "assign_mode_invalid" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("assign_mode_invalid") });
+    return redirect(verificationPath(baseParams));
   }
 
   const selectedIds = Array.from(
@@ -487,9 +441,8 @@ export async function bulkAssignSubmissionsAction(formData: FormData) {
   );
 
   if (selectedIds.length === 0) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "assign_selection_empty" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("assign_selection_empty") });
+    return redirect(verificationPath(baseParams));
   }
 
   const supabase = await createClient();
@@ -497,9 +450,8 @@ export async function bulkAssignSubmissionsAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "user_not_found" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("user_not_found") });
+    return redirect(verificationPath(baseParams));
   }
 
   const { data: eligibleRows, error: eligibleError } = await supabase
@@ -510,16 +462,14 @@ export async function bulkAssignSubmissionsAction(formData: FormData) {
     .in("status", ["submitted", "edited_by_admin", "reject"]);
 
   if (eligibleError) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "assign_fetch_failed" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("assign_fetch_failed") });
+    return redirect(verificationPath(baseParams));
   }
 
   const eligibleIds = (eligibleRows ?? []).map((row) => row.id);
   if (eligibleIds.length === 0) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "assign_none_eligible" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("assign_none_eligible") });
+    return redirect(verificationPath(baseParams));
   }
 
   const { data: existingAssignments } = await supabase
@@ -535,13 +485,13 @@ export async function bulkAssignSubmissionsAction(formData: FormData) {
       : eligibleIds;
 
   if (targetIds.length === 0) {
-    return redirect(
-      verificationPath({
-        ...baseParams,
-        feedback: "error",
-        message: assignMode === "assign_unassigned" ? "assign_all_assigned" : "assign_none_eligible",
-      }),
-    );
+    await setFlashMessage({
+      status: "error",
+      message: getFeedbackMessage(
+        assignMode === "assign_unassigned" ? "assign_all_assigned" : "assign_none_eligible",
+      ),
+    });
+    return redirect(verificationPath(baseParams));
   }
 
   const { error: upsertError } = await supabase.from("submission_assignments").upsert(
@@ -555,9 +505,8 @@ export async function bulkAssignSubmissionsAction(formData: FormData) {
     { onConflict: "submission_id" },
   );
   if (upsertError) {
-    return redirect(
-      verificationPath({ ...baseParams, feedback: "error", message: "assign_upsert_failed" }),
-    );
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("assign_upsert_failed") });
+    return redirect(verificationPath(baseParams));
   }
 
   await Promise.all(
@@ -568,23 +517,18 @@ export async function bulkAssignSubmissionsAction(formData: FormData) {
         entityType: "submission_assignments",
         entityId: submissionId,
         action: assignMode === "assign_unassigned" ? "submission_auto_assigned" : "submission_take_over",
-        newValue: {
-          submissionId,
-          assignMode,
-          assignedToUserId: user.id,
-        },
+        newValue: { submissionId, assignMode, assignedToUserId: user.id },
       }),
     ),
   );
 
   revalidatePath("/admin/verifikasi");
-  return redirect(
-    verificationPath({
-      ...baseParams,
-      feedback: "success",
-      message:
-        assignMode === "assign_unassigned" ? "assign_unassigned_success" : "assign_take_over_success",
-      count: String(targetIds.length),
-    }),
-  );
+  await setFlashMessage({
+    status: "success",
+    message: getFeedbackMessage(
+      assignMode === "assign_unassigned" ? "assign_unassigned_success" : "assign_take_over_success",
+    ),
+    count: targetIds.length,
+  });
+  redirect(verificationPath(baseParams));
 }
