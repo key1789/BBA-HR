@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LinkPendingHint } from "@/components/shared/link-pending-hint";
 import { usePathname } from "next/navigation";
 import { BarChart3, ClipboardList, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,7 +36,8 @@ export function OwnerPortalNav({ variant }: { variant: Variant }) {
               )}
             >
               <item.Icon size={22} strokeWidth={active ? 2.25 : 2} />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              <LinkPendingHint className={active ? "text-slate-900" : "text-slate-400"} />
             </Link>
           );
         })}
