@@ -1,6 +1,15 @@
 import { Button } from "@/components/shared/button";
 import { Input } from "@/components/shared/input";
 import Link from "next/link";
+import { SlidersHorizontal } from "lucide-react";
+
+const STATUS_LABEL: Record<string, string> = {
+  all:             "Semua",
+  submitted:       "Menunggu",
+  edited_by_admin: "Diedit Admin",
+  reject:          "Ditolak",
+  approved:        "Disetujui",
+};
 
 export function MobileFilterSheet({
   queueCount,
@@ -13,16 +22,41 @@ export function MobileFilterSheet({
   from: string;
   to: string;
 }) {
+  const isFiltered = selectedStatus !== "all" || !!from || !!to;
+
   return (
-    <form className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm md:hidden">
-      <p className="mb-2 text-xs font-black uppercase tracking-widest text-slate-500">
-        Filter Queue ({queueCount})
-      </p>
-      <div className="grid grid-cols-1 gap-2">
+    <details className="group rounded-2xl border border-slate-100 bg-white shadow-sm md:hidden">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 select-none">
+        <span className="flex items-center gap-2 text-xs font-bold text-slate-700">
+          <SlidersHorizontal size={13} className="text-slate-400" />
+          Filter
+          {isFiltered ? (
+            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-black text-indigo-700">
+              {STATUS_LABEL[selectedStatus] ?? selectedStatus}
+              {from || to ? ` · ${from || "…"} – ${to || "…"}` : ""}
+            </span>
+          ) : (
+            <span className="text-slate-400 font-normal">
+              {queueCount} data
+            </span>
+          )}
+        </span>
+        <svg
+          className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </summary>
+
+      <form className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-2.5">
         <select
           name="status"
           defaultValue={selectedStatus}
-          className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+          className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm"
         >
           <option value="all">Semua (prioritas aksi)</option>
           <option value="submitted">Menunggu Verifikasi</option>
@@ -30,18 +64,28 @@ export function MobileFilterSheet({
           <option value="reject">Ditolak</option>
           <option value="approved">Disetujui</option>
         </select>
-        <Input type="date" name="from" defaultValue={from} />
-        <Input type="date" name="to" defaultValue={to} />
-        <div className="flex items-center gap-2">
-          <Button type="submit">Terapkan</Button>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <p className="mb-1 text-[10px] font-semibold text-slate-500">Dari</p>
+            <Input type="date" name="from" defaultValue={from} />
+          </div>
+          <div>
+            <p className="mb-1 text-[10px] font-semibold text-slate-500">Sampai</p>
+            <Input type="date" name="to" defaultValue={to} />
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <Button type="submit" className="flex-1">Terapkan</Button>
           <Link
             href="/admin/verifikasi"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700"
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-medium text-slate-700"
           >
             Reset
           </Link>
         </div>
-      </div>
-    </form>
+      </form>
+    </details>
   );
 }
