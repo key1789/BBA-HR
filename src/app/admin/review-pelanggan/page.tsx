@@ -43,7 +43,7 @@ export default async function AdminReviewPelangganPage() {
 
   // Fetch recent reviews for this tenant (last 50)
   const { data: recentReviews } = await supabase
-    .from("customer_riview_logs")
+    .from("customer_review_logs")
     .select("*")
     .eq("tenant_apotek_id", active.tenantId)
     .order("reviewed_at", { ascending: false })

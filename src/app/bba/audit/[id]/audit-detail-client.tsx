@@ -56,7 +56,7 @@ function customerReviewTaggedUserId(r: any): string {
   return String(r.user_id ?? r.tagged_user_id ?? "").trim();
 }
 
-/** Teks ulasan: kolom di customer_riview_logs biasanya review_text; fallback comment. */
+/** Teks ulasan: kolom di customer_review_logs biasanya review_text; fallback comment. */
 function customerReviewBody(r: any): string {
   const t = r.comment ?? r.review_text ?? "";
   return String(t).trim();

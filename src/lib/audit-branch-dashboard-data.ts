@@ -274,7 +274,7 @@ export async function fetchAuditBranchDashboardData(
     .eq("period_year", year);
 
   const { data: customerReviews } = await supabase
-    .from("customer_riview_logs")
+    .from("customer_review_logs")
     .select("*")
     .eq("tenant_apotek_id", branchId)
     .gte("created_at", startDate)

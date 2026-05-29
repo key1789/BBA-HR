@@ -34,7 +34,7 @@ export async function submitCustomerReviewAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error: dbError } = await supabase.from("customer_riview_logs").insert({
+  const { error: dbError } = await supabase.from("customer_review_logs").insert({
     tenant_apotek_id: active.tenantId,
     user_id: userId,
     review_text: reviewText,
