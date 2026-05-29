@@ -137,7 +137,7 @@ export function validateManualTargetDistribution(
     }
   });
 
-  if (totalDistributed !== globalTargetOmzet) {
+  if (Math.abs(totalDistributed - globalTargetOmzet) > 1) {
     errors.push({
       field: "manual_target_distribution",
       message: `Total target terdistribusi (Rp ${totalDistributed.toLocaleString()}) tidak sama dengan target global (Rp ${globalTargetOmzet.toLocaleString()})`,

@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:unit": "tsx --test src/lib/report-metrics-core.test.ts src/lib/reminder-windows.test.ts"
+    "test:unit": "tsx --test src/lib/report-metrics-core.test.ts src/lib/reminder-windows.test.ts",
+    "db:link": "supabase link --project-ref nsamydifarrfnzcotjna",
+    "db:push": "supabase db push"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

@@ -16,6 +16,9 @@ export async function markAnnouncementViewedAction(announcementId: string) {
     .eq("announcement_id", announcementId)
     .eq("user_id", session.userId)
     .is("viewed_at", null);
+
+  revalidatePath("/admin/pengumuman");
+  revalidatePath("/crew/pengumuman");
 }
 
 export async function acknowledgeAnnouncementAction(formData: FormData) {

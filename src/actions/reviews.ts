@@ -5,8 +5,6 @@ import { getSessionContext } from "@/lib/auth-context";
 import { revalidatePath } from "next/cache";
 
 type PeerReviewInput = {
-  tenantId?: string;
-  reviewerId?: string;
   revieweeId: string;
   rating: number;
   comment: string;
@@ -21,9 +19,13 @@ export async function submitPeerReviewAction(input: PeerReviewInput) {
     return { success: false, error: "Akses ditolak." };
   }
 
+  if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
+    return { success: false, error: "Rating harus berupa bilangan bulat antara 1 sampai 5." };
+  }
+
   const now = new Date();
-  const tenantId = input.tenantId ?? active.tenantId;
-  const reviewerId = input.reviewerId ?? session.userId;
+  const tenantId = active.tenantId;
+  const reviewerId = session.userId;
   const periodMonth = input.periodMonth ?? now.getMonth() + 1;
   const periodYear = input.periodYear ?? now.getFullYear();
 

@@ -2,8 +2,20 @@ import { getSessionContext } from "@/lib/auth-context";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Home, ClipboardCheck, BarChart3, LogOut, ShieldCheck, UserCircle2, Megaphone } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
+
+// Komponen async terpisah agar tidak memblokir render layout utama.
+async function AdminUnreadBadge({ userId }: { userId: string }) {
+  const count = await getUnreadNotificationCount(userId);
+  if (count === 0) return null;
+  return (
+    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center leading-none">
+      {Math.min(count, 99)}
+    </span>
+  );
+}
 
 export default async function AdminLayout({
   children,
@@ -17,14 +29,11 @@ export default async function AdminLayout({
     redirect("/");
   }
 
-  const unreadCount = await getUnreadNotificationCount(session.userId);
-  const unreadBadge = unreadCount > 0 ? Math.min(unreadCount, 99) : 0;
-
   const navItems = [
-    { name: "Dashboard", path: "/admin/dashboard", icon: <Home size={22} /> },
-    { name: "Verifikasi crew", path: "/admin/verifikasi", icon: <ClipboardCheck size={22} />, badge: unreadBadge },
-    { name: "Laporan", path: "/admin/laporan", icon: <BarChart3 size={22} /> },
-    { name: "Pengumuman", path: "/admin/pengumuman", icon: <Megaphone size={22} /> },
+    { name: "Dashboard",      path: "/admin/dashboard",  icon: <Home size={22} />,          showBadge: false },
+    { name: "Verifikasi crew",path: "/admin/verifikasi", icon: <ClipboardCheck size={22} />, showBadge: true  },
+    { name: "Laporan",        path: "/admin/laporan",    icon: <BarChart3 size={22} />,      showBadge: false },
+    { name: "Pengumuman",     path: "/admin/pengumuman", icon: <Megaphone size={22} />,      showBadge: false },
   ];
 
   async function handleLogout() {
@@ -81,10 +90,10 @@ export default async function AdminLayout({
             >
               <div className="relative">
                 {item.icon}
-                {"badge" in item && (item.badge ?? 0) > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center leading-none">
-                    {item.badge}
-                  </span>
+                {item.showBadge && (
+                  <Suspense fallback={null}>
+                    <AdminUnreadBadge userId={session.userId} />
+                  </Suspense>
                 )}
               </div>
               <span className={`text-[9px] font-black mt-1 uppercase tracking-tighter text-slate-500`}>

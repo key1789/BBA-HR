@@ -511,23 +511,19 @@ export async function reviewShiftSwapRequestAction(
     );
   }
 
-  const requesterNext = {
-    shift_id: targetSchedule.shift_id,
-    is_off: targetSchedule.is_off,
-    updated_at: new Date().toISOString(),
-  };
-  const targetNext = {
-    shift_id: requesterSchedule.shift_id,
-    is_off: requesterSchedule.is_off,
-    updated_at: new Date().toISOString(),
-  };
-
-  const { error: updateRequesterError } = await supabase
-    .from("shift_schedules")
-    .update(requesterNext)
-    .eq("id", requesterSchedule.id)
-    .eq("tenant_apotek_id", active.tenantId);
-  if (updateRequesterError) {
+  // Atomic: ketiga update (jadwal requester, jadwal target, status swap) dalam satu transaksi DB.
+  const { error: rpcError } = await supabase.rpc("approve_shift_swap", {
+    p_swap_request_id:      shiftSwapRequestId,
+    p_tenant_apotek_id:     active.tenantId,
+    p_requester_schedule_id: requesterSchedule.id,
+    p_target_schedule_id:   targetSchedule.id,
+    p_req_shift_id:         targetSchedule.shift_id,
+    p_req_is_off:           targetSchedule.is_off,
+    p_tgt_shift_id:         requesterSchedule.shift_id,
+    p_tgt_is_off:           requesterSchedule.is_off,
+  });
+  if (rpcError) {
+    console.error("approve_shift_swap RPC failed:", rpcError);
     return redirect(
       adminAttendanceApprovalPath({
         feedback: "error",
@@ -536,37 +532,8 @@ export async function reviewShiftSwapRequestAction(
     );
   }
 
-  const { error: updateTargetError } = await supabase
-    .from("shift_schedules")
-    .update(targetNext)
-    .eq("id", targetSchedule.id)
-    .eq("tenant_apotek_id", active.tenantId);
-  if (updateTargetError) {
-    return redirect(
-      adminAttendanceApprovalPath({
-        feedback: "error",
-        message: "swap_apply_failed",
-      }),
-    );
-  }
-
-  const { error: approveError } = await supabase
-    .from("shift_swap_requests")
-    .update({
-      status: "approved",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", shiftSwapRequestId)
-    .eq("tenant_apotek_id", active.tenantId)
-    .in("status", ["pending_crew", "pending_admin"]);
-  if (approveError) {
-    return redirect(
-      adminAttendanceApprovalPath({
-        feedback: "error",
-        message: "swap_update_failed",
-      }),
-    );
-  }
+  const requesterNext = { shift_id: targetSchedule.shift_id, is_off: targetSchedule.is_off };
+  const targetNext    = { shift_id: requesterSchedule.shift_id, is_off: requesterSchedule.is_off };
   await writeAuditLog(supabase, {
     tenantApotekId: active.tenantId,
     actorUserId: session.userId,

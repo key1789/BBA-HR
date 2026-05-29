@@ -35,7 +35,7 @@ export function computeDashboardKpis(
     lostCustomers += Number(r.rejected_customer_total ?? 0);
   }
   const atv = transactions > 0 ? omzet / transactions : 0;
-  const atu = products > 0 ? transactions / products : 0;
+  const atu = transactions > 0 ? products / transactions : 0;
   return { omzet, transactions, products, lostCustomers, atv, atu };
 }
 
