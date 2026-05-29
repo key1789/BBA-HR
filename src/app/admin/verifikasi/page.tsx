@@ -305,7 +305,7 @@ export default async function AdminVerifikasiPage({
                         </span>
                       </div>
 
-                      <p className="mt-3 text-2xl font-black tracking-tight text-slate-900">
+                      <p className="mt-3 text-xl font-black tracking-tight text-slate-900 tabular-nums">
                         Rp {numberFormatter.format(Number(row.omzet_total))}
                       </p>
 
@@ -378,7 +378,8 @@ export default async function AdminVerifikasiPage({
                     {/* ── Expandable detail ────────────────────────── */}
                     <details className="group overflow-hidden rounded-b-2xl border-t border-slate-100">
                       <summary className="flex cursor-pointer list-none select-none items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-semibold text-indigo-600">Lihat detail</span>
+                        <span className="text-xs font-semibold text-indigo-600 group-open:hidden">Lihat detail</span>
+                        <span className="hidden text-xs font-semibold text-indigo-600 group-open:inline">Sembunyikan</span>
                         <svg
                           className="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-180"
                           fill="none"
@@ -546,17 +547,13 @@ export default async function AdminVerifikasiPage({
           Pilih baris yang ingin diproses. Default semua baris halaman ini terpilih.
         </p>
         <Card className="mt-3 overflow-x-auto rounded-2xl shadow-none">
-        <table className="min-w-[1200px] text-left text-sm">
+        <table className="min-w-[820px] text-left text-sm">
           <thead className="bg-slate-100 text-slate-700">
             <tr>
               <th className="px-3 py-2">Pilih</th>
               <th className="px-3 py-2">Tanggal</th>
-              <th className="px-3 py-2">User</th>
-              <th className="px-3 py-2">Shift</th>
+              <th className="px-3 py-2">Crew</th>
               <th className="px-3 py-2">Omzet</th>
-              <th className="px-3 py-2">Transaksi</th>
-              <th className="px-3 py-2">Produk</th>
-              <th className="px-3 py-2">Pelanggan Ditolak</th>
               <th className="px-3 py-2">SLA</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Detail</th>
@@ -566,25 +563,29 @@ export default async function AdminVerifikasiPage({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td className="px-3 py-4 text-slate-500" colSpan={12}>
+                <td className="px-3 py-4 text-slate-500" colSpan={8}>
                   Tidak ada queue verifikasi.
                 </td>
               </tr>
             ) : null}
             {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50">
+              <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50 has-[:checked]:bg-indigo-50/50">
                 <td className="px-3 py-2">
                   <input type="checkbox" name="submissionIds" value={row.id} defaultChecked />
                 </td>
-                <td className="px-3 py-2">{row.submission_date}</td>
+                <td className="px-3 py-2 text-sm">{row.submission_date}</td>
                 <td className="px-3 py-2">
-                  {Array.isArray(row.user) ? row.user[0]?.full_name : row.user?.full_name}
+                  <p className="font-medium text-slate-800">
+                    {Array.isArray(row.user) ? row.user[0]?.full_name : row.user?.full_name}
+                  </p>
+                  <p className="text-xs text-slate-400">{row.shift_label}</p>
                 </td>
-                <td className="px-3 py-2">{row.shift_label}</td>
-                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.omzet_total))}</td>
-                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.transaction_total))}</td>
-                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.product_total))}</td>
-                <td className="px-3 py-2 text-right">{numberFormatter.format(Number(row.rejected_customer_total))}</td>
+                <td className="px-3 py-2">
+                  <p className="font-medium text-slate-800">{numberFormatter.format(Number(row.omzet_total))}</p>
+                  <p className="text-xs text-slate-400">
+                    Trx: {numberFormatter.format(Number(row.transaction_total))} &middot; Produk: {numberFormatter.format(Number(row.product_total))} &middot; DT: {numberFormatter.format(Number(row.rejected_customer_total))}
+                  </p>
+                </td>
                 <td className="px-3 py-2">
                   {(() => {
                     const sla = getSlaBadge(row.submission_date, reminderWindow.dateKey);
@@ -605,68 +606,12 @@ export default async function AdminVerifikasiPage({
                   </span>
                 </td>
                 <td className="px-3 py-2">
-                  <div className="hidden md:block">
-                    <details className="group">
-                      <summary className="cursor-pointer text-xs font-semibold text-indigo-700 hover:text-indigo-800">
-                        Lihat detail
-                      </summary>
-                      <div className="mt-2 w-[360px] max-w-[70vw] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-sm">
-                        <p className="font-semibold text-slate-800">Input Crew</p>
-                        <div className="mt-1 grid grid-cols-2 gap-1">
-                          <p>Omzet: <span className="font-medium">{numberFormatter.format(Number(row.omzet_total))}</span></p>
-                          <p>Transaksi: <span className="font-medium">{numberFormatter.format(Number(row.transaction_total))}</span></p>
-                          <p>Produk: <span className="font-medium">{numberFormatter.format(Number(row.product_total))}</span></p>
-                          <p>Pelanggan ditolak: <span className="font-medium">{numberFormatter.format(Number(row.rejected_customer_total))}</span></p>
-                        </div>
-                        <p className="mt-2">
-                          Alasan terlambat:{" "}
-                          <span className="font-medium">{row.late_reason?.trim() ? row.late_reason : "-"}</span>
-                        </p>
-                        <div className="mt-2">
-                          <p className="font-semibold text-slate-800">Produk Fokus</p>
-                          {(productsBySubmission.get(row.id) ?? []).length === 0 ? (
-                            <p className="text-slate-500">Tidak ada detail produk fokus.</p>
-                          ) : (
-                            <ul className="mt-1 space-y-1">
-                              {(productsBySubmission.get(row.id) ?? []).map((item, idx) => (
-                                <li key={`${row.id}-fp-${idx}`}>
-                                  {item.product_name}: <span className="font-medium">{numberFormatter.format(item.quantity_sold)}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                        <div className="mt-2">
-                          <p className="font-semibold text-slate-800">Riwayat Verifikasi</p>
-                          {(verificationsBySubmission.get(row.id) ?? []).length === 0 ? (
-                            <p className="text-slate-500">Belum ada riwayat verifikasi.</p>
-                          ) : (
-                            <ul className="mt-1 space-y-1">
-                              {(verificationsBySubmission.get(row.id) ?? []).slice(0, 5).map((v, idx) => (
-                                <li key={`${row.id}-ver-${idx}`} className="rounded-md bg-slate-50 px-2 py-1">
-                                  <p>
-                                    <span className="font-semibold">{getVerificationActionLabel(v.action)}</span>{" "}
-                                    oleh <span className="font-medium">{v.actor_name}</span>
-                                  </p>
-                                  <p className="text-slate-500">
-                                    {new Date(v.acted_at).toLocaleString("id-ID")}
-                                    {v.error_code ? ` | code: ${v.error_code}` : ""}
-                                    {v.note ? ` | note: ${v.note}` : ""}
-                                  </p>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                    </details>
-                  </div>
-                  <div className="md:hidden">
-                    <details className="group">
-                      <summary className="cursor-pointer text-xs font-semibold text-indigo-700 hover:text-indigo-800">
-                        Expand
-                      </summary>
-                      <div className="mt-2 w-[280px] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-sm">
+                  <details className="group">
+                    <summary className="cursor-pointer text-xs font-semibold text-indigo-700 hover:text-indigo-800 select-none list-none">
+                      <span className="group-open:hidden">Lihat detail</span>
+                      <span className="hidden group-open:inline">Sembunyikan</span>
+                    </summary>
+                    <div className="mt-2 w-[380px] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-md">
                       <p className="font-semibold text-slate-800">Input Crew</p>
                       <div className="mt-1 grid grid-cols-2 gap-1">
                         <p>Omzet: <span className="font-medium">{numberFormatter.format(Number(row.omzet_total))}</span></p>
@@ -698,7 +643,7 @@ export default async function AdminVerifikasiPage({
                           <p className="text-slate-500">Belum ada riwayat verifikasi.</p>
                         ) : (
                           <ul className="mt-1 space-y-1">
-                            {(verificationsBySubmission.get(row.id) ?? []).slice(0, 5).map((v, idx) => (
+                            {(verificationsBySubmission.get(row.id) ?? []).map((v, idx) => (
                               <li key={`${row.id}-ver-${idx}`} className="rounded-md bg-slate-50 px-2 py-1">
                                 <p>
                                   <span className="font-semibold">{getVerificationActionLabel(v.action)}</span>{" "}
@@ -706,17 +651,16 @@ export default async function AdminVerifikasiPage({
                                 </p>
                                 <p className="text-slate-500">
                                   {new Date(v.acted_at).toLocaleString("id-ID")}
-                                  {v.error_code ? ` | code: ${v.error_code}` : ""}
-                                  {v.note ? ` | note: ${v.note}` : ""}
+                                  {v.error_code ? ` · kode: ${v.error_code}` : ""}
+                                  {v.note ? ` · ${v.note}` : ""}
                                 </p>
                               </li>
                             ))}
                           </ul>
                         )}
                       </div>
-                      </div>
-                    </details>
-                  </div>
+                    </div>
+                  </details>
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex flex-wrap gap-2">

@@ -616,7 +616,22 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
     ? `Edit admin: ${changes.join(", ")}`
     : "Diedit admin (tanpa perubahan nilai)";
 
-  // Update submission values
+  // INSERT approval DULU — jika gagal di sini, tidak ada data yang berubah sama sekali.
+  // DB trigger akan set status → "approved". Urutan ini mencegah race condition:
+  // nilai berubah tapi status tidak ter-update.
+  const { error: verifyError } = await supabase.from("submission_verifications").insert({
+    submission_id: submissionId,
+    action: "approve",
+    note: changeNote,
+    acted_by_user_id: user.id,
+  });
+
+  if (verifyError) {
+    await setFlashMessage({ status: "error", message: `Approval gagal dicatat: ${verifyError.message}` });
+    return redirect(verificationPath(baseParams));
+  }
+
+  // Baru setelah approval tercatat, update nilai submission
   const { error: updateError } = await supabase
     .from("daily_submissions")
     .update({
@@ -630,20 +645,12 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
     .eq("tenant_apotek_id", active.tenantId);
 
   if (updateError) {
-    await setFlashMessage({ status: "error", message: "Gagal memperbarui data submission." });
-    return redirect(verificationPath(baseParams));
-  }
-
-  // Insert approval record — DB trigger sets status → "approved"
-  const { error: verifyError } = await supabase.from("submission_verifications").insert({
-    submission_id: submissionId,
-    action: "approve",
-    note: changeNote,
-    acted_by_user_id: user.id,
-  });
-
-  if (verifyError) {
-    await setFlashMessage({ status: "error", message: `Data tersimpan tapi approval gagal: ${verifyError.message}` });
+    // Approval sudah tercatat, status sudah approved, tapi nilai gagal diperbarui.
+    // Lebih baik dari sebaliknya (nilai berubah tapi tidak approved).
+    await setFlashMessage({
+      status: "error",
+      message: "Status disetujui, tetapi nilai gagal diperbarui. Silakan edit ulang jika diperlukan.",
+    });
     return redirect(verificationPath(baseParams));
   }
 

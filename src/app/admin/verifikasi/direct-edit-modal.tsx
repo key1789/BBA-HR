@@ -4,6 +4,19 @@ import { useState, useTransition } from "react";
 import { adminDirectEditSubmissionAction } from "@/actions/operational";
 import { Pencil, X, Loader2 } from "lucide-react";
 
+const fmt = new Intl.NumberFormat("id-ID");
+
+function FieldLabel({ label, prev }: { label: string; prev?: string }) {
+  return (
+    <div className="flex items-baseline justify-between mb-0.5">
+      <span className="text-[11px] font-semibold text-slate-600">{label}</span>
+      {prev !== undefined && (
+        <span className="text-[10px] text-slate-400">sebelumnya: {prev}</span>
+      )}
+    </div>
+  );
+}
+
 export function DirectEditModal({
   submissionId,
   page,
@@ -52,7 +65,7 @@ export function DirectEditModal({
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-            onClick={() => setOpen(false)}
+            onClick={() => !isPending && setOpen(false)}
           />
 
           {/* Modal */}
@@ -65,7 +78,8 @@ export function DirectEditModal({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                disabled={isPending}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors disabled:opacity-40"
               >
                 <X size={15} />
               </button>
@@ -79,7 +93,7 @@ export function DirectEditModal({
               <input type="hidden" name="to" value={to} />
 
               <label className="block">
-                <span className="text-[11px] font-semibold text-slate-600">Omzet (Rp)</span>
+                <FieldLabel label="Omzet (Rp)" prev={fmt.format(defaultValues.omzetTotal)} />
                 <input
                   type="number"
                   name="omzet_total"
@@ -87,12 +101,12 @@ export function DirectEditModal({
                   min={0}
                   step={1}
                   required
-                  className="mt-0.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </label>
 
               <label className="block">
-                <span className="text-[11px] font-semibold text-slate-600">Jumlah Transaksi</span>
+                <FieldLabel label="Jumlah Transaksi" prev={String(defaultValues.transactionTotal)} />
                 <input
                   type="number"
                   name="transaction_total"
@@ -100,12 +114,12 @@ export function DirectEditModal({
                   min={0}
                   step={1}
                   required
-                  className="mt-0.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </label>
 
               <label className="block">
-                <span className="text-[11px] font-semibold text-slate-600">Jumlah Produk</span>
+                <FieldLabel label="Jumlah Produk" prev={String(defaultValues.productTotal)} />
                 <input
                   type="number"
                   name="product_total"
@@ -113,12 +127,12 @@ export function DirectEditModal({
                   min={0}
                   step={1}
                   required
-                  className="mt-0.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </label>
 
               <label className="block">
-                <span className="text-[11px] font-semibold text-slate-600">Pelanggan Ditolak</span>
+                <FieldLabel label="Pelanggan Ditolak" prev={String(defaultValues.rejectedCustomerTotal)} />
                 <input
                   type="number"
                   name="rejected_customer_total"
@@ -126,18 +140,21 @@ export function DirectEditModal({
                   min={0}
                   step={1}
                   required
-                  className="mt-0.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </label>
 
               <label className="block">
-                <span className="text-[11px] font-semibold text-slate-600">Alasan Terlambat</span>
+                <FieldLabel
+                  label="Alasan Terlambat"
+                  prev={defaultValues.lateReason?.trim() || "—"}
+                />
                 <input
                   type="text"
                   name="late_reason"
                   defaultValue={defaultValues.lateReason ?? ""}
                   placeholder="Kosong jika tidak ada"
-                  className="mt-0.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </label>
 
