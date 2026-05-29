@@ -9,32 +9,32 @@ export const VERIFIKASI_HELP: HelpContent = {
     {
       title: "Atur filter untuk mempersempit antrean",
       description:
-        "Gunakan filter Status dan Rentang Tanggal lalu klik "Terapkan Filter". Filter "Semua" menampilkan seluruh riwayat, diurutkan otomatis berdasarkan prioritas aksi — submission yang paling butuh perhatian muncul paling atas.",
+        'Gunakan filter Status dan Rentang Tanggal lalu klik "Terapkan Filter". Filter "Semua" menampilkan seluruh riwayat, diurutkan otomatis berdasarkan prioritas aksi — submission yang paling butuh perhatian muncul paling atas.',
     },
     {
       title: "Periksa detail tiap submission",
       description:
-        "Klik "Lihat detail" pada baris yang ingin diperiksa untuk melihat data lengkap (omzet, transaksi, produk, pelanggan ditolak, alasan terlambat), daftar produk fokus, dan seluruh riwayat verifikasi sebelumnya.",
+        'Klik "Lihat detail" pada baris yang ingin diperiksa untuk melihat data lengkap (omzet, transaksi, produk, pelanggan ditolak, alasan terlambat), daftar produk fokus, dan seluruh riwayat verifikasi sebelumnya.',
     },
     {
       title: "Setujui submission yang datanya benar",
       description:
-        "Klik tombol "Setujui" pada baris yang bersangkutan. Submission langsung berpindah ke status Disetujui dan masuk jalur audit BBA. Tindakan ini tidak bisa dibatalkan.",
+        'Klik tombol "Setujui" pada baris yang bersangkutan. Submission langsung berpindah ke status Disetujui dan masuk jalur audit BBA. Tindakan ini tidak bisa dibatalkan.',
     },
     {
       title: "Tolak submission yang bermasalah",
       description:
-        "Klik "Tolak" jika data tidak sesuai. Crew akan mengetahui submissionnya ditolak dan bisa mengirim ulang data yang sudah diperbaiki.",
+        'Klik "Tolak" jika data tidak sesuai. Crew akan mengetahui submissionnya ditolak dan bisa mengirim ulang data yang sudah diperbaiki.',
     },
     {
       title: "Edit langsung jika ada kesalahan minor",
       description:
-        "Klik "Edit langsung" untuk membuka form edit. Ubah nilai yang salah, lalu klik "Simpan & Setujui". Data baru langsung tersimpan dan submission otomatis berstatus Disetujui — tidak perlu tolak lalu minta crew submit ulang.",
+        'Klik "Edit langsung" untuk membuka form edit. Ubah nilai yang salah, lalu klik "Simpan & Setujui". Data baru langsung tersimpan dan submission otomatis berstatus Disetujui — tidak perlu tolak lalu minta crew submit ulang.',
     },
     {
       title: "Proses banyak submission sekaligus",
       description:
-        "Centang beberapa baris, lalu klik "Setujui massal" atau "Tolak massal" untuk memproses semua submission yang tercentang dalam satu klik. Secara default semua baris di halaman aktif sudah tercentang.",
+        'Centang beberapa baris, lalu klik "Setujui massal" atau "Tolak massal" untuk memproses semua submission yang tercentang dalam satu klik. Secara default semua baris di halaman aktif sudah tercentang.',
     },
   ],
 
@@ -92,11 +92,11 @@ export const VERIFIKASI_HELP: HelpContent = {
   tips: [
     {
       type: "tip",
-      text: "Filter "Semua (prioritas aksi)" adalah tampilan paling efisien untuk kerja harian — submission yang butuh tindakan segera otomatis naik ke atas, tanpa perlu pilih filter manual.",
+      text: 'Filter "Semua (prioritas aksi)" adalah tampilan paling efisien untuk kerja harian — submission yang butuh tindakan segera otomatis naik ke atas, tanpa perlu pilih filter manual.',
     },
     {
       type: "tip",
-      text: "Gunakan "Edit langsung" saat crew salah input angka minor. Ini lebih cepat dibanding tolak–tunggu–re-submit yang membutuhkan bolak-balik komunikasi.",
+      text: 'Gunakan "Edit langsung" saat crew salah input angka minor. Ini lebih cepat dibanding tolak-tunggu-re-submit yang membutuhkan bolak-balik komunikasi.',
     },
     {
       type: "warning",
