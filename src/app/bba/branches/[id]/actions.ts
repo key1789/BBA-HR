@@ -27,78 +27,6 @@ async function logActivity(supabase: any, tenantId: string, actorId: string, ent
   }
 }
 
-export async function createCrewAction(prevState: any, formData: FormData) {
-  const gate = await assertBbaAccess();
-  if (!gate.ok) return { error: gate.error };
-
-  const fullName = formData.get("fullName") as string;
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
-  const tenantId = formData.get("tenantId") as string;
-  const role = "crew" as const;
-
-  if (!fullName || !email || !password || !tenantId) {
-    return { error: "Semua kolom wajib diisi." };
-  }
-
-  const supabaseAdmin = createAdminClient();
-
-  // 1. Create user in auth.users
-  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name: fullName, role },
-  });
-
-  if (authError) {
-    if (authError.message.includes("already registered")) {
-      return { error: "Email ini sudah terdaftar di sistem." };
-    }
-    return { error: `Gagal membuat akun Auth: ${authError.message}` };
-  }
-
-  const userId = authData.user?.id;
-  if (!userId) {
-    return { error: "Gagal membuat akun: tidak ada ID pengguna." };
-  }
-
-  const now = new Date().toISOString();
-
-  // 2. Insert into app_users
-  const { error: appUserError } = await supabaseAdmin
-    .from("app_users")
-    .insert({
-      id: userId,
-      full_name: fullName,
-      email: email,
-      is_active: true,
-      is_branch_desk_account: false,
-      created_at: now,
-      updated_at: now
-    });
-
-  if (appUserError) {
-    return { error: `Gagal menyimpan profil: ${appUserError.message}` };
-  }
-
-  // 3. Insert into tenant_memberships
-  const { error: membershipError } = await supabaseAdmin
-    .from("tenant_memberships")
-    .insert({
-      user_id: userId,
-      tenant_apotek_id: tenantId,
-      role: role,
-      is_active: true,
-    });
-
-  if (membershipError) {
-    return { error: `Gagal menempatkan cabang: ${membershipError.message}` };
-  }
-
-  revalidatePath(`/bba/branches/${tenantId}`);
-  return { success: true, message: "Crew berhasil ditambahkan ke cabang ini!" };
-}
 
 export async function getAvailableUsersForBranch(tenantId: string) {
   const gate = await assertBbaAccess();
@@ -113,17 +41,17 @@ export async function getAvailableUsersForBranch(tenantId: string) {
 
   const alreadyInBranch = new Set((inThisBranch ?? []).map((m) => m.user_id));
 
-  // Hanya pegawai operasional: pernah menjadi crew atau admin_apotek (aktif) di mana pun —
-  // bukan purely super_admin_bba atau owner-only.
-  const { data: staffMemberships } = await supabaseAdmin
+  // Hanya crew aktif yang pernah terdaftar di tenant mana pun —
+  // admin apotek adalah shared desk account, tidak di-assign antar cabang via flow ini.
+  const { data: crewMemberships } = await supabaseAdmin
     .from("tenant_memberships")
     .select("user_id")
     .eq("is_active", true)
-    .in("role", ["crew", "admin_apotek"]);
+    .eq("role", "crew");
 
   const eligibleUserIds = [
     ...new Set(
-      (staffMemberships ?? [])
+      (crewMemberships ?? [])
         .map((m) => m.user_id)
         .filter((id) => !alreadyInBranch.has(id))
     ),
@@ -133,7 +61,7 @@ export async function getAvailableUsersForBranch(tenantId: string) {
 
   const { data: availableUsers, error } = await supabaseAdmin
     .from("app_users")
-    .select("id, full_name, email, is_branch_desk_account")
+    .select("id, full_name, email")
     .eq("is_active", true)
     .in("id", eligibleUserIds)
     .order("full_name", { ascending: true });
@@ -143,7 +71,7 @@ export async function getAvailableUsersForBranch(tenantId: string) {
     return [];
   }
 
-  return (availableUsers || []).filter((u: { is_branch_desk_account?: boolean }) => !u.is_branch_desk_account);
+  return availableUsers || [];
 }
 
 export async function assignExistingCrewAction(formData: FormData) {
@@ -196,8 +124,8 @@ export async function createStaffInvitationAction(prevState: any, formData: Form
     return { error: "Data undangan tidak lengkap." };
   }
 
-  if (role !== "crew" && role !== "admin_apotek") {
-    return { error: "Role tidak valid." };
+  if (role !== "crew") {
+    return { error: "Undangan staf hanya bisa dibuat untuk crew." };
   }
 
   const supabaseAdmin = createAdminClient();
@@ -292,18 +220,24 @@ export async function regenerateStaffInvitationAction(invitationId: string) {
   const supabaseAdmin = createAdminClient();
   const now = new Date();
   const expiresAt = new Date(now);
-  expiresAt.setHours(expiresAt.getHours() + 48);
   const token = crypto.randomUUID();
 
   const { data: inv, error: fetchError } = await supabaseAdmin
     .from("staff_invitations")
-    .select("id, tenant_apotek_id, status")
+    .select("id, tenant_apotek_id, status, role")
     .eq("id", invitationId)
     .maybeSingle();
 
   if (fetchError || !inv) return { error: "Data undangan tidak ditemukan." };
   if (inv.status === "accepted" || inv.status === "cancelled") {
     return { error: "Undangan ini tidak bisa diregenerate lagi." };
+  }
+
+  // Admin apotek: 7 hari · Crew: 48 jam
+  if (inv.role === "admin_apotek") {
+    expiresAt.setDate(expiresAt.getDate() + 7);
+  } else {
+    expiresAt.setHours(expiresAt.getHours() + 48);
   }
 
   const { error } = await supabaseAdmin
@@ -330,8 +264,8 @@ export async function completeStaffInvitationAction(prevState: any, formData: Fo
   const token = formData.get("token") as string;
   const password = formData.get("password") as string;
 
-  if (!token || !password || password.length < 6) {
-    return { error: "Token atau password tidak valid." };
+  if (!token || !password || password.length < 8) {
+    return { error: "Token atau password tidak valid (minimal 8 karakter)." };
   }
 
   const supabaseAdmin = createAdminClient();
@@ -384,6 +318,7 @@ export async function completeStaffInvitationAction(prevState: any, formData: Fo
       id: userId,
       full_name: inv.full_name,
       email: inv.email,
+      role: inv.role,
       is_active: true,
       is_branch_desk_account: isDeskAdmin,
       created_at: now,
@@ -433,7 +368,7 @@ async function requireBbaSuperAdminActor(): Promise<{ ok: true; userId: string }
 export type BranchDeskAdminActionState =
   | undefined
   | { error: string }
-  | { success: true; message: string };
+  | { success: true; message: string; inviteLink?: string };
 
 export async function createBranchDeskAdminAccountAction(
   _prev: BranchDeskAdminActionState,
@@ -444,10 +379,9 @@ export async function createBranchDeskAdminAccountAction(
 
   const tenantId = formData.get("tenantId")?.toString()?.trim();
   const email = formData.get("email")?.toString()?.trim().toLowerCase();
-  const password = formData.get("password")?.toString() ?? "";
 
-  if (!tenantId || !email || password.length < 8) {
-    return { error: "Lengkapi email dan password (minimal 8 karakter)." };
+  if (!tenantId || !email) {
+    return { error: "Email wajib diisi." };
   }
 
   const supabaseAdmin = createAdminClient();
@@ -458,100 +392,66 @@ export async function createBranchDeskAdminAccountAction(
     .eq("id", tenantId)
     .maybeSingle();
   const branchLabel = (branchRow?.name || branchRow?.code || "Cabang").trim();
-  const fullName = `Admin cabang — ${branchLabel}`.slice(0, 120);
+  const fullName = `Admin — ${branchLabel}`.slice(0, 120);
 
-  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name: fullName, role: "admin_apotek", branch_desk_admin: true },
-  });
-
-  if (authError || !authData.user?.id) {
-    if (authError?.message?.includes("already registered")) {
-      return { error: "Email ini sudah terdaftar." };
-    }
-    return { error: `Gagal membuat akun: ${authError?.message ?? "unknown"}` };
+  // Cek duplikat di akun aktif
+  const { data: existingUser } = await supabaseAdmin
+    .from("app_users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+  if (existingUser) {
+    return { error: "Email ini sudah terdaftar sebagai akun aktif." };
   }
 
-  const userId = authData.user.id;
+  // Cek duplikat undangan yang masih aktif/expired (belum accepted/cancelled)
+  const { data: existingInv } = await supabaseAdmin
+    .from("staff_invitations")
+    .select("id")
+    .eq("tenant_apotek_id", tenantId)
+    .eq("email", email)
+    .in("status", ["pending", "expired"])
+    .maybeSingle();
+  if (existingInv) {
+    return { error: "Undangan untuk email ini sudah ada. Gunakan 'Perbarui Link' di bagian undangan pending." };
+  }
+
+  const token = crypto.randomUUID();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7); // 7 hari
   const now = new Date().toISOString();
 
-  const { error: appUserError } = await supabaseAdmin.from("app_users").insert({
-    id: userId,
-    full_name: fullName,
+  const { error: invError } = await supabaseAdmin.from("staff_invitations").insert({
+    tenant_apotek_id: tenantId,
     email,
-    is_active: true,
-    is_branch_desk_account: true,
-    created_at: now,
+    full_name: fullName,
+    role: "admin_apotek",
+    token,
+    status: "pending",
+    expires_at: expiresAt.toISOString(),
+    invited_by_user_id: gate.userId,
     updated_at: now,
   });
 
-  if (appUserError) {
-    await supabaseAdmin.auth.admin.deleteUser(userId);
-    return { error: `Gagal menyimpan profil: ${appUserError.message}` };
+  if (invError) {
+    if (invError.message?.toLowerCase().includes("unique")) {
+      return { error: "Undangan untuk email ini sudah ada." };
+    }
+    return { error: `Gagal membuat undangan: ${invError.message}` };
   }
 
-  const { error: membershipError } = await supabaseAdmin.from("tenant_memberships").insert({
-    user_id: userId,
-    tenant_apotek_id: tenantId,
-    role: "admin_apotek",
-    is_active: true,
-  });
-
-  if (membershipError) {
-    await supabaseAdmin.from("app_users").delete().eq("id", userId);
-    await supabaseAdmin.auth.admin.deleteUser(userId);
-    return { error: `Gagal menempatkan cabang: ${membershipError.message}` };
-  }
-
-  await logActivity(supabaseAdmin, tenantId, gate.userId, "app_users", userId, "CREATE", null, {
-    branch_desk_admin: true,
+  await logActivity(supabaseAdmin, tenantId, gate.userId, "staff_invitations", token, "CREATE", null, {
     email,
+    role: "admin_apotek",
   });
 
-  revalidatePath(`/bba/branches/${tenantId}`);
-  return { success: true, message: "Akun portal admin cabang berhasil dibuat." };
-}
-
-export async function resetBranchDeskAdminPasswordAction(
-  _prev: BranchDeskAdminActionState,
-  formData: FormData,
-): Promise<BranchDeskAdminActionState> {
-  const gate = await requireBbaSuperAdminActor();
-  if (!gate.ok) return { error: gate.error };
-
-  const tenantId = formData.get("tenantId")?.toString()?.trim();
-  const userId = formData.get("userId")?.toString()?.trim();
-  const password = formData.get("password")?.toString() ?? "";
-
-  if (!tenantId || !userId || password.length < 8) {
-    return { error: "Data tidak valid (password minimal 8 karakter)." };
-  }
-
-  const supabaseAdmin = createAdminClient();
-
-  const [{ data: profile }, { data: mem }] = await Promise.all([
-    supabaseAdmin.from("app_users").select("is_branch_desk_account").eq("id", userId).maybeSingle(),
-    supabaseAdmin
-      .from("tenant_memberships")
-      .select("id")
-      .eq("tenant_apotek_id", tenantId)
-      .eq("user_id", userId)
-      .eq("role", "admin_apotek")
-      .maybeSingle(),
-  ]);
-
-  if (!profile?.is_branch_desk_account || !mem?.id) {
-    return { error: "Akun bukan admin meja cabang di tenant ini." };
-  }
-
-  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
-  if (error) return { error: error.message };
+  const appUrl = getAppUrl();
+  const inviteLink = `${appUrl}/accept-staff-invitation/${token}`;
 
   revalidatePath(`/bba/branches/${tenantId}`);
-  return { success: true, message: "Password akun admin cabang telah diperbarui." };
+  return { success: true, message: "Undangan aktivasi admin cabang berhasil dibuat.", inviteLink };
 }
+
 
 export async function saveAddonAction(prevState: any, formData: FormData) {
   void prevState;
@@ -728,16 +628,16 @@ export async function transferBranchOwnershipAction(prevState: any, formData: Fo
     }
   }
 
-  // 2. Remove previous owners in target branch, but keep the selected owner.
+  // 2. Nonaktifkan owner lama di branch ini (soft deactivate, bukan delete agar bisa di-audit/revert).
   const { error: cleanupError } = await supabaseAdmin
     .from("tenant_memberships")
-    .delete()
+    .update({ is_active: false })
     .eq("tenant_apotek_id", tenantId)
     .eq("role", "owner")
     .neq("user_id", newOwnerId);
 
   if (cleanupError) {
-    return { error: `Owner baru sudah diset, tetapi gagal membersihkan owner lama: ${cleanupError.message}` };
+    return { error: `Owner baru sudah diset, tetapi gagal menonaktifkan owner lama: ${cleanupError.message}` };
   }
 
   revalidatePath(`/bba/branches/${tenantId}`);
@@ -757,8 +657,27 @@ export async function toggleMembershipStatusAction(formData: FormData) {
   if (!membershipId) return { error: "Pegawai tidak ditemukan." };
 
   const newStatus = !currentStatus;
-
   const supabaseAdmin = createAdminClient();
+
+  // Ambil user_id dari membership agar bisa ban/unban di level Auth
+  const { data: membership } = await supabaseAdmin
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("id", membershipId)
+    .maybeSingle();
+
+  if (!membership) return { error: "Data membership tidak ditemukan." };
+
+  // Blokir / buka di level Auth
+  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(membership.user_id, {
+    ban_duration: newStatus ? "none" : "876000h",
+  });
+
+  if (authError) {
+    return { error: `Gagal mengubah status auth: ${authError.message}` };
+  }
+
+  // Update membership
   const { error } = await supabaseAdmin
     .from("tenant_memberships")
     .update({ is_active: newStatus })
@@ -781,45 +700,39 @@ export async function editCrewAction(prevState: any, formData: FormData) {
   const branchId = formData.get("tenantId") as string;
   const fullName = formData.get("fullName") as string;
   const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
-  const role = formData.get("role") as string;
+  // Role dikunci ke "crew" — tidak diterima dari client untuk mencegah privilege escalation.
+  const role = "crew" as const;
 
-  if (!membershipId || !userId || !fullName || !role || !email) {
+  if (!membershipId || !userId || !fullName || !email) {
     return { error: "Semua data profil wajib diisi." };
   }
 
   const supabaseAdmin = createAdminClient();
 
-  // 1. Update app_users
-  const { error: appUserError } = await supabaseAdmin
-    .from("app_users")
-    .update({ 
-      full_name: fullName, 
-      email: email,
-      updated_at: new Date().toISOString() 
-    })
-    .eq("id", userId);
-
-  if (appUserError) return { error: `Gagal memperbarui profil: ${appUserError.message}` };
-
-  // 2. Update auth user (metadata, email, password if provided)
-  const authUpdates: any = {
-    email: email,
-    user_metadata: { full_name: fullName, role }
-  };
-  
-  if (password && password.trim() !== "") {
-    authUpdates.password = password;
-  }
-
-  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, authUpdates);
+  // 1. Update auth user (email + metadata) — dikerjakan dulu agar
+  //    jika email sudah dipakai akun lain, app_users tidak terlanjur berubah.
+  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    email,
+    user_metadata: { full_name: fullName, role },
+  });
   if (authError) {
-    // If email already exists, it might throw here
     if (authError.message.includes("already registered")) {
       return { error: "Email ini sudah digunakan oleh akun lain." };
     }
     return { error: `Gagal memperbarui autentikasi: ${authError.message}` };
   }
+
+  // 2. Update app_users — hanya setelah Auth berhasil
+  const { error: appUserError } = await supabaseAdmin
+    .from("app_users")
+    .update({
+      full_name: fullName,
+      email: email,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", userId);
+
+  if (appUserError) return { error: `Gagal memperbarui profil: ${appUserError.message}` };
 
   // 3. Update tenant_memberships role
   const { error: membershipError } = await supabaseAdmin
@@ -1333,6 +1246,144 @@ export async function applyShiftTemplateAction(prevState: any, formData: FormDat
   return { success: true, message: `${entries.length} jadwal shift berhasil diterapkan.` };
 }
 
+export async function saveCrewShiftDefaultAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
+  const tenantId = formData.get("tenantId") as string;
+  const userId = formData.get("userId") as string;
+  const shiftId = formData.get("shiftId") as string;
+  const weekdaysJson = formData.get("weekdaysJson") as string;
+
+  if (!tenantId || !userId || !shiftId) return { error: "Data tidak valid." };
+
+  let workingWeekdays: number[];
+  try {
+    workingWeekdays = JSON.parse(weekdaysJson);
+    if (!Array.isArray(workingWeekdays)) throw new Error("bukan array");
+  } catch {
+    return { error: "Format hari kerja tidak valid." };
+  }
+
+  const supabase = createAdminClient();
+  const supabaseClient = await createClient();
+  const { data: { user } } = await supabaseClient.auth.getUser();
+
+  const payload = {
+    tenant_apotek_id: tenantId,
+    user_id: userId,
+    shift_id: shiftId,
+    working_weekdays: workingWeekdays,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from("crew_shift_defaults")
+    .upsert(payload, { onConflict: "tenant_apotek_id,user_id" });
+
+  if (error) return { error: `Gagal menyimpan pola jadwal: ${error.message}` };
+
+  if (user) {
+    await logActivity(
+      supabase,
+      tenantId,
+      user.id,
+      "crew_shift_defaults",
+      `${tenantId}:${userId}`,
+      "UPDATE",
+      null,
+      { action: "SAVE_CREW_SHIFT_DEFAULT", operation: "UPSERT", userId, shiftId, workingWeekdays }
+    );
+  }
+
+  revalidatePath(`/bba/branches/${tenantId}`);
+  return { success: true, message: "Pola jadwal berhasil disimpan." };
+}
+
+export async function generateRosterFromDefaultsAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
+  const tenantId = formData.get("tenantId") as string;
+  const month = parseInt(formData.get("month") as string);
+  const year = parseInt(formData.get("year") as string);
+
+  if (!tenantId || isNaN(month) || isNaN(year)) return { error: "Data tidak valid." };
+
+  const supabase = createAdminClient();
+  const supabaseClient = await createClient();
+  const { data: { user } } = await supabaseClient.auth.getUser();
+
+  // Step 1: Fetch all crew_shift_defaults for this tenant
+  const { data: defaults, error: fetchError } = await supabase
+    .from("crew_shift_defaults")
+    .select("user_id, shift_id, working_weekdays")
+    .eq("tenant_apotek_id", tenantId);
+
+  if (fetchError) return { error: `Gagal mengambil pola jadwal: ${fetchError.message}` };
+  if (!defaults || defaults.length === 0) {
+    return { error: "Pola mingguan belum diatur. Atur pola mingguan crew terlebih dahulu." };
+  }
+
+  // Step 2: Expand working_weekdays into concrete dates for the given month/year
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+  const entries: { userId: string; shiftId: string; date: string }[] = [];
+  for (const def of defaults) {
+    for (let day = 1; day <= daysInMonth; day++) {
+      const weekday = new Date(year, month - 1, day).getDay();
+      if ((def.working_weekdays as number[]).includes(weekday)) {
+        entries.push({
+          userId: def.user_id,
+          shiftId: def.shift_id,
+          date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+        });
+      }
+    }
+  }
+
+  // Step 3: Delete existing shift_schedules for this tenant for the month range
+  const { error: deleteError } = await supabase
+    .from("shift_schedules")
+    .delete()
+    .eq("tenant_apotek_id", tenantId)
+    .gte("schedule_date", firstDay)
+    .lte("schedule_date", lastDay);
+
+  if (deleteError) return { error: `Gagal reset jadwal: ${deleteError.message}` };
+
+  // Step 4: Bulk insert the expanded entries into shift_schedules
+  if (entries.length > 0) {
+    const rows = entries.map((e) => ({
+      tenant_apotek_id: tenantId,
+      user_id: e.userId,
+      schedule_date: e.date,
+      shift_id: e.shiftId,
+      is_off: false,
+    }));
+    const { error: insertError } = await supabase.from("shift_schedules").insert(rows);
+    if (insertError) return { error: `Gagal menyimpan jadwal: ${insertError.message}` };
+  }
+
+  if (user) {
+    await logActivity(
+      supabase,
+      tenantId,
+      user.id,
+      "shift_schedules",
+      tenantId,
+      "UPDATE",
+      null,
+      { action: "GENERATE_ROSTER_FROM_DEFAULTS", operation: "INSERT", month, year, generatedCount: entries.length }
+    );
+  }
+
+  revalidatePath(`/bba/branches/${tenantId}`);
+  return { success: true, message: `${entries.length} jadwal berhasil dibuat dari pola mingguan.` };
+}
+
 export async function savePayrollConfigAction(prevState: any, formData: FormData) {
   const gate = await assertBbaAccess();
   if (!gate.ok) return { error: gate.error };
@@ -1388,29 +1439,6 @@ export async function savePayrollConfigAction(prevState: any, formData: FormData
   return { success: true, message: "Konfigurasi gaji pegawai berhasil disimpan!" };
 }
 
-export async function resetCrewPasswordAction(prevState: any, formData: FormData) {
-  const gate = await assertBbaAccess();
-  if (!gate.ok) return { error: gate.error };
-
-  const userId = formData.get("userId") as string;
-  const newPassword = formData.get("password") as string;
-
-  if (!userId || !newPassword) {
-    return { error: "User ID dan Password baru wajib diisi." };
-  }
-
-  const supabaseAdmin = createAdminClient();
-  
-  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-    password: newPassword
-  });
-
-  if (error) {
-    return { error: `Gagal mereset password: ${error.message}` };
-  }
-
-  return { success: true, message: "Password berhasil direset." };
-}
 
 export async function createStaffPasswordResetLinkAction(formData: FormData) {
   const gate = await assertBbaAccess();
@@ -1461,8 +1489,8 @@ export async function completeStaffPasswordResetWithTokenAction(prevState: any, 
   const token = formData.get("token") as string;
   const password = formData.get("password") as string;
 
-  if (!token || !password || password.length < 6) {
-    return { error: "Token atau password tidak valid." };
+  if (!token || !password || password.length < 8) {
+    return { error: "Token atau password tidak valid (minimal 8 karakter)." };
   }
 
   const supabaseAdmin = createAdminClient();
@@ -1749,12 +1777,15 @@ export async function getPayrollRunDataAction(
 
   const attendanceCounts: Record<string, number> = {};
   if (isAbsensiEnabled) {
+    // clock_in_time disimpan sebagai UTC; gunakan WIB boundary (+07:00) agar tidak miss/overcounting
+    const startUtc = new Date(`${startDate}T00:00:00+07:00`).toISOString();
+    const endUtc   = new Date(`${endDate}T23:59:59.999+07:00`).toISOString();
     const { data: logs } = await supabaseAdmin
       .from("attendance_logs")
       .select("user_id")
       .eq("tenant_apotek_id", branchId)
-      .gte("clock_in_time", `${startDate}T00:00:00`)
-      .lte("clock_in_time", `${endDate}T23:59:59`)
+      .gte("clock_in_time", startUtc)
+      .lte("clock_in_time", endUtc)
       .not("clock_in_time", "is", null);
 
     for (const log of logs || []) {

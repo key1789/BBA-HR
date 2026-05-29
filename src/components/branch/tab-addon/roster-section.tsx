@@ -287,9 +287,7 @@ export function RosterSection({
                     {user.app_users.full_name}
                   </p>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <div
-                      className={`w-1.5 h-1.5 rounded-full ${user.role === "admin_apotek" ? "bg-sky-500" : "bg-emerald-500"}`}
-                    ></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                       {user.role.replace("_", " ")}
                     </p>

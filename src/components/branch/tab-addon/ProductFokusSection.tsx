@@ -42,6 +42,7 @@ export function ProductFokusSection({
   onSave,
 }: ProductFokusSectionProps) {
   const [isPending, startTransition] = useTransition();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [searchProduct, setSearchProduct] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [localProductFokus, setLocalProductFokus] = useState<any[]>(productFokus ?? []);
@@ -336,31 +337,49 @@ export function ProductFokusSection({
                     </div>
                   </div>
                 </div>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!confirm("Hapus produk fokus ini?")) return;
-                    const fd = new FormData(e.currentTarget);
-                    startTransition(async () => {
-                      const res = await deleteProductFokusAction(fd);
-                      if (res.success) {
-                        setLocalProductFokus((prev) => prev.filter((x) => x.id !== pf.id));
-                        toast.success(res.message);
-                        afterMutation();
-                      } else toast.error(res.error);
-                    });
-                  }}
-                >
-                  <input type="hidden" name="configId" value={pf.id} />
-                  <input type="hidden" name="tenantId" value={branchId} />
-                  <button
-                    type="submit"
-                    disabled={isPending}
-                    className="w-10 h-10 flex items-center justify-center bg-slate-50 text-slate-300 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all duration-500 disabled:opacity-50"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </form>
+                <div className="flex items-center gap-2 shrink-0">
+                  {pendingDeleteId === pf.id ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeleteId(null)}
+                        className="px-3 py-2 text-[10px] font-black text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => {
+                          const fd = new FormData();
+                          fd.append("configId", pf.id);
+                          fd.append("tenantId", branchId);
+                          startTransition(async () => {
+                            const res = await deleteProductFokusAction(fd);
+                            if (res.success) {
+                              setLocalProductFokus((prev) => prev.filter((x) => x.id !== pf.id));
+                              toast.success(res.message);
+                              setPendingDeleteId(null);
+                              afterMutation();
+                            } else toast.error(res.error);
+                          });
+                        }}
+                        className="px-3 py-2 text-[10px] font-black text-white bg-rose-500 hover:bg-rose-600 rounded-xl transition-all disabled:opacity-50"
+                      >
+                        Hapus
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => setPendingDeleteId(pf.id)}
+                      className="w-10 h-10 flex items-center justify-center bg-slate-50 text-slate-300 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all duration-500 disabled:opacity-50"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

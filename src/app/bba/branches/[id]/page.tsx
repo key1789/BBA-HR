@@ -127,13 +127,32 @@ export default async function BranchDetailPage({ params, searchParams }: { param
     .lte("schedule_date", endDate)
     .order("schedule_date", { ascending: true });
 
-  // 9. Fetch Payroll Configs
+  // 9. Fetch Crew Shift Defaults (pola mingguan per crew)
+  const { data: shiftDefaults } = await supabaseAdmin
+    .from("crew_shift_defaults")
+    .select("*")
+    .eq("tenant_apotek_id", id);
+
+  // 10. Fetch Attendance Logs for current period (Jakarta timezone boundary)
+  const attStart = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01T00:00:00+07:00`;
+  const attEnd = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(
+    new Date(currentYear, currentMonth, 0).getDate()
+  ).padStart(2, "0")}T23:59:59+07:00`;
+  const { data: attendanceLogs } = await supabaseAdmin
+    .from("attendance_logs")
+    .select("*")
+    .eq("tenant_apotek_id", id)
+    .gte("clock_in_time", attStart)
+    .lte("clock_in_time", attEnd)
+    .order("clock_in_time", { ascending: false });
+
+  // 11. Fetch Payroll Configs
   const { data: payrollConfigs } = await supabaseAdmin
     .from("payroll_configs")
     .select("*")
     .eq("tenant_apotek_id", id);
 
-  // 10. Fetch Activity Logs
+  // 12. Fetch Activity Logs
   const { data: activityLogs } = await supabase
     .from("activity_logs")
     .select("*")
@@ -141,7 +160,7 @@ export default async function BranchDetailPage({ params, searchParams }: { param
     .order("created_at", { ascending: false })
     .limit(100);
 
-  // 11. Fetch Available Owners (only users who actually have owner role somewhere)
+  // 13. Fetch Available Owners (only users who actually have owner role somewhere)
   const { data: ownerMemberships } = await supabaseAdmin
     .from("tenant_memberships")
     .select(`
@@ -195,6 +214,8 @@ export default async function BranchDetailPage({ params, searchParams }: { param
         products={products || []}
         productFokus={productFokus || []}
         roster={roster || []}
+        shiftDefaults={shiftDefaults || []}
+        attendanceLogs={attendanceLogs || []}
         payrollConfigs={payrollConfigs || []}
         activityLogs={activityLogs || []}
         availableOwners={availableOwnersData || []}

@@ -21,30 +21,24 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { saveAddonAction } from "@/app/bba/branches/[id]/actions";
 import { toast } from "sonner";
-import { isBranchOperationalPersonnel } from "@/lib/branch-personnel";
-import { ShiftFirstRoster } from "./ShiftFirstRoster";
 import { ProductFokusSection } from "./ProductFokusSection";
 import { AppraisalAddonsSection } from "./AppraisalAddonsSection";
 
 export function TabAddon({
   branchId,
   addons,
-  users,
   shifts,
   products,
   productFokus,
-  roster,
   currentMonth,
   currentYear,
   onNavigateToTab,
 }: {
   branchId: string;
   addons: any[];
-  users: any[];
   shifts: any[];
   products: any[];
   productFokus: any[];
-  roster: any[];
   currentMonth: number;
   currentYear: number;
   onNavigateToTab?: (tabId: string) => void;
@@ -52,12 +46,11 @@ export function TabAddon({
   const [isPending, startTransition] = useTransition();
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [configModal, setConfigModal] = useState<string | null>(null);
-  const [rosterBusy, setRosterBusy] = useState(false);
   const [confirmDisableKey, setConfirmDisableKey] = useState<string | null>(null);
 
   const CRITICAL_ADDONS: Record<string, string> = {
     payroll: "Menonaktifkan Payroll akan menyembunyikan tab Setup Payroll dan Payroll Bulanan. Konfigurasi gaji pegawai tidak dihapus, tapi tidak bisa diakses sampai diaktifkan kembali.",
-    absensi_shift: "Menonaktifkan Absensi & Roster akan menghentikan fitur absensi selfie dan roster jadwal. Data absensi yang sudah ada tetap tersimpan di database.",
+    absensi_shift: "Menonaktifkan Absensi & Jadwal akan menghentikan fitur absensi selfie dan Jadwal & Absensi. Data absensi yang sudah ada tetap tersimpan di database.",
   };
 
   const [activeAddons, setActiveAddons] = useState<Record<string, boolean>>(() => {
@@ -76,7 +69,6 @@ export function TabAddon({
   });
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAutosaveErrorAtRef = useRef<number>(0);
-  const rosterBusySinceRef = useRef<number | null>(null);
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -86,19 +78,6 @@ export function TabAddon({
     setActiveAddons(next);
     setSavedAddons(next);
   }, [branchId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (rosterBusy) {
-      rosterBusySinceRef.current = Date.now();
-    } else {
-      rosterBusySinceRef.current = null;
-    }
-  }, [rosterBusy]);
-
-  const addonStaffUsers = useMemo(
-    () => users.filter((u: any) => isBranchOperationalPersonnel(u) && u.app_users?.id),
-    [users],
-  );
 
   const reviewInternalFrequency = useMemo(() => {
     const s = addons.find((a) => a.addon_key === "review_internal")?.settings as Record<string, unknown> | undefined;
@@ -123,8 +102,6 @@ export function TabAddon({
       }
       case "review_internal":
         return typeof settings.frequency_per_month === "number";
-      case "absensi_shift":
-        return shifts.length > 0;
       default:
         return false;
     }
@@ -165,16 +142,8 @@ export function TabAddon({
   };
 
   const handleCloseModal = useCallback(() => {
-    if (configModal === "absensi_shift" && rosterBusy) {
-      const elapsed = rosterBusySinceRef.current ? Date.now() - rosterBusySinceRef.current : 0;
-      if (elapsed < 20_000) {
-        toast.info("Roster masih sedang disimpan, mohon tunggu sebentar...");
-        return;
-      }
-      toast.warning("Modal ditutup paksa. Periksa kembali data roster.");
-    }
     setConfigModal(null);
-  }, [configModal, rosterBusy]);
+  }, []);
 
   const handleSaveAddon = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -307,7 +276,7 @@ export function TabAddon({
           {ADDON_CARDS.map((card) => {
             const active = isEnabled(card.key);
             const Icon = card.icon;
-            const hasConfig = card.key !== "payroll" && card.key !== "review_pelanggan";
+            const hasConfig = card.key !== "payroll" && card.key !== "review_pelanggan" && card.key !== "absensi_shift";
             const iconActiveClass = addonIconActive[card.color] ?? addonIconActive.sky;
 
             return (
@@ -386,10 +355,16 @@ export function TabAddon({
                   <div className="px-5 py-4 border-t border-sky-50 bg-sky-50/40 flex items-center justify-between">
                     <button
                       type="button"
-                      onClick={() => onNavigateToTab(card.key === "payroll" ? "payroll" : "addon")}
+                      onClick={() => {
+                        const tabMap: Record<string, string> = {
+                          payroll: "payroll",
+                          absensi_shift: "jadwal",
+                        };
+                        onNavigateToTab(tabMap[card.key] ?? "addon");
+                      }}
                       className="flex items-center gap-1.5 text-[10px] font-black text-sky-600 hover:text-sky-800 uppercase tracking-widest transition-all group"
                     >
-                      Konfigurasi Gaji Pegawai
+                      {card.key === "absensi_shift" ? "Kelola Jadwal & Absensi" : "Konfigurasi Gaji Pegawai"}
                       <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
                     </button>
                     <div className="flex items-center gap-1.5 py-1 px-2 bg-emerald-50 text-emerald-600 rounded-lg">
@@ -487,7 +462,7 @@ export function TabAddon({
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.9, y: 30 }}
                   transition={{ type: "spring", damping: 30, stiffness: 400 }}
-                  className={`relative my-2 sm:my-6 bg-white shadow-[0_32px_64px_-15px_rgba(0,0,0,0.3)] rounded-[32px] flex flex-col overflow-hidden border border-slate-100 max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] ${configModal === "absensi_shift" ? "w-full max-w-[95vw]" : "w-full max-w-2xl"}`}
+                  className="relative my-2 sm:my-6 bg-white shadow-[0_32px_64px_-15px_rgba(0,0,0,0.3)] rounded-[32px] flex flex-col overflow-hidden border border-slate-100 max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] w-full max-w-2xl"
                 >
                   <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white relative z-10">
                     <div className="flex items-center gap-5">
@@ -508,7 +483,6 @@ export function TabAddon({
                       type="button"
                       onClick={handleCloseModal}
                       className="w-12 h-12 flex items-center justify-center bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-2xl transition-all duration-500 group"
-                      disabled={configModal === "absensi_shift" && rosterBusy}
                     >
                       <X size={24} className="group-hover:rotate-90 transition-transform duration-500" />
                     </button>
@@ -518,8 +492,6 @@ export function TabAddon({
                     {configModal === "review_internal" && (
                       <AppraisalAddonsSection
                         branchId={branchId}
-                        variant="review_internal"
-                        staffUsers={addonStaffUsers}
                         reviewInternalFrequency={reviewInternalFrequency}
                       />
                     )}
@@ -534,17 +506,6 @@ export function TabAddon({
                       />
                     )}
 
-                    {configModal === "absensi_shift" && (
-                      <ShiftFirstRoster
-                        branchId={branchId}
-                        currentMonth={currentMonth}
-                        currentYear={currentYear}
-                        users={users}
-                        shifts={shifts}
-                        roster={roster}
-                        onBusyChange={setRosterBusy}
-                      />
-                    )}
                   </div>
                 </motion.div>
               </div>

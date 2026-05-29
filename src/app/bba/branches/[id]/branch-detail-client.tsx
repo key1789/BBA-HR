@@ -14,6 +14,7 @@ import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { TabAddon } from "@/components/branch/tab-addon";
 import { TabShift } from "./tab-shift";
 import { TabPayroll } from "./tab-payroll";
+import { TabJadwalAbsensi } from "./tab-jadwal-absensi";
 import { TabActivity } from "./tab-activity";
 import { TabBranchDeskAdmin } from "./tab-branch-desk-admin";
 import { ScrollText, X } from "lucide-react";
@@ -21,12 +22,12 @@ import { getOtherBranchesAction, cloneBranchConfigAction } from "./actions";
 import { toast } from "sonner";
 
 
-export function BranchDetailClient({ 
-  branch, users, kpi, kpiConfigV2, addons, shifts, products, productFokus, roster, payrollConfigs, activityLogs, availableOwners, currentMonth, currentYear,
+export function BranchDetailClient({
+  branch, users, kpi, kpiConfigV2, addons, shifts, products, productFokus, roster, shiftDefaults, attendanceLogs, payrollConfigs, activityLogs, availableOwners, currentMonth, currentYear,
   canEditKpi = true,
   canCloneBranch = true,
-}: { 
-  branch: any, users: any[], kpi: any, kpiConfigV2: KpiConfigV2, addons: any[], shifts: any[], products: any[], productFokus: any[], roster: any[], payrollConfigs: any[], activityLogs: any[], availableOwners: any[], currentMonth: number, currentYear: number,
+}: {
+  branch: any, users: any[], kpi: any, kpiConfigV2: KpiConfigV2, addons: any[], shifts: any[], products: any[], productFokus: any[], roster: any[], shiftDefaults: any[], attendanceLogs: any[], payrollConfigs: any[], activityLogs: any[], availableOwners: any[], currentMonth: number, currentYear: number,
   canEditKpi?: boolean,
   canCloneBranch?: boolean,
 }) {
@@ -83,6 +84,7 @@ export function BranchDetailClient({
   };
 
   const isPayrollEnabled = addons.find(a => a.addon_key === 'payroll')?.is_enabled ?? false;
+  const isAbsensiEnabled = addons.find(a => a.addon_key === 'absensi_shift')?.is_enabled ?? false;
 
   const yearOptions = useMemo(() => {
     const y = new Date().getFullYear();
@@ -96,6 +98,7 @@ export function BranchDetailClient({
     { id: "pegawai", label: "Manajemen crew", icon: Users },
     { id: "kpi", label: "Target dan KPI", icon: Target },
     { id: "addon", label: "Add-on rules", icon: Puzzle },
+    ...(isAbsensiEnabled ? [{ id: "jadwal", label: "Jadwal & Absensi", icon: CalendarDays }] : []),
     ...(isPayrollEnabled ? [{ id: "payroll", label: "Setup Payroll", icon: Banknote }] : []),
     { id: "activity", label: "Log aktivitas", icon: ScrollText },
   ];
@@ -224,7 +227,8 @@ export function BranchDetailClient({
             )}
 
             {activeTab === "shift" && <TabShift branchId={branch.id} shifts={shifts} />}
-            {activeTab === "addon" && <TabAddon branchId={branch.id} addons={addons} users={users} shifts={shifts} products={products} productFokus={productFokus} roster={roster} currentMonth={currentMonth} currentYear={currentYear} onNavigateToTab={setActiveTab} />}
+            {activeTab === "addon" && <TabAddon branchId={branch.id} addons={addons} shifts={shifts} products={products} productFokus={productFokus} currentMonth={currentMonth} currentYear={currentYear} onNavigateToTab={setActiveTab} />}
+            {activeTab === "jadwal" && <TabJadwalAbsensi branchId={branch.id} users={users} shifts={shifts} roster={roster} shiftDefaults={shiftDefaults} attendanceLogs={attendanceLogs} currentMonth={currentMonth} currentYear={currentYear} />}
             {activeTab === "payroll" && <TabPayroll branchId={branch.id} users={users} payrollConfigs={payrollConfigs} />}
             {activeTab === "activity" && <TabActivity logs={activityLogs} users={users} />}
           </motion.div>
