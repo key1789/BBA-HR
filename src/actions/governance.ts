@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit-log";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { syncMonthlyAppraisalsForPeriod } from "@/lib/kpi-v2/sync-monthly-appraisals";
+import { syncLeaderboardSnapshotsForPeriod } from "@/lib/kpi-v2/sync-leaderboard-snapshots";
 import { createDefaultKpiV2Config, mergeKpiConfigs } from "@/lib/kpi-v2/utils";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { revalidatePath } from "next/cache";
@@ -400,6 +401,16 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
       return redirectWithFeedback("/bba/payroll", "error", "no_crew_members");
     }
 
+    // Non-fatal: snapshot failure should not block bonus recalculation
+    const snapshotResult = await syncLeaderboardSnapshotsForPeriod(supabase, {
+      tenantApotekId: tenantId,
+      periodMonth: targetPeriod.periodMonth,
+      periodYear: targetPeriod.periodYear,
+    });
+    if (snapshotResult.error) {
+      console.error("syncLeaderboardSnapshotsForPeriod (recalc) failed:", snapshotResult.error);
+    }
+
     lastCalcVersion = syncResult.calcVersion;
     periodResult.push({
       periodMonth: targetPeriod.periodMonth,
@@ -431,6 +442,7 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
 
   revalidatePath("/bba/payroll");
   revalidatePath("/bba/audit-log");
+  revalidatePath("/admin/leaderboard");
   return payrollRedirect(formData, active, "success", mode === "rolling" ? "appraisal_recalculated_bulk" : "appraisal_recalculated", {
     month: String(periodMonth),
     year: String(periodYear),
@@ -536,6 +548,16 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
     return redirectWithFeedback("/bba/payroll", "error", "appraisal_publish_failed");
   }
 
+  // Generate final leaderboard snapshot on publish — non-fatal
+  const snapshotResult = await syncLeaderboardSnapshotsForPeriod(supabase, {
+    tenantApotekId: tenantId,
+    periodMonth,
+    periodYear,
+  });
+  if (snapshotResult.error) {
+    console.error("syncLeaderboardSnapshotsForPeriod (publish) failed:", snapshotResult.error);
+  }
+
   await writeAuditLog(supabase, {
     tenantApotekId: tenantId,
     actorUserId: user.id,
@@ -547,6 +569,7 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
 
   revalidatePath("/bba/payroll");
   revalidatePath("/bba/audit-log");
+  revalidatePath("/admin/leaderboard");
   return payrollRedirect(formData, active, "success", "appraisal_published", {
     month: String(periodMonth),
     year: String(periodYear),
@@ -1493,4 +1516,140 @@ export async function toggleAddonSettingAction(formData: FormData) {
   return redirectWithFeedback(basePath, "success", "addon_saved", {
     scope: "addon",
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OWNER PAYROLL WORKFLOW
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function ownerApprovePayrollAction(
+  _prev: { success?: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ success?: boolean; error?: string; message?: string }> {
+  const session = await getSessionContext();
+  const active = session?.activeMembership;
+  if (!session || !active || active.role !== "owner") {
+    return { error: "Akses ditolak." };
+  }
+
+  const periodId = (formData.get("periodId") as string)?.trim();
+  if (!periodId) return { error: "Data tidak lengkap." };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Tidak terautentikasi." };
+
+  const supabaseAdmin = createAdminClient();
+
+  // Verify period belongs to owner's tenant
+  const { data: period } = await supabaseAdmin
+    .from("payroll_periods")
+    .select("id, status, tenant_apotek_id")
+    .eq("id", periodId)
+    .maybeSingle();
+
+  if (!period) return { error: "Data payroll tidak ditemukan." };
+  if (period.tenant_apotek_id !== active.tenantId) return { error: "Akses ditolak." };
+  if (period.status !== "sent_to_owner") {
+    return { error: "Payroll ini tidak dalam status menunggu review." };
+  }
+
+  const now = new Date().toISOString();
+
+  // Auto-lock: approve sekaligus lock
+  const { error: updateError } = await supabaseAdmin
+    .from("payroll_periods")
+    .update({
+      status: "locked",
+      approved_by_user_id: user.id,
+      approved_at: now,
+      updated_at: now,
+    })
+    .eq("id", periodId);
+
+  if (updateError) return { error: `Gagal menyetujui: ${updateError.message}` };
+
+  // Log ke payroll_unlock_events sebagai audit trail
+  await supabaseAdmin
+    .from("payroll_unlock_events")
+    .insert({
+      tenant_apotek_id: active.tenantId,
+      payroll_period_id: periodId,
+      event_type: "lock",
+      reason: "Disetujui dan dikunci oleh owner.",
+      actor_user_id: user.id,
+    })
+    .then(() => {/* fire and forget */});
+
+  await writeAuditLog(supabase, {
+    tenantApotekId: active.tenantId,
+    actorUserId: user.id,
+    entityType: "payroll_periods",
+    entityId: periodId,
+    action: "payroll_approved_and_locked",
+    newValue: { status: "locked", approved_by: user.id },
+  });
+
+  revalidatePath("/owner/payroll");
+  return { success: true, message: "Payroll disetujui dan terkunci." };
+}
+
+export async function ownerRequestRevisionAction(
+  _prev: { success?: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ success?: boolean; error?: string; message?: string }> {
+  const session = await getSessionContext();
+  const active = session?.activeMembership;
+  if (!session || !active || active.role !== "owner") {
+    return { error: "Akses ditolak." };
+  }
+
+  const periodId = (formData.get("periodId") as string)?.trim();
+  const reason = (formData.get("reason") as string)?.trim();
+
+  if (!periodId) return { error: "Data tidak lengkap." };
+  if (!reason || reason.length < 5) return { error: "Alasan revisi minimal 5 karakter." };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Tidak terautentikasi." };
+
+  const supabaseAdmin = createAdminClient();
+
+  const { data: period } = await supabaseAdmin
+    .from("payroll_periods")
+    .select("id, status, tenant_apotek_id")
+    .eq("id", periodId)
+    .maybeSingle();
+
+  if (!period) return { error: "Data payroll tidak ditemukan." };
+  if (period.tenant_apotek_id !== active.tenantId) return { error: "Akses ditolak." };
+  if (period.status !== "sent_to_owner") {
+    return { error: "Payroll ini tidak dalam status menunggu review." };
+  }
+
+  const now = new Date().toISOString();
+
+  const { error: updateError } = await supabaseAdmin
+    .from("payroll_periods")
+    .update({
+      status: "revision_requested_by_owner",
+      notes: reason,
+      updated_at: now,
+    })
+    .eq("id", periodId);
+
+  if (updateError) return { error: `Gagal meminta revisi: ${updateError.message}` };
+
+  await writeAuditLog(supabase, {
+    tenantApotekId: active.tenantId,
+    actorUserId: user.id,
+    entityType: "payroll_periods",
+    entityId: periodId,
+    action: "payroll_revision_requested",
+    newValue: { status: "revision_requested_by_owner", reason },
+  });
+
+  revalidatePath("/owner/payroll");
+  return { success: true, message: "Permintaan revisi berhasil dikirim ke BBA." };
 }

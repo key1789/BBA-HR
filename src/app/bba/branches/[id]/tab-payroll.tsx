@@ -98,12 +98,33 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
 
   const handleSelectUser = (user: any) => {
     if (isDirty) {
-      if (!confirm("🚨 PERINGATAN 🚨\nAnda memiliki perubahan gaji yang belum disimpan. Yakin ingin pindah tanpa menyimpan?")) {
-        return;
-      }
+      setPendingNav({ type: "user", user });
+      return;
     }
     setSelectedUser(user);
     loadUserConfig(user);
+  };
+
+  const handleClose = () => {
+    if (isDirty) {
+      setPendingNav({ type: "close" });
+      return;
+    }
+    setSelectedUser(null);
+  };
+
+  const executePendingNav = () => {
+    if (!pendingNav) return;
+    if (pendingNav.type === "close") {
+      setSelectedUser(null);
+      setIsDirty(false);
+    } else if (pendingNav.type === "user") {
+      setSelectedUser(pendingNav.user);
+      loadUserConfig(pendingNav.user);
+    } else if (pendingNav.type === "copy") {
+      setCopyTargetUser(pendingNav.user);
+    }
+    setPendingNav(null);
   };
 
   const setter = (setFn: any) => (val: any) => {
@@ -131,12 +152,17 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
     setIsDirty(true);
   };
 
+  // ── Unsaved-changes warning modal ────────────────────────────────────────────
+  // "close" = klik Tutup, any = pindah ke user lain, "copy" = buka copy modal
+  const [pendingNav, setPendingNav] = useState<{ type: "user"; user: any } | { type: "close" } | { type: "copy"; user: any } | null>(null);
+
   // ── Copy-from state ──────────────────────────────────────────────────────────
   const [copyTargetUser, setCopyTargetUser] = useState<any>(null);
 
   const handleOpenCopyModal = (user: any) => {
     if (isDirty && selectedUser && selectedUser.id !== user.id) {
-      if (!confirm("Ada perubahan yang belum disimpan pada pegawai ini. Lanjutkan?")) return;
+      setPendingNav({ type: "copy", user });
+      return;
     }
     setCopyTargetUser(user);
   };
@@ -373,7 +399,7 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
                       >
                         {isPending ? "Menyimpan..." : "Simpan"}
                       </button>
-                      <button type="button" onClick={() => handleSelectUser(null)} className="text-[10px] font-black text-slate-400 uppercase hover:text-rose-500 transition-colors">Tutup</button>
+                      <button type="button" onClick={handleClose} className="text-[10px] font-black text-slate-400 uppercase hover:text-rose-500 transition-colors">Tutup</button>
                     </div>
                   </div>
 
@@ -642,6 +668,58 @@ export function TabPayroll({ branchId, users, payrollConfigs }: { branchId: stri
         </AnimatePresence>
       </div>
     </div>
+
+      {/* Unsaved changes warning modal */}
+      {pendingNav && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            onClick={() => setPendingNav(null)}
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: "spring", damping: 30, stiffness: 400 }}
+            className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden"
+          >
+            <div className="p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-amber-50 flex items-center justify-center shrink-0">
+                  <AlertCircle size={22} className="text-amber-500" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-sm">Perubahan Belum Disimpan</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                    {selectedUser?.app_users?.full_name}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed bg-amber-50/60 border border-amber-100 rounded-xl p-3">
+                Konfigurasi gaji yang sudah diubah belum disimpan. Jika dilanjutkan, perubahan akan hilang.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingNav(null)}
+                  className="flex-1 px-3 py-2.5 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={executePendingNav}
+                  className="flex-1 px-3 py-2.5 rounded-xl font-black text-sm text-white bg-amber-500 hover:bg-amber-600 transition-colors"
+                >
+                  Buang Perubahan
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>,
+        document.body
+      )}
 
       {/* Copy-from modal */}
       {copyTargetUser && typeof document !== "undefined" && createPortal(

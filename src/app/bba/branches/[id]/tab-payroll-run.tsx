@@ -12,8 +12,12 @@ import {
   CheckCircle2,
   AlertTriangle,
   Sparkles,
+  Send,
+  Lock,
+  Clock,
+  MessageSquareWarning,
 } from "lucide-react";
-import { getPayrollRunDataAction, savePayrollRunAction } from "./actions";
+import { getPayrollRunDataAction, savePayrollRunAction, submitPayrollToOwnerAction } from "./actions";
 import { toast } from "sonner";
 import { isBranchOperationalPersonnel } from "@/lib/branch-personnel";
 
@@ -55,9 +59,10 @@ export function TabPayrollRun({
   const [isAbsensiEnabled, setIsAbsensiEnabled] = useState(false);
   const [attendanceCounts, setAttendanceCounts] = useState<Record<string, number>>({});
   const [hariMasukOverrides, setHariMasukOverrides] = useState<Record<string, number>>({});
-  const [existingPeriod, setExistingPeriod] = useState<{ id: string; status: string; submitted_at: string | null } | null>(null);
+  const [existingPeriod, setExistingPeriod] = useState<{ id: string; status: string; submitted_at: string | null; notes: string | null } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const [isSubmitting, startSubmitTransition] = useTransition();
 
   const filteredUsers = users.filter((u) => isBranchOperationalPersonnel(u));
 
@@ -178,6 +183,29 @@ export function TabPayrollRun({
     });
   };
 
+  const handleSubmitToOwner = () => {
+    const fd = new FormData();
+    fd.set("branchId", branchId);
+    fd.set("month", String(currentMonth));
+    fd.set("year", String(currentYear));
+    startSubmitTransition(async () => {
+      const result = await submitPayrollToOwnerAction(null, fd);
+      if (result.error) {
+        toast.error(result.error);
+      } else if (result.success) {
+        toast.success(result.message ?? "Terkirim");
+        await loadData();
+      }
+    });
+  };
+
+  const periodStatus = existingPeriod?.status ?? null;
+  const isLocked = periodStatus === "locked";
+  const isSentToOwner = periodStatus === "sent_to_owner";
+  const isRevisionRequested = periodStatus === "revision_requested_by_owner";
+  const canEdit = !isLocked && !isSentToOwner;
+  const canSubmit = periodStatus === "draft_bba" || isRevisionRequested;
+
   const grandTotal = filteredUsers.reduce(
     (sum, u) => sum + calcRow(u.app_users.id).netTotal,
     0,
@@ -214,25 +242,57 @@ export function TabPayrollRun({
             Kalkulasi gaji berdasarkan konfigurasi tiap pegawai dan hari masuk bulan ini.
           </p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {existingPeriod ? (
+        <div className="flex items-center gap-3 shrink-0 flex-wrap justify-end">
+          {/* Status badge */}
+          {isLocked && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold">
-              <CheckCircle2 size={12} /> Tersimpan (draft)
+              <Lock size={12} /> Terkunci (Disetujui)
             </div>
-          ) : (
+          )}
+          {isSentToOwner && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 text-sky-700 border border-sky-200 rounded-xl text-xs font-bold">
+              <Clock size={12} /> Menunggu Review Owner
+            </div>
+          )}
+          {isRevisionRequested && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold">
+              <MessageSquareWarning size={12} /> Revisi Diminta
+            </div>
+          )}
+          {periodStatus === "draft_bba" && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold">
+              <AlertTriangle size={12} /> Draft
+            </div>
+          )}
+          {!existingPeriod && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 text-slate-500 border border-slate-200 rounded-xl text-xs font-bold">
               <AlertTriangle size={12} /> Belum disimpan
             </div>
           )}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isPending}
-            className="px-5 py-2.5 bg-sky-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-sky-700 transition-colors disabled:opacity-60 flex items-center gap-2"
-          >
-            {isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-            {existingPeriod ? "Perbarui" : "Simpan Draft"}
-          </button>
+
+          {/* Action buttons */}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isPending}
+              className="px-4 py-2.5 bg-sky-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-sky-700 transition-colors disabled:opacity-60 flex items-center gap-2"
+            >
+              {isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+              {existingPeriod ? "Perbarui Draft" : "Simpan Draft"}
+            </button>
+          )}
+          {canSubmit && existingPeriod && (
+            <button
+              type="button"
+              onClick={handleSubmitToOwner}
+              disabled={isSubmitting}
+              className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center gap-2"
+            >
+              {isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+              {isRevisionRequested ? "Kirim Ulang" : "Kirim ke Owner"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -253,6 +313,25 @@ export function TabPayrollRun({
           ? "Addon Absensi aktif — hari masuk diisi otomatis dari rekap absensi bulan ini. Kamu tetap bisa ubah manual jika perlu."
           : "Addon Absensi tidak aktif — isi hari masuk secara manual untuk setiap pegawai."}
       </div>
+
+      {/* Revision reason banner */}
+      {isRevisionRequested && existingPeriod?.notes && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl border bg-rose-50 border-rose-100 text-rose-800">
+          <MessageSquareWarning size={16} className="text-rose-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-black uppercase tracking-widest mb-1">Alasan Revisi dari Owner</p>
+            <p className="text-xs font-medium leading-relaxed">{existingPeriod.notes}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Lock banner */}
+      {isLocked && (
+        <div className="flex items-center gap-3 p-4 rounded-2xl border bg-emerald-50 border-emerald-100 text-emerald-800">
+          <Lock size={16} className="text-emerald-500 shrink-0" />
+          <p className="text-xs font-bold">Payroll bulan ini sudah disetujui owner dan terkunci. Data tidak bisa diubah.</p>
+        </div>
+      )}
 
       {/* Table */}
       <GlassCard variant="light" className="p-0 overflow-hidden">
@@ -303,13 +382,14 @@ export function TabPayrollRun({
                           min={0}
                           max={31}
                           value={getHariMasuk(uid)}
+                          disabled={!canEdit}
                           onChange={(e) =>
                             setHariMasukOverrides((prev) => ({
                               ...prev,
                               [uid]: Math.max(0, Number(e.target.value) || 0),
                             }))
                           }
-                          className="w-16 text-center px-2 py-1.5 border border-slate-200 rounded-xl font-black text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400"
+                          className="w-16 text-center px-2 py-1.5 border border-slate-200 rounded-xl font-black text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         {auto && (
                           <span className="text-[9px] font-bold text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded-full border border-sky-100">

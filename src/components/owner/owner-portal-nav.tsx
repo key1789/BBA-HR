@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { LinkPendingHint } from "@/components/shared/link-pending-hint";
 import { usePathname } from "next/navigation";
-import { BarChart3, ClipboardList, Users } from "lucide-react";
+import { BarChart3, ClipboardList, Users, Banknote } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { path: "/owner/penjualan-kinerja", label: "Penjualan & kinerja", Icon: BarChart3 },
   { path: "/owner/ringkasan-bonus", label: "Ringkasan & bonus", Icon: ClipboardList },
   { path: "/owner/data-karyawan", label: "Data per karyawan", Icon: Users },
+  { path: "/owner/payroll", label: "Payroll Gaji", Icon: Banknote },
 ] as const;
 
 function isActive(pathname: string, path: string) {

@@ -387,17 +387,44 @@ function RaporTab(props: Props) {
       {/* THP Rapor */}
       {hasBonus && thpData && (
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-          <SectionHeader icon={<Wallet size={14} className="text-emerald-600" />} label="THP Rapor" />
+          <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wallet size={14} className="text-emerald-600" />
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">THP Rapor</p>
+            </div>
+            {thpData.source === "payroll_run" ? (
+              <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5 uppercase tracking-wide">
+                {thpData.periodStatus === "locked" ? "Final · Terkunci" : "Dari Payroll Run"}
+              </span>
+            ) : (
+              <span className="text-[9px] font-black text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 uppercase tracking-wide">
+                Estimasi
+              </span>
+            )}
+          </div>
           <div className="divide-y divide-slate-100">
-            {thpData.base          > 0 && <LineItem label="Gaji Pokok"            value={IDR.format(thpData.base)}          bold />}
-            {thpData.posAllowance  > 0 && <LineItem label="+ Tunjangan Jabatan"   value={IDR.format(thpData.posAllowance)}  indent />}
-            {thpData.mealAllowance > 0 && <LineItem label="+ Tunjangan Makan"     value={IDR.format(thpData.mealAllowance)} indent />}
-            {thpData.transAllowance> 0 && <LineItem label="+ Tunjangan Transport" value={IDR.format(thpData.transAllowance)}indent />}
-            {thpData.bonus        !== 0 && <LineItem label="Total Bonus"           value={IDR.format(thpData.bonus)}         bold color="emerald" />}
-            {(thpData.customAdj as any[]).map((adj: any, i: number) => (
-              <LineItem key={i} label={`${adj.type === "addition" ? "+" : "−"} ${adj.name}`} value={IDR.format(Number(adj.amount ?? 0))} indent color={adj.type === "addition" ? undefined : "rose"} />
-            ))}
-            {thpData.bpjsTotal > 0 && <LineItem label="− Potongan BPJS" value={IDR.format(thpData.bpjsTotal)} bold color="rose" />}
+            {thpData.source === "payroll_run" ? (
+              /* Actual payroll run data — allowance & deduction are combined totals */
+              <>
+                {thpData.base       > 0 && <LineItem label="Gaji Pokok"   value={IDR.format(thpData.base)}       bold />}
+                {thpData.allowance  > 0 && <LineItem label="+ Tunjangan"  value={IDR.format(thpData.allowance)}  indent />}
+                {thpData.deduction  > 0 && <LineItem label="− Potongan"   value={IDR.format(thpData.deduction)}  bold color="rose" />}
+                {thpData.bonus     !== 0 && <LineItem label="Total Bonus"  value={IDR.format(thpData.bonus)}      bold color="emerald" />}
+              </>
+            ) : (
+              /* Estimate from payroll config — full breakdown */
+              <>
+                {thpData.base           > 0 && <LineItem label="Gaji Pokok"            value={IDR.format(thpData.base)}           bold />}
+                {thpData.posAllowance   > 0 && <LineItem label="+ Tunjangan Jabatan"   value={IDR.format(thpData.posAllowance)}   indent />}
+                {thpData.mealAllowance  > 0 && <LineItem label="+ Tunjangan Makan"     value={IDR.format(thpData.mealAllowance)}  indent />}
+                {thpData.transAllowance > 0 && <LineItem label="+ Tunjangan Transport" value={IDR.format(thpData.transAllowance)} indent />}
+                {thpData.bonus         !== 0 && <LineItem label="Total Bonus"           value={IDR.format(thpData.bonus)}          bold color="emerald" />}
+                {(thpData.customAdj as any[] ?? []).map((adj: any, i: number) => (
+                  <LineItem key={i} label={`${adj.type === "addition" ? "+" : "−"} ${adj.name}`} value={IDR.format(Number(adj.amount ?? 0))} indent color={adj.type === "addition" ? undefined : "rose"} />
+                ))}
+                {thpData.bpjsTotal > 0 && <LineItem label="− Potongan BPJS" value={IDR.format(thpData.bpjsTotal)} bold color="rose" />}
+              </>
+            )}
             <div className="px-5 py-4 flex items-center justify-between bg-emerald-600 rounded-b-3xl">
               <p className="text-[10px] font-black uppercase tracking-widest text-emerald-100">Take Home Pay</p>
               <p className="text-lg font-black text-white">{IDR.format(thpData.netPay)}</p>

@@ -243,7 +243,7 @@ export default async function CrewRaporPage({
         name:   nameById.get(uid) ?? "—",
         omzet:  v.omzet,
         atv:    v.trx  > 0 ? v.omzet / v.trx  : 0,
-        atu:    v.prod > 0 ? v.trx   / v.prod  : 0,
+        atu:    v.trx  > 0 ? v.prod  / v.trx   : 0,
         days:   v.days,
       }))
       .sort((a, b) => b.omzet - a.omzet);
@@ -260,9 +260,44 @@ export default async function CrewRaporPage({
     lateFlag: Number(row.late_flag_count ?? 0),
   }));
 
-  // ── Derived: THP ──
+  // ── THP: cek payroll_items tersimpan, fallback ke estimasi config ──
+  let payrollItem: { base_salary: number; allowance: number; deduction: number; net_salary: number } | null = null;
+  let payrollPeriodStatus: string | null = null;
+
+  const { data: payPeriod } = await supabaseAdmin
+    .from("payroll_periods")
+    .select("id, status")
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_start", startDate)
+    .eq("period_end", endDate)
+    .maybeSingle();
+
+  if (payPeriod) {
+    payrollPeriodStatus = payPeriod.status;
+    const { data: payItem } = await supabaseAdmin
+      .from("payroll_items")
+      .select("base_salary, allowance, deduction, net_salary")
+      .eq("payroll_period_id", payPeriod.id)
+      .eq("employee_profile_id", userId)
+      .maybeSingle();
+    payrollItem = payItem ?? null;
+  }
+
   let thpData: any = null;
-  if (payrollConfig && totalBonus !== null) {
+  if (payrollItem && totalBonus !== null) {
+    // Data aktual dari payroll run yang sudah disimpan
+    thpData = {
+      source: "payroll_run" as const,
+      periodStatus: payrollPeriodStatus,
+      base: Number(payrollItem.base_salary),
+      allowance: Number(payrollItem.allowance),
+      deduction: Number(payrollItem.deduction),
+      netFromPayroll: Number(payrollItem.net_salary),
+      bonus: totalBonus,
+      netPay: Number(payrollItem.net_salary) + totalBonus,
+    };
+  } else if (payrollConfig && totalBonus !== null) {
+    // Estimasi dari konfigurasi gaji (makan/transport belum dikalikan hari masuk)
     const base           = Number(payrollConfig.base_salary         ?? 0);
     const posAllowance   = Number(payrollConfig.position_allowance  ?? 0);
     const mealAllowance  = Number(payrollConfig.meal_allowance      ?? 0);
@@ -273,7 +308,10 @@ export default async function CrewRaporPage({
       s + (a.type === "addition" ? Number(a.amount ?? 0) : -Number(a.amount ?? 0)), 0);
     const grossPay = base + posAllowance + mealAllowance + transAllowance + totalBonus + customNet;
     const netPay   = grossPay - bpjsTotal;
-    thpData = { base, posAllowance, mealAllowance, transAllowance, bonus: totalBonus, bpjsTotal, customAdj, grossPay, netPay };
+    thpData = {
+      source: "estimate" as const,
+      base, posAllowance, mealAllowance, transAllowance, bonus: totalBonus, bpjsTotal, customAdj, grossPay, netPay,
+    };
   }
 
   return (

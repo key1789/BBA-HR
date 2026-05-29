@@ -1738,7 +1738,8 @@ export type PayrollRunItem = {
   positionAllowance: number;
   mealRate: number;
   mealTotal: number;
-  transport: number;
+  transportRate: number;
+  transportTotal: number;
   bpjs: number;
   customAdditions: number;
   customDeductions: number;
@@ -1754,7 +1755,7 @@ export async function getPayrollRunDataAction(
   | {
       isAbsensiEnabled: boolean;
       attendanceCounts: Record<string, number>;
-      existingPeriod: { id: string; status: string; submitted_at: string | null } | null;
+      existingPeriod: { id: string; status: string; submitted_at: string | null; notes: string | null } | null;
     }
 > {
   const gate = await assertBbaAccess();
@@ -1795,7 +1796,7 @@ export async function getPayrollRunDataAction(
 
   const { data: period } = await supabaseAdmin
     .from("payroll_periods")
-    .select("id, status, submitted_at")
+    .select("id, status, submitted_at, notes")
     .eq("tenant_apotek_id", branchId)
     .eq("period_start", startDate)
     .eq("period_end", endDate)
@@ -1840,6 +1841,22 @@ export async function savePayrollRunAction(
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
   const now = new Date().toISOString();
 
+  // Cek status period yang sudah ada — jangan izinkan edit jika sudah dikirim/terkunci
+  const { data: existingPeriod } = await supabaseAdmin
+    .from("payroll_periods")
+    .select("id, status")
+    .eq("tenant_apotek_id", branchId)
+    .eq("period_start", startDate)
+    .eq("period_end", endDate)
+    .maybeSingle();
+
+  if (existingPeriod?.status === "sent_to_owner") {
+    return { error: "Payroll sudah dikirim ke owner dan menunggu review. Tidak bisa diubah." };
+  }
+  if (existingPeriod?.status === "locked") {
+    return { error: "Payroll sudah terkunci (disetujui owner). Hubungi BBA Admin untuk membuka kunci." };
+  }
+
   const { data: period, error: periodError } = await supabaseAdmin
     .from("payroll_periods")
     .upsert(
@@ -1847,7 +1864,8 @@ export async function savePayrollRunAction(
         tenant_apotek_id: branchId,
         period_start: startDate,
         period_end: endDate,
-        status: "draft",
+        // Preserve status jika sudah ada (misal: revision_requested_by_owner)
+        status: existingPeriod?.status ?? "draft_bba",
         submitted_by_user_id: user.id,
         submitted_at: now,
       },
@@ -1858,6 +1876,7 @@ export async function savePayrollRunAction(
 
   if (periodError) return { error: `Gagal membuat periode: ${periodError.message}` };
 
+  // Bulk-collect payroll items then upsert per-item
   for (const item of items) {
     const { error: itemError } = await supabaseAdmin
       .from("payroll_items")
@@ -1866,7 +1885,7 @@ export async function savePayrollRunAction(
           payroll_period_id: period.id,
           employee_profile_id: item.userId,
           base_salary: item.baseSalary,
-          allowance: item.positionAllowance + item.mealTotal + item.transport + item.customAdditions,
+          allowance: item.positionAllowance + item.mealTotal + item.transportTotal + item.customAdditions,
           deduction: item.bpjs + item.customDeductions,
         },
         { onConflict: "payroll_period_id,employee_profile_id" },
@@ -1876,5 +1895,59 @@ export async function savePayrollRunAction(
   }
 
   revalidatePath(`/bba/branches/${branchId}`);
-  return { success: true, message: "Data payroll bulanan berhasil disimpan." };
+  revalidatePath(`/owner/payroll`);
+  return { success: true, message: "Data payroll bulanan berhasil disimpan sebagai draft." };
+}
+
+export async function submitPayrollToOwnerAction(
+  _prev: { success?: boolean; error?: string } | null,
+  formData: FormData,
+): Promise<{ success?: boolean; error?: string; message?: string }> {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Tidak terautentikasi." };
+
+  const supabaseAdmin = createAdminClient();
+
+  const branchId = (formData.get("branchId") as string)?.trim();
+  const month = Number(formData.get("month"));
+  const year = Number(formData.get("year"));
+
+  if (!branchId || !month || !year) return { error: "Data tidak lengkap." };
+
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+  const { data: period } = await supabaseAdmin
+    .from("payroll_periods")
+    .select("id, status")
+    .eq("tenant_apotek_id", branchId)
+    .eq("period_start", startDate)
+    .eq("period_end", endDate)
+    .maybeSingle();
+
+  if (!period) return { error: "Data payroll belum disimpan. Simpan draft terlebih dahulu." };
+  if (period.status === "sent_to_owner") return { error: "Payroll sudah dikirim ke owner, menunggu review." };
+  if (period.status === "locked") return { error: "Payroll sudah terkunci." };
+  if (period.status !== "draft_bba" && period.status !== "revision_requested_by_owner") {
+    return { error: "Status payroll tidak valid untuk dikirim." };
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from("payroll_periods")
+    .update({ status: "sent_to_owner", notes: null, updated_at: new Date().toISOString() })
+    .eq("id", period.id);
+
+  if (updateError) return { error: `Gagal mengirim: ${updateError.message}` };
+
+  await logActivity(supabaseAdmin, branchId, user.id, "payroll_periods", period.id, "UPDATE",
+    { status: period.status }, { status: "sent_to_owner" });
+
+  revalidatePath(`/bba/branches/${branchId}`);
+  revalidatePath(`/owner/payroll`);
+  return { success: true, message: "Payroll berhasil dikirim ke owner untuk review." };
 }
