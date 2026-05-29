@@ -259,33 +259,7 @@ export default async function AdminVerifikasiPage({
 
   return (
     <section className="space-y-4">
-      <div className="bg-white rounded-3xl p-6 shadow-md border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-20">
-        <div>
-          <PageHeader
-            title="Admin - Verifikasi Data"
-            subtitle="Gate QA cabang: proses submission yang masih menunggu keputusan admin sebelum data masuk ke jalur audit bulanan BBA."
-          />
-          <p className="mt-3 max-w-3xl text-xs leading-relaxed text-slate-600">
-            <span className="font-semibold text-slate-700">Bedakan tiga lapisan:</span>{" "}
-            <strong className="font-semibold text-slate-700">Antrian Anda</strong> berisi status{" "}
-            <span className="whitespace-nowrap">Submitted / Edited by Admin</span>
-            — belum dianggap final oleh cabang. Setelah Anda menyetujui (Approved) atau menolak (Rejected),
-            submission tidak lagi menunggu gate ini.
-            Tahap{" "}
-            <strong className="font-semibold text-slate-700">audit &amp; penilaian BBA</strong> dilakukan di portal Super Admin BBA.
-            <strong className="font-semibold text-slate-700"> Publish rapor bulanan</strong>{" "}
-            (termasuk pratinjau THP/bonus) adalah langkah terpisah yang mengunci penyesuaian setelah terbit.
-            {queueTotal > 0 ? (
-              <>
-                {" "}
-                Saat ini ada{" "}
-                <span className="font-semibold text-slate-800">{numberFormatter.format(queueTotal)}</span> submission dalam filter
-                aktif yang masuk antrian verifikasi.
-              </>
-            ) : null}
-          </p>
-        </div>
-      </div>
+      <PageHeader title="Verifikasi Data" />
       <InlineAlert
         tone={reminderTone === "rose" ? "error" : reminderTone === "amber" ? "warning" : "success"}
         message={reminderText}
