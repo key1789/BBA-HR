@@ -351,15 +351,11 @@ export function TabAddon({
                       <button
                         type="button"
                         onClick={() => {
-                          const tabMap: Record<string, string> = {
-                            payroll: "payroll",
-                            absensi_shift: "jadwal",
-                          };
-                          onNavigateToTab(tabMap[card.key]);
+                          onNavigateToTab("operasional");
                         }}
                         className="flex items-center gap-1.5 text-[10px] font-black text-sky-600 hover:text-sky-800 uppercase tracking-widest transition-all group"
                       >
-                        {card.key === "absensi_shift" ? "Kelola Jadwal & Absensi" : "Konfigurasi Gaji Pegawai"}
+                        {card.key === "absensi_shift" ? "Atur di Shift & Absensi" : "Atur di Shift & Payroll"}
                         <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
                       </button>
                     ) : (

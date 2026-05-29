@@ -4,7 +4,7 @@
 import { useState, useTransition, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Info, Users, Target, Puzzle, ArrowLeft, Clock, CalendarDays, Loader2, Banknote, Wand2, CheckSquare, Hash, MapPin, KeyRound } from "lucide-react";
+import { Info, Users, Target, Puzzle, ArrowLeft, Clock, CalendarDays, Loader2, Wand2, CheckSquare, Hash, MapPin, KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { TabOverview } from "./tab-overview";
@@ -12,9 +12,7 @@ import { TabPegawai } from "./tab-pegawai";
 import { TabKpiV2 } from "@/components/kpi-v2/TabKpiV2";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { TabAddon } from "@/components/branch/tab-addon";
-import { TabShift } from "./tab-shift";
-import { TabPayroll } from "./tab-payroll";
-import { TabJadwalAbsensi } from "./tab-jadwal-absensi";
+import { TabOperasional } from "./tab-operasional";
 import { TabActivity } from "./tab-activity";
 import { TabBranchDeskAdmin } from "./tab-branch-desk-admin";
 import { ScrollText, X } from "lucide-react";
@@ -94,12 +92,10 @@ export function BranchDetailClient({
   const currentTabs = [
     { id: "info", label: "Executive Overview", icon: Info },
     { id: "desk-admin", label: "Akun admin cabang", icon: KeyRound },
-    { id: "shift", label: "Pengaturan shift", icon: Clock },
+    { id: "operasional", label: "Shift, Absensi & Payroll", icon: Clock },
     { id: "pegawai", label: "Manajemen crew", icon: Users },
     { id: "kpi", label: "Target dan KPI", icon: Target },
     { id: "addon", label: "Add-on rules", icon: Puzzle },
-    ...(isAbsensiEnabled ? [{ id: "jadwal", label: "Jadwal & Absensi", icon: CalendarDays }] : []),
-    ...(isPayrollEnabled ? [{ id: "payroll", label: "Setup Payroll", icon: Banknote }] : []),
     { id: "activity", label: "Log aktivitas", icon: ScrollText },
   ];
 
@@ -226,10 +222,21 @@ export function BranchDetailClient({
               />
             )}
 
-            {activeTab === "shift" && <TabShift branchId={branch.id} shifts={shifts} />}
+            {activeTab === "operasional" && (
+              <TabOperasional
+                branchId={branch.id}
+                shifts={shifts}
+                users={users}
+                roster={roster}
+                shiftDefaults={shiftDefaults}
+                payrollConfigs={payrollConfigs}
+                currentMonth={currentMonth}
+                currentYear={currentYear}
+                isAbsensiEnabled={isAbsensiEnabled}
+                isPayrollEnabled={isPayrollEnabled}
+              />
+            )}
             {activeTab === "addon" && <TabAddon branchId={branch.id} addons={addons} products={products} productFokus={productFokus} currentMonth={currentMonth} currentYear={currentYear} onNavigateToTab={setActiveTab} />}
-            {activeTab === "jadwal" && <TabJadwalAbsensi branchId={branch.id} users={users} shifts={shifts} roster={roster} shiftDefaults={shiftDefaults} attendanceLogs={attendanceLogs} currentMonth={currentMonth} currentYear={currentYear} />}
-            {activeTab === "payroll" && <TabPayroll branchId={branch.id} users={users} payrollConfigs={payrollConfigs} />}
             {activeTab === "activity" && <TabActivity logs={activityLogs} users={users} />}
           </motion.div>
         </AnimatePresence>
