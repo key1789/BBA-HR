@@ -8,7 +8,7 @@ import { Info, Users, Target, Puzzle, ArrowLeft, Clock, CalendarDays, Loader2, W
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { TabOverview } from "./tab-overview";
-import { TabKpiV2 } from "@/components/kpi-v2/TabKpiV2";
+import { TabTargetKpi } from "./tab-target-kpi";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { TabAddon } from "@/components/branch/tab-addon";
 import { TabOperasional } from "./tab-operasional";
@@ -80,8 +80,9 @@ export function BranchDetailClient({
     });
   };
 
-  const isPayrollEnabled = addons.find(a => a.addon_key === 'payroll')?.is_enabled ?? false;
-  const isAbsensiEnabled = addons.find(a => a.addon_key === 'absensi_shift')?.is_enabled ?? false;
+  const isPayrollEnabled       = addons.find(a => a.addon_key === 'payroll')?.is_enabled       ?? false;
+  const isAbsensiEnabled       = addons.find(a => a.addon_key === 'absensi_shift')?.is_enabled  ?? false;
+  const isProductFokusEnabled  = addons.find(a => a.addon_key === 'produk_fokus')?.is_enabled   ?? false;
 
   const yearOptions = useMemo(() => {
     const y = new Date().getFullYear();
@@ -92,7 +93,7 @@ export function BranchDetailClient({
     { id: "info",       label: "Executive Overview",       icon: Info },
     { id: "tim",        label: "Tim & Akses",              icon: Users },
     { id: "operasional",label: "Shift, Absensi & Payroll", icon: Clock },
-    { id: "kpi",        label: "Target dan KPI",           icon: Target },
+    { id: "kpi",        label: "Target, KPI & Produk Fokus", icon: Target },
     { id: "addon",      label: "Add-on rules",             icon: Puzzle },
     { id: "activity",   label: "Log aktivitas",            icon: ScrollText },
   ];
@@ -209,13 +210,16 @@ export function BranchDetailClient({
             {activeTab === "info" && <TabOverview branch={branch} users={users} kpi={kpi} addons={addons} shifts={shifts} products={products} productFokus={productFokus} roster={roster} payrollConfigs={payrollConfigs} availableOwners={availableOwners} />}
             {activeTab === "tim" && <TabTimAkses branch={branch} users={users} />}
             {activeTab === "kpi" && (
-              <TabKpiV2
+              <TabTargetKpi
                 branchId={branch.id}
                 currentMonth={currentMonth}
                 currentYear={currentYear}
                 users={users}
-                initialConfig={kpiConfigV2}
+                kpiConfigV2={kpiConfigV2}
+                products={products}
+                productFokus={productFokus}
                 canEditKpi={canEditKpi}
+                isProductFokusEnabled={isProductFokusEnabled}
               />
             )}
 
