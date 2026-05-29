@@ -2,7 +2,7 @@ import { getSessionContext } from "@/lib/auth-context";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LogOut, ShieldCheck, UserCircle2 } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { AdminBottomNav } from "./admin-bottom-nav";
 
@@ -42,14 +42,6 @@ export default async function AdminLayout({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* TOMBOL PINDAH KE MODE CREW */}
-          <Link
-            href="/crew/dashboard"
-            className="flex items-center gap-2 bg-brand-emerald/10 text-brand-emerald px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter border border-brand-emerald/20 hover:bg-brand-emerald/20 transition-all"
-          >
-            <UserCircle2 size={16} /> Mode Crew
-          </Link>
-
           <form action={handleLogout}>
             <button type="submit" className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors">
               <LogOut size={20} />

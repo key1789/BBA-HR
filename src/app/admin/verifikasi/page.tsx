@@ -37,7 +37,17 @@ type VerificationQueueRow = {
   user: { full_name: string } | { full_name: string }[] | null;
 };
 const PAGE_SIZE = 15;
-const FILTERABLE_STATUS = ["all", "submitted"] as const;
+const FILTERABLE_STATUS = ["all", "submitted", "edited_by_admin", "reject", "approved"] as const;
+
+// Urutan prioritas: item yang butuh aksi admin muncul paling atas.
+const STATUS_PRIORITY: Record<string, number> = {
+  submitted:        0,
+  edited_by_admin:  1,
+  reject:           2,
+  draft:            3,
+  missing_submission: 4,
+  approved:         5,
+};
 
 function getSlaBadge(submissionDate: string, todayDateKey: string) {
   const todayMs = Date.parse(`${todayDateKey}T00:00:00Z`);
@@ -195,9 +205,10 @@ export default async function AdminVerifikasiPage({
   }
 
   const rows = [...rowsRaw].sort((a, b) => {
-    const rank = (status: string) => (status === "reject" ? 0 : 1);
-    const statusDiff = rank(a.status) - rank(b.status);
-    if (statusDiff !== 0) return statusDiff;
+    const priorityA = STATUS_PRIORITY[a.status] ?? 9;
+    const priorityB = STATUS_PRIORITY[b.status] ?? 9;
+    if (priorityA !== priorityB) return priorityA - priorityB;
+    // Dalam grup yang sama: tanggal terlama dulu (mendekati SLA terlewat)
     return a.submission_date.localeCompare(b.submission_date);
   });
   const rowsByDate = rows.reduce<Record<string, VerificationQueueRow[]>>((acc, row) => {
@@ -355,8 +366,11 @@ export default async function AdminVerifikasiPage({
             defaultValue={selectedStatus}
             className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
           >
-            <option value="all">Semua</option>
-            <option value="submitted">Submitted</option>
+            <option value="all">Semua (prioritas aksi)</option>
+            <option value="submitted">Menunggu Verifikasi</option>
+            <option value="edited_by_admin">Diedit Admin</option>
+            <option value="reject">Ditolak</option>
+            <option value="approved">Disetujui</option>
           </select>
         </label>
         <label className="min-w-[140px] text-sm text-slate-700 md:min-w-0">

@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ClipboardCheck, BarChart3, Megaphone, Trophy } from "lucide-react";
+import { Home, ClipboardCheck, BarChart3, Trophy } from "lucide-react";
 
 const NAV_ITEMS = [
   { name: "Dashboard",   path: "/admin/dashboard",   Icon: Home,           showBadge: false },
   { name: "Verifikasi",  path: "/admin/verifikasi",  Icon: ClipboardCheck, showBadge: true  },
   { name: "Laporan",     path: "/admin/laporan",     Icon: BarChart3,      showBadge: false },
-  { name: "Pengumuman",  path: "/admin/pengumuman",  Icon: Megaphone,      showBadge: false },
   { name: "Leaderboard", path: "/admin/leaderboard", Icon: Trophy,         showBadge: false },
 ] as const;
 

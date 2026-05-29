@@ -6,11 +6,11 @@ import { GlassCard } from "@/components/shared/glass-card";
 import { AnimatedPage } from "@/components/shared/animated-page";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { 
+import {
   ShieldCheck, ClipboardCheck, CheckCircle2,
   AlertCircle, BarChart3,
-  MessageSquareHeart, Clock, Activity,
-  ArrowRight, PenTool
+  Star, FileBarChart2, Clock, Activity,
+  ArrowRight,
 } from "lucide-react";
 
 export default async function AdminDashboardPage() {
@@ -212,17 +212,6 @@ export default async function AdminDashboardPage() {
           </div>
         </Link>
 
-        <Link href="/admin/input-harian" className="group block">
-          <div className="bg-white border border-slate-200 rounded-3xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-sky-200 hover:shadow-md transition-all aspect-square relative overflow-hidden">
-            <div className="absolute inset-0 bg-sky-50/30 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="w-14 h-14 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center group-hover:bg-sky-600 group-hover:text-white transition-all shadow-sm mb-3 relative z-10">
-              <PenTool size={28} />
-            </div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 relative z-10">Operasional</p>
-            <p className="text-sm font-black text-slate-800 uppercase relative z-10 leading-tight mt-0.5">Input Harian</p>
-          </div>
-        </Link>
-
         <Link href="/admin/laporan" className="group block">
           <div className="bg-white border border-slate-200 rounded-3xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-emerald-200 hover:shadow-md transition-all aspect-square relative overflow-hidden">
             <div className="absolute inset-0 bg-emerald-50/30 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -234,14 +223,25 @@ export default async function AdminDashboardPage() {
           </div>
         </Link>
 
-        <Link href="/admin/pengumuman" className="group block">
+        <Link href="/admin/review-pelanggan" className="group block">
           <div className="bg-white border border-slate-200 rounded-3xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-amber-200 hover:shadow-md transition-all aspect-square relative overflow-hidden">
             <div className="absolute inset-0 bg-amber-50/30 opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-all shadow-sm mb-3 relative z-10">
-              <MessageSquareHeart size={28} />
+              <Star size={28} />
             </div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 relative z-10">Info</p>
-            <p className="text-sm font-black text-slate-800 uppercase relative z-10 leading-tight mt-0.5">Pusat Pengumuman</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 relative z-10">Input</p>
+            <p className="text-sm font-black text-slate-800 uppercase relative z-10 leading-tight mt-0.5">Review Pelanggan</p>
+          </div>
+        </Link>
+
+        <Link href="/admin/ringkasan-bulanan" className="group block">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:border-violet-200 hover:shadow-md transition-all aspect-square relative overflow-hidden">
+            <div className="absolute inset-0 bg-violet-50/30 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="w-14 h-14 rounded-2xl bg-violet-100 text-violet-600 flex items-center justify-center group-hover:bg-violet-600 group-hover:text-white transition-all shadow-sm mb-3 relative z-10">
+              <FileBarChart2 size={28} />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 relative z-10">BBA</p>
+            <p className="text-sm font-black text-slate-800 uppercase relative z-10 leading-tight mt-0.5">Ringkasan Bulanan</p>
           </div>
         </Link>
       </div>
