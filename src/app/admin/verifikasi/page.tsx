@@ -10,7 +10,6 @@ import { Input } from "@/components/shared/input";
 import { PageHeader } from "@/components/shared/page-header";
 import { PendingSubmitButton } from "./submit-buttons";
 import { MobileFilterSheet } from "./mobile-filter-sheet";
-import { MobileVerificationDetailModal } from "./mobile-verification-detail-modal";
 import { DirectEditModal } from "./direct-edit-modal";
 import { HelpDrawer } from "@/components/shared/help-drawer";
 import { VERIFIKASI_HELP } from "./help-content";
@@ -220,7 +219,6 @@ export default async function AdminVerifikasiPage({
   }, {});
   const numberFormatter = new Intl.NumberFormat("id-ID");
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
-  const queueTotal = count ?? 0;
   const hasPrev = page > 1;
   const hasNext = page < totalPages;
   const reminderTone =
@@ -270,63 +268,189 @@ export default async function AdminVerifikasiPage({
         from={from}
         to={to}
       />
-      <section className="space-y-3 md:hidden">
+      <section className="space-y-4 md:hidden">
         {rows.length === 0 ? (
           <Card className="rounded-2xl p-4 text-sm text-slate-500">Tidak ada queue verifikasi.</Card>
         ) : (
           Object.entries(rowsByDate).map(([dateKey, dateRows]) => (
-            <Card key={`date-${dateKey}`} className="overflow-hidden rounded-2xl border border-slate-100 shadow-sm">
-              <div className="border-b border-slate-100 bg-indigo-50/50 px-4 py-2">
-                <p className="text-xs font-black uppercase tracking-widest text-indigo-700">{dateKey}</p>
+            <div key={`date-group-${dateKey}`} className="space-y-2.5">
+              {/* Date separator */}
+              <div className="flex items-center gap-2 px-1">
+                <span className="flex-shrink-0 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                  {dateKey}
+                </span>
+                <div className="h-px flex-1 bg-slate-200" />
               </div>
-              <div className="overflow-x-auto">
-                <div className="min-w-[760px]">
-                  <div className="grid grid-cols-[1.4fr_0.8fr_1fr_0.9fr_0.9fr] gap-2 bg-slate-50 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-slate-500">
-                    <span>User</span>
-                    <span>Shift</span>
-                    <span>Total Omzet</span>
-                    <span>Status</span>
-                    <span>Detail</span>
-                  </div>
-                  {dateRows.map((row) => {
-                    return (
-                      <div key={`m-row-${row.id}`} className="border-t border-slate-100 px-4 py-3">
-                        <div className="grid grid-cols-[1.4fr_0.8fr_1fr_0.9fr_0.9fr] items-center gap-2 text-xs">
-                          <span className="font-semibold text-slate-800">
-                            {Array.isArray(row.user) ? row.user[0]?.full_name : row.user?.full_name}
+
+              {dateRows.map((row) => {
+                const userName = Array.isArray(row.user)
+                  ? row.user[0]?.full_name ?? "Tanpa Nama"
+                  : row.user?.full_name ?? "Tanpa Nama";
+                const sla = getSlaBadge(row.submission_date, reminderWindow.dateKey);
+                const focusItems = productsBySubmission.get(row.id) ?? [];
+                const verifs = verificationsBySubmission.get(row.id) ?? [];
+
+                return (
+                  <div key={`card-${row.id}`} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+
+                    {/* ── Body ─────────────────────────────────────── */}
+                    <div className="px-4 pb-3 pt-3.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-slate-800">{userName}</p>
+                          <p className="mt-0.5 text-[11px] text-slate-400">{row.shift_label}</p>
+                        </div>
+                        <span className={`inline-flex flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${getSubmissionStatusBadgeClass(row.status)}`}>
+                          {getSubmissionStatusLabel(row.status)}
+                        </span>
+                      </div>
+
+                      <p className="mt-3 text-2xl font-black tracking-tight text-slate-900">
+                        Rp {numberFormatter.format(Number(row.omzet_total))}
+                      </p>
+
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                        <span className="text-[11px] text-slate-500">
+                          Trx:{" "}
+                          <span className="font-semibold text-slate-700">
+                            {numberFormatter.format(Number(row.transaction_total))}
                           </span>
-                          <span className="text-slate-600">{row.shift_label}</span>
-                          <span className="font-semibold text-slate-800">
-                            {numberFormatter.format(Number(row.omzet_total))}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Produk:{" "}
+                          <span className="font-semibold text-slate-700">
+                            {numberFormatter.format(Number(row.product_total))}
                           </span>
-                          <span
-                            className={`inline-flex w-fit rounded-full px-2 py-1 text-[11px] font-medium ${getSubmissionStatusBadgeClass(row.status)}`}
-                          >
-                            {getSubmissionStatusLabel(row.status)}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          DT:{" "}
+                          <span className="font-semibold text-slate-700">
+                            {numberFormatter.format(Number(row.rejected_customer_total))}
                           </span>
-                          <MobileVerificationDetailModal
-                            row={{
-                              id: row.id,
-                              submission_date: row.submission_date,
-                              user_name: Array.isArray(row.user) ? row.user[0]?.full_name ?? "Tanpa Nama" : row.user?.full_name ?? "Tanpa Nama",
-                              shift_label: row.shift_label,
-                              omzet_total: Number(row.omzet_total),
-                              transaction_total: Number(row.transaction_total),
-                              product_total: Number(row.product_total),
-                              rejected_customer_total: Number(row.rejected_customer_total),
-                              late_reason: row.late_reason,
-                              status: row.status,
-                            }}
-                            focusItems={productsBySubmission.get(row.id) ?? []}
-                            verifications={verificationsBySubmission.get(row.id) ?? []}
-                          />
+                        </span>
+                      </div>
+
+                      <div className="mt-2.5">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${sla.className}`}>
+                          {sla.text}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* ── Action bar ───────────────────────────────── */}
+                    <form className="border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">
+                      <input type="hidden" name="page" value={String(page)} />
+                      <input type="hidden" name="status" value={selectedStatus} />
+                      <input type="hidden" name="from" value={from} />
+                      <input type="hidden" name="to" value={to} />
+                      <div className="flex items-center gap-2">
+                        <PendingSubmitButton
+                          formAction={verifySubmissionAction}
+                          hiddenFields={{ verification: `${row.id}:approve` }}
+                          idleLabel="Setujui"
+                          pendingLabel="..."
+                          className="flex-1 rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white transition-colors active:bg-emerald-700 disabled:opacity-50"
+                        />
+                        <PendingSubmitButton
+                          formAction={verifySubmissionAction}
+                          hiddenFields={{ verification: `${row.id}:reject` }}
+                          idleLabel="Tolak"
+                          pendingLabel="..."
+                          className="flex-1 rounded-lg border border-rose-300 bg-white py-2 text-xs font-bold text-rose-700 transition-colors active:bg-rose-50 disabled:opacity-50"
+                        />
+                        <DirectEditModal
+                          submissionId={row.id}
+                          page={page}
+                          selectedStatus={selectedStatus}
+                          from={from}
+                          to={to}
+                          defaultValues={{
+                            omzetTotal: Number(row.omzet_total),
+                            transactionTotal: Number(row.transaction_total),
+                            productTotal: Number(row.product_total),
+                            rejectedCustomerTotal: Number(row.rejected_customer_total),
+                            lateReason: row.late_reason,
+                          }}
+                        />
+                      </div>
+                    </form>
+
+                    {/* ── Expandable detail ────────────────────────── */}
+                    <details className="group border-t border-slate-100">
+                      <summary className="flex cursor-pointer list-none select-none items-center justify-between px-4 py-2.5">
+                        <span className="text-xs font-semibold text-indigo-600">Lihat detail</span>
+                        <svg
+                          className="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-180"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </summary>
+
+                      <div className="space-y-3 bg-slate-50/50 px-4 pb-4 pt-2">
+                        {row.late_reason?.trim() ? (
+                          <div>
+                            <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                              Alasan Terlambat
+                            </p>
+                            <p className="text-xs text-slate-700">{row.late_reason}</p>
+                          </div>
+                        ) : null}
+
+                        <div>
+                          <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Produk Fokus
+                          </p>
+                          {focusItems.length === 0 ? (
+                            <p className="text-xs text-slate-400">Tidak ada data produk fokus.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {focusItems.map((item, idx) => (
+                                <div key={`fi-${row.id}-${idx}`} className="flex justify-between text-xs">
+                                  <span className="text-slate-600">{item.product_name}</span>
+                                  <span className="font-semibold text-slate-800">
+                                    {numberFormatter.format(item.quantity_sold)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Riwayat Verifikasi
+                          </p>
+                          {verifs.length === 0 ? (
+                            <p className="text-xs text-slate-400">Belum ada riwayat verifikasi.</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {verifs.slice(0, 5).map((v, idx) => (
+                                <div key={`vr-${row.id}-${idx}`} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
+                                  <p className="text-xs font-semibold text-slate-700">
+                                    {getVerificationActionLabel(v.action)}{" "}
+                                    <span className="font-normal text-slate-500">oleh {v.actor_name}</span>
+                                  </p>
+                                  <p className="mt-0.5 text-[11px] text-slate-400">
+                                    {new Date(v.acted_at).toLocaleString("id-ID")}
+                                    {v.error_code ? ` · kode: ${v.error_code}` : ""}
+                                    {v.note ? ` · ${v.note}` : ""}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </Card>
+                    </details>
+
+                  </div>
+                );
+              })}
+            </div>
           ))
         )}
       </section>
