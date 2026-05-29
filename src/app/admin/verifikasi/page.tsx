@@ -343,10 +343,6 @@ export default async function AdminVerifikasiPage({
                             }}
                             focusItems={productsBySubmission.get(row.id) ?? []}
                             verifications={verificationsBySubmission.get(row.id) ?? []}
-                            page={page}
-                            selectedStatus={selectedStatus}
-                            from={from}
-                            to={to}
                           />
                         </div>
                       </div>

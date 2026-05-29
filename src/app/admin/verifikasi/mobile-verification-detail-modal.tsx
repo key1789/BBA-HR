@@ -1,3 +1,9 @@
+const ACTION_LABEL: Record<string, string> = {
+  approve:       "Disetujui",
+  reject:        "Ditolak",
+  edit_directly: "Diedit Admin",
+};
+
 type FocusItem = { product_name: string; quantity_sold: number };
 type VerificationItem = {
   action: string;
@@ -26,10 +32,6 @@ export function MobileVerificationDetailModal({
   };
   focusItems: FocusItem[];
   verifications: VerificationItem[];
-  page: number;
-  selectedStatus: string;
-  from: string;
-  to: string;
 }) {
   const numberFormatter = new Intl.NumberFormat("id-ID");
   return (
@@ -42,6 +44,7 @@ export function MobileVerificationDetailModal({
         <p>Produk: {numberFormatter.format(row.product_total)}</p>
         <p>Pelanggan ditolak: {numberFormatter.format(row.rejected_customer_total)}</p>
         <p>Alasan terlambat: {row.late_reason?.trim() ? row.late_reason : "-"}</p>
+
         <p className="mt-2 font-semibold text-slate-800">Produk Fokus</p>
         {focusItems.length === 0 ? (
           <p className="text-slate-500">Tidak ada detail produk fokus.</p>
@@ -54,6 +57,7 @@ export function MobileVerificationDetailModal({
             ))}
           </ul>
         )}
+
         <p className="mt-2 font-semibold text-slate-800">Riwayat Verifikasi</p>
         {verifications.length === 0 ? (
           <p className="text-slate-500">Belum ada riwayat verifikasi.</p>
@@ -61,11 +65,14 @@ export function MobileVerificationDetailModal({
           <ul className="mt-1 space-y-1">
             {verifications.slice(0, 5).map((v, idx) => (
               <li key={`ver-${idx}`} className="rounded-md bg-slate-50 px-2 py-1">
-                <p>{v.action} oleh {v.actor_name}</p>
+                <p>
+                  <span className="font-semibold">{ACTION_LABEL[v.action] ?? v.action}</span>{" "}
+                  oleh {v.actor_name}
+                </p>
                 <p className="text-slate-500">
                   {new Date(v.acted_at).toLocaleString("id-ID")}
-                  {v.error_code ? ` | code: ${v.error_code}` : ""}
-                  {v.note ? ` | note: ${v.note}` : ""}
+                  {v.error_code ? ` | kode: ${v.error_code}` : ""}
+                  {v.note ? ` | catatan: ${v.note}` : ""}
                 </p>
               </li>
             ))}

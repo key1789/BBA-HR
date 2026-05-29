@@ -531,3 +531,141 @@ export async function bulkAssignSubmissionsAction(formData: FormData) {
   });
   redirect(verificationPath(baseParams));
 }
+
+/**
+ * Admin mengedit nilai submission secara langsung, lalu langsung menyetujuinya.
+ * Perubahan dicatat di submission_verifications (action: approve + note berisi diff),
+ * dan di activity_logs untuk audit trail.
+ */
+export async function adminDirectEditSubmissionAction(formData: FormData) {
+  const session = await getSessionContext();
+  const active = session?.activeMembership;
+  const currentPage = formData.get("page")?.toString() ?? "1";
+  const selectedStatus = formData.get("status")?.toString() ?? "";
+  const from = formData.get("from")?.toString() ?? "";
+  const to = formData.get("to")?.toString() ?? "";
+  const baseParams = {
+    page: currentPage,
+    status: selectedStatus || undefined,
+    from: from || undefined,
+    to: to || undefined,
+  };
+
+  if (!active || active.role !== "admin_apotek") {
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("access_denied") });
+    return redirect(verificationPath(baseParams));
+  }
+
+  const submissionId = formData.get("submissionId")?.toString()?.trim();
+  if (!submissionId) {
+    await setFlashMessage({ status: "error", message: "ID submission tidak valid." });
+    return redirect(verificationPath(baseParams));
+  }
+
+  const omzetTotal = Number(formData.get("omzet_total"));
+  const transactionTotal = Number(formData.get("transaction_total"));
+  const productTotal = Number(formData.get("product_total"));
+  const rejectedCustomerTotal = Number(formData.get("rejected_customer_total"));
+  const lateReason = (formData.get("late_reason") as string | null)?.trim() || null;
+
+  if (
+    isNaN(omzetTotal) || omzetTotal < 0 ||
+    isNaN(transactionTotal) || transactionTotal < 0 ||
+    isNaN(productTotal) || productTotal < 0 ||
+    isNaN(rejectedCustomerTotal) || rejectedCustomerTotal < 0
+  ) {
+    await setFlashMessage({ status: "error", message: "Nilai tidak valid. Semua angka harus non-negatif." });
+    return redirect(verificationPath(baseParams));
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("user_not_found") });
+    return redirect(verificationPath(baseParams));
+  }
+
+  // Fetch existing values + eligibility check
+  const { data: existing } = await supabase
+    .from("daily_submissions")
+    .select("id, omzet_total, transaction_total, product_total, rejected_customer_total, late_reason")
+    .eq("id", submissionId)
+    .eq("tenant_apotek_id", active.tenantId)
+    .in("status", ["submitted", "edited_by_admin", "reject"])
+    .maybeSingle();
+
+  if (!existing) {
+    await setFlashMessage({ status: "error", message: getFeedbackMessage("single_not_eligible") });
+    return redirect(verificationPath(baseParams));
+  }
+
+  // Build change summary for the note
+  const fmt = new Intl.NumberFormat("id-ID");
+  const changes: string[] = [];
+  if (Number(existing.omzet_total) !== omzetTotal)
+    changes.push(`omzet: ${fmt.format(Number(existing.omzet_total))}→${fmt.format(omzetTotal)}`);
+  if (Number(existing.transaction_total) !== transactionTotal)
+    changes.push(`transaksi: ${existing.transaction_total}→${transactionTotal}`);
+  if (Number(existing.product_total) !== productTotal)
+    changes.push(`produk: ${existing.product_total}→${productTotal}`);
+  if (Number(existing.rejected_customer_total) !== rejectedCustomerTotal)
+    changes.push(`ditolak: ${existing.rejected_customer_total}→${rejectedCustomerTotal}`);
+  if ((existing.late_reason ?? "") !== (lateReason ?? ""))
+    changes.push("alasan terlambat diperbarui");
+  const changeNote = changes.length > 0
+    ? `Edit admin: ${changes.join(", ")}`
+    : "Diedit admin (tanpa perubahan nilai)";
+
+  // Update submission values
+  const { error: updateError } = await supabase
+    .from("daily_submissions")
+    .update({
+      omzet_total: omzetTotal,
+      transaction_total: transactionTotal,
+      product_total: productTotal,
+      rejected_customer_total: rejectedCustomerTotal,
+      late_reason: lateReason,
+    })
+    .eq("id", submissionId)
+    .eq("tenant_apotek_id", active.tenantId);
+
+  if (updateError) {
+    await setFlashMessage({ status: "error", message: "Gagal memperbarui data submission." });
+    return redirect(verificationPath(baseParams));
+  }
+
+  // Insert approval record — DB trigger sets status → "approved"
+  const { error: verifyError } = await supabase.from("submission_verifications").insert({
+    submission_id: submissionId,
+    action: "approve",
+    note: changeNote,
+    acted_by_user_id: user.id,
+  });
+
+  if (verifyError) {
+    await setFlashMessage({ status: "error", message: `Data tersimpan tapi approval gagal: ${verifyError.message}` });
+    return redirect(verificationPath(baseParams));
+  }
+
+  await writeAuditLog(supabase, {
+    tenantApotekId: active.tenantId,
+    actorUserId: user.id,
+    entityType: "daily_submissions",
+    entityId: submissionId,
+    action: "UPDATE",
+    oldValue: {
+      omzet_total: existing.omzet_total,
+      transaction_total: existing.transaction_total,
+      product_total: existing.product_total,
+      rejected_customer_total: existing.rejected_customer_total,
+      late_reason: existing.late_reason,
+    },
+    newValue: { omzet_total: omzetTotal, transaction_total: transactionTotal, product_total: productTotal, rejected_customer_total: rejectedCustomerTotal, late_reason: lateReason },
+  });
+
+  revalidatePath("/admin/verifikasi");
+  revalidatePath("/crew/riwayat-input");
+  revalidatePath("/owner/laporan");
+  await setFlashMessage({ status: "success", message: `Data diperbarui dan disetujui. ${changeNote}` });
+  redirect(verificationPath(baseParams));
+}

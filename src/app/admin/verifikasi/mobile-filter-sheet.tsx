@@ -24,8 +24,11 @@ export function MobileFilterSheet({
           defaultValue={selectedStatus}
           className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
         >
-          <option value="all">Semua</option>
-          <option value="submitted">Submitted</option>
+          <option value="all">Semua (prioritas aksi)</option>
+          <option value="submitted">Menunggu Verifikasi</option>
+          <option value="edited_by_admin">Diedit Admin</option>
+          <option value="reject">Ditolak</option>
+          <option value="approved">Disetujui</option>
         </select>
         <Input type="date" name="from" defaultValue={from} />
         <Input type="date" name="to" defaultValue={to} />
