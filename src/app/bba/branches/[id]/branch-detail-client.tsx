@@ -4,17 +4,16 @@
 import { useState, useTransition, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Info, Users, Target, Puzzle, ArrowLeft, Clock, CalendarDays, Loader2, Wand2, CheckSquare, Hash, MapPin, KeyRound } from "lucide-react";
+import { Info, Users, Target, Puzzle, ArrowLeft, Clock, CalendarDays, Loader2, Wand2, CheckSquare, Hash, MapPin } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { TabOverview } from "./tab-overview";
-import { TabPegawai } from "./tab-pegawai";
 import { TabKpiV2 } from "@/components/kpi-v2/TabKpiV2";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { TabAddon } from "@/components/branch/tab-addon";
 import { TabOperasional } from "./tab-operasional";
+import { TabTimAkses } from "./tab-tim-akses";
 import { TabActivity } from "./tab-activity";
-import { TabBranchDeskAdmin } from "./tab-branch-desk-admin";
 import { ScrollText, X } from "lucide-react";
 import { getOtherBranchesAction, cloneBranchConfigAction } from "./actions";
 import { toast } from "sonner";
@@ -90,13 +89,12 @@ export function BranchDetailClient({
   }, []);
 
   const currentTabs = [
-    { id: "info", label: "Executive Overview", icon: Info },
-    { id: "desk-admin", label: "Akun admin cabang", icon: KeyRound },
-    { id: "operasional", label: "Shift, Absensi & Payroll", icon: Clock },
-    { id: "pegawai", label: "Manajemen crew", icon: Users },
-    { id: "kpi", label: "Target dan KPI", icon: Target },
-    { id: "addon", label: "Add-on rules", icon: Puzzle },
-    { id: "activity", label: "Log aktivitas", icon: ScrollText },
+    { id: "info",       label: "Executive Overview",       icon: Info },
+    { id: "tim",        label: "Tim & Akses",              icon: Users },
+    { id: "operasional",label: "Shift, Absensi & Payroll", icon: Clock },
+    { id: "kpi",        label: "Target dan KPI",           icon: Target },
+    { id: "addon",      label: "Add-on rules",             icon: Puzzle },
+    { id: "activity",   label: "Log aktivitas",            icon: ScrollText },
   ];
 
   return (
@@ -209,8 +207,7 @@ export function BranchDetailClient({
             className="w-full"
           >
             {activeTab === "info" && <TabOverview branch={branch} users={users} kpi={kpi} addons={addons} shifts={shifts} products={products} productFokus={productFokus} roster={roster} payrollConfigs={payrollConfigs} availableOwners={availableOwners} />}
-            {activeTab === "pegawai" && <TabPegawai branch={branch} users={users} />}
-            {activeTab === "desk-admin" && <TabBranchDeskAdmin branch={branch} users={users} />}
+            {activeTab === "tim" && <TabTimAkses branch={branch} users={users} />}
             {activeTab === "kpi" && (
               <TabKpiV2
                 branchId={branch.id}
