@@ -227,7 +227,7 @@ export function BranchDetailClient({
             )}
 
             {activeTab === "shift" && <TabShift branchId={branch.id} shifts={shifts} />}
-            {activeTab === "addon" && <TabAddon branchId={branch.id} addons={addons} shifts={shifts} products={products} productFokus={productFokus} currentMonth={currentMonth} currentYear={currentYear} onNavigateToTab={setActiveTab} />}
+            {activeTab === "addon" && <TabAddon branchId={branch.id} addons={addons} products={products} productFokus={productFokus} currentMonth={currentMonth} currentYear={currentYear} onNavigateToTab={setActiveTab} />}
             {activeTab === "jadwal" && <TabJadwalAbsensi branchId={branch.id} users={users} shifts={shifts} roster={roster} shiftDefaults={shiftDefaults} attendanceLogs={attendanceLogs} currentMonth={currentMonth} currentYear={currentYear} />}
             {activeTab === "payroll" && <TabPayroll branchId={branch.id} users={users} payrollConfigs={payrollConfigs} />}
             {activeTab === "activity" && <TabActivity logs={activityLogs} users={users} />}

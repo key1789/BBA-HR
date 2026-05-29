@@ -27,7 +27,6 @@ import { AppraisalAddonsSection } from "./AppraisalAddonsSection";
 export function TabAddon({
   branchId,
   addons,
-  shifts,
   products,
   productFokus,
   currentMonth,
@@ -36,7 +35,6 @@ export function TabAddon({
 }: {
   branchId: string;
   addons: any[];
-  shifts: any[];
   products: any[];
   productFokus: any[];
   currentMonth: number;
@@ -96,10 +94,6 @@ export function TabAddon({
     switch (key) {
       case "produk_fokus":
         return productFokus.length > 0;
-      case "review_pelanggan": {
-        // Tidak perlu set PIC lagi. Saat add-on aktif, aturan review pelanggan dianggap siap.
-        return true;
-      }
       case "review_internal":
         return typeof settings.frequency_per_month === "number";
       default:
@@ -351,22 +345,28 @@ export function TabAddon({
                   </div>
                 )}
 
-                {active && !hasConfig && onNavigateToTab && (
+                {active && !hasConfig && (
                   <div className="px-5 py-4 border-t border-sky-50 bg-sky-50/40 flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const tabMap: Record<string, string> = {
-                          payroll: "payroll",
-                          absensi_shift: "jadwal",
-                        };
-                        onNavigateToTab(tabMap[card.key] ?? "addon");
-                      }}
-                      className="flex items-center gap-1.5 text-[10px] font-black text-sky-600 hover:text-sky-800 uppercase tracking-widest transition-all group"
-                    >
-                      {card.key === "absensi_shift" ? "Kelola Jadwal & Absensi" : "Konfigurasi Gaji Pegawai"}
-                      <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
-                    </button>
+                    {(card.key === "payroll" || card.key === "absensi_shift") && onNavigateToTab ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tabMap: Record<string, string> = {
+                            payroll: "payroll",
+                            absensi_shift: "jadwal",
+                          };
+                          onNavigateToTab(tabMap[card.key]);
+                        }}
+                        className="flex items-center gap-1.5 text-[10px] font-black text-sky-600 hover:text-sky-800 uppercase tracking-widest transition-all group"
+                      >
+                        {card.key === "absensi_shift" ? "Kelola Jadwal & Absensi" : "Konfigurasi Gaji Pegawai"}
+                        <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
+                      </button>
+                    ) : (
+                      <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
+                        Berjalan otomatis
+                      </span>
+                    )}
                     <div className="flex items-center gap-1.5 py-1 px-2 bg-emerald-50 text-emerald-600 rounded-lg">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
                       <span className="text-[9px] font-black uppercase tracking-tight">Aktif</span>
