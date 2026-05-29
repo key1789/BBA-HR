@@ -291,7 +291,7 @@ export default async function AdminVerifikasiPage({
                 const verifs = verificationsBySubmission.get(row.id) ?? [];
 
                 return (
-                  <div key={`card-${row.id}`} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                  <div key={`card-${row.id}`} className="rounded-2xl border border-slate-100 bg-white shadow-sm">
 
                     {/* ── Body ─────────────────────────────────────── */}
                     <div className="px-4 pb-3 pt-3.5">
@@ -338,7 +338,7 @@ export default async function AdminVerifikasiPage({
                     </div>
 
                     {/* ── Action bar ───────────────────────────────── */}
-                    <form className="border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">
+                    <form className="relative z-10 border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">
                       <input type="hidden" name="page" value={String(page)} />
                       <input type="hidden" name="status" value={selectedStatus} />
                       <input type="hidden" name="from" value={from} />
@@ -376,7 +376,7 @@ export default async function AdminVerifikasiPage({
                     </form>
 
                     {/* ── Expandable detail ────────────────────────── */}
-                    <details className="group border-t border-slate-100">
+                    <details className="group overflow-hidden rounded-b-2xl border-t border-slate-100">
                       <summary className="flex cursor-pointer list-none select-none items-center justify-between px-4 py-2.5">
                         <span className="text-xs font-semibold text-indigo-600">Lihat detail</span>
                         <svg
