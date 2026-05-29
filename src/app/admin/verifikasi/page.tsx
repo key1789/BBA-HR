@@ -338,7 +338,7 @@ export default async function AdminVerifikasiPage({
                     </div>
 
                     {/* ── Action bar ───────────────────────────────── */}
-                    <form className="relative z-10 border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">
+                    <form className="border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">
                       <input type="hidden" name="page" value={String(page)} />
                       <input type="hidden" name="status" value={selectedStatus} />
                       <input type="hidden" name="from" value={from} />
