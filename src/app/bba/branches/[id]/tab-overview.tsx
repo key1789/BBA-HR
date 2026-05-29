@@ -1,9 +1,9 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useTransition, useState } from "react";
+import { useTransition, useState, useRef } from "react";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Store, MapPin, Phone, Hash, Loader2, Check, X, User as UserIcon, Mail, Settings, Target, Puzzle, Clock, AlertCircle, ShieldCheck, Banknote, Star, ClipboardCheck, Settings2, Users } from "lucide-react";
+import { Store, MapPin, Phone, Hash, Loader2, Check, X, User as UserIcon, Mail, Settings, Target, Puzzle, Clock, AlertCircle, ShieldCheck, Settings2, Users, ArrowRight } from "lucide-react";
 import { updateBranchAction } from "./actions";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -20,6 +20,7 @@ export function TabOverview({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const addonSectionRef = useRef<HTMLDivElement>(null);
 
   const ownerMembership =
     users.find((u) => u.role === "owner" && u.is_active && u.app_users?.is_active) ||
@@ -56,18 +57,11 @@ export function TabOverview({
   void roster;
 
   // 4. Add-on Data
-  const addonMeta: Record<string, { label: string; icon: any }> = {
-    produk_fokus: { label: "Produk Fokus", icon: Target },
-    absensi_shift: { label: "Absensi & Roster", icon: Clock },
-    review_pelanggan: { label: "Review Pelanggan", icon: Star },
-    review_internal: { label: "Review Internal", icon: ClipboardCheck },
-    payroll: { label: "Payroll & Gaji", icon: Banknote },
-  };
-
   const activeAddons = addons.filter((a) => a.is_enabled);
   const activeAddonsCount = activeAddons.length;
   // Add-ons that have no required settings — always considered "configured"
-  const NO_SETTINGS_REQUIRED = new Set(["review_pelanggan", "payroll"]);
+  // produk_fokus config lives in the product_focus table (not addon settings JSONB), so never count as unset
+  const NO_SETTINGS_REQUIRED = new Set(["review_pelanggan", "payroll", "produk_fokus"]);
   const activeUnsetAddonsCount = activeAddons.filter((a) => {
     if (NO_SETTINGS_REQUIRED.has(a.addon_key)) return false;
     const settings = a.settings;
@@ -209,49 +203,37 @@ export function TabOverview({
 
         {/* 4. Add-on Widget */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-          <GlassCard variant="light" className="p-5 flex flex-col justify-between h-full border-l-4 border-l-purple-500 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-500 bg-white">
-            <div>
+          <GlassCard variant="light" className="p-5 flex flex-col h-full border-l-4 border-l-purple-500 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-500 bg-white">
+            <div className="flex-1">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shadow-sm">
                   <Puzzle size={20} />
                 </div>
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Fitur Ekstra</span>
               </div>
-              
-              <div className="space-y-3">
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Add-on Aktif</p>
-                  {activeAddonsCount > 0 ? (
-                    <div className="space-y-1.5">
-                      {activeAddons.map((addon) => {
-                        const meta = addonMeta[addon.addon_key];
-                        const Icon = meta?.icon ?? Puzzle;
-                        return (
-                          <div key={addon.id ?? addon.addon_key} className="flex items-center gap-2 bg-purple-50/60 p-2 rounded-lg border border-purple-100">
-                            <div className="w-6 h-6 rounded-lg bg-white text-purple-600 flex items-center justify-center border border-purple-100">
-                              <Icon size={13} />
-                            </div>
-                            <span className="text-[10px] font-black text-purple-700 uppercase tracking-wide">
-                              {meta?.label ?? addon.addon_key}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 border-dashed">
-                      <AlertCircle size={14} className="text-slate-400" />
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Belum Ada Add-on Aktif</span>
-                    </div>
-                  )}
+
+              <h3 className="text-4xl font-black text-slate-800 tracking-tighter mb-1">
+                {activeAddonsCount}
+                <span className="text-sm font-bold text-slate-400 ml-2 uppercase">Aktif</span>
+              </h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">dari 5 add-on tersedia</p>
+
+              {activeUnsetAddonsCount > 0 && (
+                <div className="mt-4 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl">
+                  <AlertCircle size={12} className="text-amber-500 shrink-0" />
+                  <span className="text-[10px] font-bold text-amber-700">{activeUnsetAddonsCount} addon aktif belum dikonfigurasi</span>
                 </div>
-                
-                <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 border-dashed">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Aktif Tapi Belum Diset</span>
-                  <span className="text-xs font-black text-slate-600">{activeUnsetAddonsCount}</span>
-                </div>
-              </div>
+              )}
             </div>
+
+            <button
+              type="button"
+              onClick={() => addonSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="mt-4 w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-50 border border-purple-100 text-purple-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-100 transition-colors group"
+            >
+              Kelola Fitur
+              <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
+            </button>
           </GlassCard>
         </motion.div>
 
@@ -489,7 +471,7 @@ export function TabOverview({
       </div>
 
       {/* 3. FITUR & ADD-ON */}
-      <div className="pt-4 border-t border-slate-100">
+      <div ref={addonSectionRef} className="pt-4 border-t border-slate-100">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
             <Puzzle size={18} />

@@ -19,11 +19,11 @@ import { toast } from "sonner";
 
 
 export function BranchDetailClient({
-  branch, users, kpi, kpiConfigV2, addons, shifts, products, productFokus, roster, shiftDefaults, attendanceLogs, payrollConfigs, activityLogs, availableOwners, currentMonth, currentYear,
+  branch, users, kpi, kpiConfigV2, addons, shifts, products, productFokus, roster, shiftDefaults, payrollConfigs, activityLogs, availableOwners, currentMonth, currentYear,
   canEditKpi = true,
   canCloneBranch = true,
 }: {
-  branch: any, users: any[], kpi: any, kpiConfigV2: KpiConfigV2, addons: any[], shifts: any[], products: any[], productFokus: any[], roster: any[], shiftDefaults: any[], attendanceLogs: any[], payrollConfigs: any[], activityLogs: any[], availableOwners: any[], currentMonth: number, currentYear: number,
+  branch: any, users: any[], kpi: any, kpiConfigV2: KpiConfigV2, addons: any[], shifts: any[], products: any[], productFokus: any[], roster: any[], shiftDefaults: any[], payrollConfigs: any[], activityLogs: any[], availableOwners: any[], currentMonth: number, currentYear: number,
   canEditKpi?: boolean,
   canCloneBranch?: boolean,
 }) {

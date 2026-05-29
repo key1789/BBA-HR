@@ -133,20 +133,7 @@ export default async function BranchDetailPage({ params, searchParams }: { param
     .select("*")
     .eq("tenant_apotek_id", id);
 
-  // 10. Fetch Attendance Logs for current period (Jakarta timezone boundary)
-  const attStart = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01T00:00:00+07:00`;
-  const attEnd = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(
-    new Date(currentYear, currentMonth, 0).getDate()
-  ).padStart(2, "0")}T23:59:59+07:00`;
-  const { data: attendanceLogs } = await supabaseAdmin
-    .from("attendance_logs")
-    .select("*")
-    .eq("tenant_apotek_id", id)
-    .gte("clock_in_time", attStart)
-    .lte("clock_in_time", attEnd)
-    .order("clock_in_time", { ascending: false });
-
-  // 11. Fetch Payroll Configs
+  // 10. Fetch Payroll Configs
   const { data: payrollConfigs } = await supabaseAdmin
     .from("payroll_configs")
     .select("*")
@@ -215,7 +202,6 @@ export default async function BranchDetailPage({ params, searchParams }: { param
         productFokus={productFokus || []}
         roster={roster || []}
         shiftDefaults={shiftDefaults || []}
-        attendanceLogs={attendanceLogs || []}
         payrollConfigs={payrollConfigs || []}
         activityLogs={activityLogs || []}
         availableOwners={availableOwnersData || []}
