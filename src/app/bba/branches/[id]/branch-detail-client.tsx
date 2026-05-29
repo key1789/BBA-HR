@@ -4,13 +4,12 @@
 import { useState, useTransition, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Info, Users, Target, Puzzle, ArrowLeft, Clock, CalendarDays, Loader2, Wand2, CheckSquare, Hash, MapPin } from "lucide-react";
+import { Info, Users, Target, ArrowLeft, Clock, CalendarDays, Loader2, Wand2, CheckSquare, Hash, MapPin } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { TabOverview } from "./tab-overview";
 import { TabTargetKpi } from "./tab-target-kpi";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
-import { TabAddon } from "@/components/branch/tab-addon";
 import { TabOperasional } from "./tab-operasional";
 import { TabTimAkses } from "./tab-tim-akses";
 import { TabActivity } from "./tab-activity";
@@ -94,7 +93,6 @@ export function BranchDetailClient({
     { id: "tim",        label: "Tim & Akses",              icon: Users },
     { id: "operasional",label: "Shift, Absensi & Payroll", icon: Clock },
     { id: "kpi",        label: "Target, KPI & Produk Fokus", icon: Target },
-    { id: "addon",      label: "Add-on rules",             icon: Puzzle },
     { id: "activity",   label: "Log aktivitas",            icon: ScrollText },
   ];
 
@@ -207,7 +205,7 @@ export function BranchDetailClient({
             transition={{ duration: 0.2 }}
             className="w-full"
           >
-            {activeTab === "info" && <TabOverview branch={branch} users={users} kpi={kpi} addons={addons} shifts={shifts} products={products} productFokus={productFokus} roster={roster} payrollConfigs={payrollConfigs} availableOwners={availableOwners} />}
+            {activeTab === "info" && <TabOverview branch={branch} users={users} kpi={kpi} addons={addons} shifts={shifts} products={products} productFokus={productFokus} roster={roster} availableOwners={availableOwners} currentMonth={currentMonth} currentYear={currentYear} onNavigateToTab={setActiveTab} />}
             {activeTab === "tim" && <TabTimAkses branch={branch} users={users} />}
             {activeTab === "kpi" && (
               <TabTargetKpi
@@ -237,7 +235,6 @@ export function BranchDetailClient({
                 isPayrollEnabled={isPayrollEnabled}
               />
             )}
-            {activeTab === "addon" && <TabAddon branchId={branch.id} addons={addons} products={products} productFokus={productFokus} currentMonth={currentMonth} currentYear={currentYear} onNavigateToTab={setActiveTab} />}
             {activeTab === "activity" && <TabActivity logs={activityLogs} users={users} />}
           </motion.div>
         </AnimatePresence>

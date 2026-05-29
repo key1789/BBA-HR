@@ -3,17 +3,20 @@
 
 import { useTransition, useState } from "react";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Store, MapPin, Phone, Hash, Loader2, Check, X, User as UserIcon, Mail, Settings, Target, Puzzle, Users, Clock, AlertCircle, ShieldCheck, Banknote, Star, ClipboardCheck, Settings2, Calendar, User } from "lucide-react";
+import { Store, MapPin, Phone, Hash, Loader2, Check, X, User as UserIcon, Mail, Settings, Target, Puzzle, Clock, AlertCircle, ShieldCheck, Banknote, Star, ClipboardCheck, Settings2, Users } from "lucide-react";
 import { updateBranchAction } from "./actions";
 import { toast } from "sonner";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { isBranchDeskAdminAccount } from "@/lib/branch-personnel";
+import { TabAddon } from "@/components/branch/tab-addon";
 
-export function TabOverview({ 
-  branch, users, kpi, addons, shifts, products, productFokus, roster, payrollConfigs, availableOwners 
-}: { 
-  branch: any, users: any[], kpi: any, addons: any[], shifts: any[], products: any[], productFokus: any[], roster: any[], payrollConfigs: any[], availableOwners?: any[]
+export function TabOverview({
+  branch, users, kpi, addons, shifts, products, productFokus, roster, availableOwners,
+  currentMonth, currentYear, onNavigateToTab,
+}: {
+  branch: any, users: any[], kpi: any, addons: any[], shifts: any[], products: any[], productFokus: any[], roster: any[], availableOwners?: any[],
+  currentMonth: number, currentYear: number, onNavigateToTab: (tabId: string) => void,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -21,20 +24,10 @@ export function TabOverview({
   const ownerMembership =
     users.find((u) => u.role === "owner" && u.is_active && u.app_users?.is_active) ||
     users.find((u) => u.role === "owner");
-  void products;
-  void productFokus;
-  void payrollConfigs;
   const ownerData = ownerMembership?.app_users;
   const isOwnerActive = !!(ownerMembership?.is_active && ownerData?.is_active);
   const activeCrewCount = users.filter(
     (u) => u.role === "crew" && u.is_active && u.app_users?.is_active,
-  ).length;
-  const activeAdminCount = users.filter(
-    (u) =>
-      u.role === "admin_apotek" &&
-      u.is_active &&
-      u.app_users?.is_active &&
-      !u.app_users?.is_branch_desk_account,
   ).length;
   const deskAdminAccountCount = users.filter((u) => isBranchDeskAdminAccount(u) && u.is_active && u.app_users?.is_active).length;
 
@@ -108,25 +101,15 @@ export function TabOverview({
               </div>
               
               <h3 className="text-4xl font-black text-slate-800 tracking-tighter mb-1">
-                {activeCrewCount + activeAdminCount}
-                <span className="text-sm font-bold text-slate-400 ml-2 uppercase">Operasional</span>
+                {activeCrewCount}
+                <span className="text-sm font-bold text-slate-400 ml-2 uppercase">Crew Aktif</span>
               </h3>
-              
-              <div className="flex gap-2 mt-4">
-                <div className="flex-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                  <p className="text-lg font-black text-indigo-600 leading-none mb-1">{activeAdminCount}</p>
-                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Admin (orang)</p>
+
+              {deskAdminAccountCount > 0 && (
+                <div className="mt-4 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 text-[10px] text-slate-500 font-medium">
+                  + {deskAdminAccountCount} akun portal admin cabang
                 </div>
-                <div className="flex-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                  <p className="text-lg font-black text-indigo-600 leading-none mb-1">{activeCrewCount}</p>
-                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Crew</p>
-                </div>
-              </div>
-              {deskAdminAccountCount > 0 ? (
-                <p className="text-[10px] text-slate-500 font-medium mt-3">
-                  + {deskAdminAccountCount} akun portal admin cabang (tidak dihitung sebagai pegawai operasional)
-                </p>
-              ) : null}
+              )}
             </div>
           </GlassCard>
         </motion.div>
@@ -160,63 +143,17 @@ export function TabOverview({
                     </div>
                   </div>
 
-                  {kpi?.bonus_config_v2 && (
-                    <div className="mt-6 p-5 bg-gradient-to-r from-sky-50 to-indigo-50 rounded-2xl border border-sky-100">
-                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <Settings2 size={14} />
-                        Skema Bonus Aktif Periode Ini
-                      </h4>
-
-                      {kpi.bonus_config_v2.team_monthly?.enabled ||
-                      kpi.bonus_config_v2.team_daily?.enabled ||
-                      kpi.bonus_config_v2.individual_monthly?.enabled ||
-                      kpi.bonus_config_v2.individual_daily?.enabled ? (
-                        <div className="flex flex-wrap gap-2">
-                          {kpi.bonus_config_v2.team_monthly?.enabled && (
-                            <div className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-[11px] font-black uppercase flex items-center gap-2 shadow-sm">
-                              <Users size={14} />
-                              Team Bulanan
-                              <span className="opacity-75 text-[9px]">
-                                ({kpi.bonus_config_v2.team_monthly.bonus_type === "flat" ? "Flat" : "Kelipatan"})
-                              </span>
-                            </div>
-                          )}
-                          {kpi.bonus_config_v2.team_daily?.enabled && (
-                            <div className="px-4 py-2 bg-sky-500 text-white rounded-xl text-[11px] font-black uppercase flex items-center gap-2 shadow-sm">
-                              <Calendar size={14} />
-                              Team Harian
-                              <span className="opacity-75 text-[9px]">
-                                ({kpi.bonus_config_v2.team_daily.bonus_type === "flat" ? "Flat" : "Kelipatan"})
-                              </span>
-                            </div>
-                          )}
-                          {kpi.bonus_config_v2.individual_monthly?.enabled && (
-                            <div className="px-4 py-2 bg-indigo-500 text-white rounded-xl text-[11px] font-black uppercase flex items-center gap-2 shadow-sm">
-                              <User size={14} />
-                              Individu Bulanan
-                              <span className="opacity-75 text-[9px]">
-                                ({kpi.bonus_config_v2.individual_monthly.target_distribution === "rata" ? "Rata" : "Manual"})
-                              </span>
-                            </div>
-                          )}
-                          {kpi.bonus_config_v2.individual_daily?.enabled && (
-                            <div className="px-4 py-2 bg-purple-500 text-white rounded-xl text-[11px] font-black uppercase flex items-center gap-2 shadow-sm">
-                              <Clock size={14} />
-                              Individu Harian
-                              <span className="opacity-75 text-[9px]">
-                                ({kpi.bonus_config_v2.individual_daily.target_distribution === "rata" ? "Rata" : "Manual"})
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-slate-500 text-sm">
-                          <AlertCircle size={16} />
-                          <span>Belum ada skema bonus aktif untuk periode ini</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {kpi?.bonus_config_v2 && (() => {
+                    const bv2 = kpi.bonus_config_v2;
+                    const hasActive = bv2.team_monthly?.enabled || bv2.team_daily?.enabled ||
+                      bv2.individual_monthly?.enabled || bv2.individual_daily?.enabled;
+                    return (
+                      <div className={`mt-4 flex items-center gap-2 px-3 py-2 rounded-xl border text-[10px] font-bold ${hasActive ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-slate-50 border-slate-100 text-slate-400"}`}>
+                        <Settings2 size={12} />
+                        {hasActive ? "Skema bonus aktif" : "Belum ada skema bonus"}
+                      </div>
+                    );
+                  })()}
                 </>
               ) : (
                 <div className="py-6 flex flex-col items-center justify-center text-center">
@@ -549,6 +486,28 @@ export function TabOverview({
 
           </GlassCard>
         </motion.div>
+      </div>
+
+      {/* 3. FITUR & ADD-ON */}
+      <div className="pt-4 border-t border-slate-100">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+            <Puzzle size={18} />
+          </div>
+          <div>
+            <h2 className="text-base font-black text-slate-800 leading-none">Fitur &amp; Add-on</h2>
+            <p className="text-[11px] font-medium text-slate-400 mt-0.5">Aktifkan fitur tambahan dan atur sistem kerjanya.</p>
+          </div>
+        </div>
+        <TabAddon
+          branchId={branch.id}
+          addons={addons}
+          products={products}
+          productFokus={productFokus}
+          currentMonth={currentMonth}
+          currentYear={currentYear}
+          onNavigateToTab={onNavigateToTab}
+        />
       </div>
     </div>
   );

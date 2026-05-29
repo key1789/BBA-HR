@@ -21,7 +21,6 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { saveAddonAction } from "@/app/bba/branches/[id]/actions";
 import { toast } from "sonner";
-import { ProductFokusSection } from "./ProductFokusSection";
 import { AppraisalAddonsSection } from "./AppraisalAddonsSection";
 
 export function TabAddon({
@@ -270,7 +269,7 @@ export function TabAddon({
           {ADDON_CARDS.map((card) => {
             const active = isEnabled(card.key);
             const Icon = card.icon;
-            const hasConfig = card.key !== "payroll" && card.key !== "review_pelanggan" && card.key !== "absensi_shift";
+            const hasConfig = card.key !== "payroll" && card.key !== "review_pelanggan" && card.key !== "absensi_shift" && card.key !== "produk_fokus";
             const iconActiveClass = addonIconActive[card.color] ?? addonIconActive.sky;
 
             return (
@@ -347,15 +346,15 @@ export function TabAddon({
 
                 {active && !hasConfig && (
                   <div className="px-5 py-4 border-t border-sky-50 bg-sky-50/40 flex items-center justify-between">
-                    {(card.key === "payroll" || card.key === "absensi_shift") && onNavigateToTab ? (
+                    {(card.key === "payroll" || card.key === "absensi_shift" || card.key === "produk_fokus") && onNavigateToTab ? (
                       <button
                         type="button"
                         onClick={() => {
-                          onNavigateToTab("operasional");
+                          onNavigateToTab(card.key === "produk_fokus" ? "kpi" : "operasional");
                         }}
                         className="flex items-center gap-1.5 text-[10px] font-black text-sky-600 hover:text-sky-800 uppercase tracking-widest transition-all group"
                       >
-                        {card.key === "absensi_shift" ? "Atur di Shift & Absensi" : "Atur di Shift & Payroll"}
+                        {card.key === "absensi_shift" ? "Atur di Shift & Absensi" : card.key === "produk_fokus" ? "Atur di Target & KPI" : "Atur di Shift & Payroll"}
                         <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
                       </button>
                     ) : (
@@ -489,16 +488,6 @@ export function TabAddon({
                       <AppraisalAddonsSection
                         branchId={branchId}
                         reviewInternalFrequency={reviewInternalFrequency}
-                      />
-                    )}
-
-                    {configModal === "produk_fokus" && (
-                      <ProductFokusSection
-                        branchId={branchId}
-                        currentMonth={currentMonth}
-                        currentYear={currentYear}
-                        products={products}
-                        productFokus={productFokus}
                       />
                     )}
 
