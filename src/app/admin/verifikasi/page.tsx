@@ -12,6 +12,8 @@ import { PendingSubmitButton } from "./submit-buttons";
 import { MobileFilterSheet } from "./mobile-filter-sheet";
 import { MobileVerificationDetailModal } from "./mobile-verification-detail-modal";
 import { DirectEditModal } from "./direct-edit-modal";
+import { HelpDrawer } from "@/components/shared/help-drawer";
+import { VERIFIKASI_HELP } from "./help-content";
 import { getSessionContext } from "@/lib/auth-context";
 import {
   getSubmissionStatusBadgeClass,
@@ -695,6 +697,8 @@ export default async function AdminVerifikasiPage({
       </div>
         );
       })()}
+
+      <HelpDrawer content={VERIFIKASI_HELP} />
     </section>
   );
 }
