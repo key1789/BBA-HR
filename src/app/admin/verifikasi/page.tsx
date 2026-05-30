@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { PendingSubmitButton } from "./submit-buttons";
 import { MobileFilterSheet } from "./mobile-filter-sheet";
 import { DirectEditModal } from "./direct-edit-modal";
+import { MobileActionBar } from "./mobile-action-bar";
 import { HelpDrawer } from "@/components/shared/help-drawer";
 import { VERIFIKASI_HELP } from "./help-content";
 import { getSessionContext } from "@/lib/auth-context";
@@ -338,42 +339,20 @@ export default async function AdminVerifikasiPage({
                     </div>
 
                     {/* ── Action bar ───────────────────────────────── */}
-                    <form className="border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">
-                      <input type="hidden" name="page" value={String(page)} />
-                      <input type="hidden" name="status" value={selectedStatus} />
-                      <input type="hidden" name="from" value={from} />
-                      <input type="hidden" name="to" value={to} />
-                      <div className="flex items-center gap-2">
-                        <PendingSubmitButton
-                          formAction={verifySubmissionAction}
-                          hiddenFields={{ verification: `${row.id}:approve` }}
-                          idleLabel="Setujui"
-                          pendingLabel="..."
-                          className="flex-1 rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white transition-colors active:bg-emerald-700 disabled:opacity-50"
-                        />
-                        <PendingSubmitButton
-                          formAction={verifySubmissionAction}
-                          hiddenFields={{ verification: `${row.id}:reject` }}
-                          idleLabel="Tolak"
-                          pendingLabel="..."
-                          className="flex-1 rounded-lg border border-rose-300 bg-white py-2 text-xs font-bold text-rose-700 transition-colors active:bg-rose-50 disabled:opacity-50"
-                        />
-                        <DirectEditModal
-                          submissionId={row.id}
-                          page={page}
-                          selectedStatus={selectedStatus}
-                          from={from}
-                          to={to}
-                          defaultValues={{
-                            omzetTotal: Number(row.omzet_total),
-                            transactionTotal: Number(row.transaction_total),
-                            productTotal: Number(row.product_total),
-                            rejectedCustomerTotal: Number(row.rejected_customer_total),
-                            lateReason: row.late_reason,
-                          }}
-                        />
-                      </div>
-                    </form>
+                    <MobileActionBar
+                      submissionId={row.id}
+                      page={page}
+                      selectedStatus={selectedStatus}
+                      from={from}
+                      to={to}
+                      defaultValues={{
+                        omzetTotal: Number(row.omzet_total),
+                        transactionTotal: Number(row.transaction_total),
+                        productTotal: Number(row.product_total),
+                        rejectedCustomerTotal: Number(row.rejected_customer_total),
+                        lateReason: row.late_reason,
+                      }}
+                    />
 
                     {/* ── Expandable detail ────────────────────────── */}
                     <details className="group overflow-hidden rounded-b-2xl border-t border-slate-100">
