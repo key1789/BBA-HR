@@ -1,10 +1,5 @@
-import { TenantLeaderboard } from "@/components/leaderboard/tenant-leaderboard";
+import { redirect } from "next/navigation";
 
-export default function OwnerLeaderboardPage() {
-  return (
-    <TenantLeaderboard
-      title="Owner - Leaderboard"
-      subtitle="Leaderboard performa untuk monitoring cepat owner."
-    />
-  );
+export default function OwnerLeaderboardRedirect() {
+  redirect("/owner/performa");
 }

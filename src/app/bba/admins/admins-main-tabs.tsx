@@ -204,7 +204,7 @@ export function AdminsMainTabs({
           className={cn(
             "flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider transition sm:flex-initial sm:px-5",
             tab === "staff"
-              ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/80"
+              ? "bg-white text-sky-700 shadow-sm ring-1 ring-slate-200/80"
               : "text-slate-500 hover:text-slate-700",
           )}
         >
@@ -221,7 +221,7 @@ export function AdminsMainTabs({
           className={cn(
             "flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider transition sm:flex-initial sm:px-5",
             tab === "log"
-              ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/80"
+              ? "bg-white text-sky-700 shadow-sm ring-1 ring-slate-200/80"
               : "text-slate-500 hover:text-slate-700",
           )}
         >
@@ -240,7 +240,7 @@ export function AdminsMainTabs({
         {pendingInvites.length > 0 && (
           <div className="border-b border-slate-100">
             <div className="flex items-center gap-2 bg-slate-50/80 px-4 py-3 sm:px-5">
-              <Mail size={16} className="text-indigo-600" aria-hidden />
+              <Mail size={16} className="text-sky-600" aria-hidden />
               <p className="text-xs font-black uppercase tracking-widest text-slate-600">Undangan analyst menunggu</p>
             </div>
             <PendingInvitesClient invites={pendingInvites} />
@@ -287,7 +287,7 @@ export function AdminsMainTabs({
                   type="button"
                   disabled={isPendingExport}
                   onClick={exportFromServer}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-indigo-900 transition hover:bg-indigo-100 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-900 transition hover:bg-sky-100 disabled:opacity-50"
                 >
                   {isPendingExport ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Download size={14} aria-hidden />}
                   CSV server
@@ -302,7 +302,7 @@ export function AdminsMainTabs({
                   type="date"
                   value={draftFrom}
                   onChange={(e) => setDraftFrom(e.target.value)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal normal-case text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal normal-case text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
                 />
               </label>
               <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -311,7 +311,7 @@ export function AdminsMainTabs({
                   type="date"
                   value={draftTo}
                   onChange={(e) => setDraftTo(e.target.value)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal normal-case text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal normal-case text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
                 />
               </label>
               <div className="flex flex-wrap gap-2 pb-0.5">
@@ -344,7 +344,7 @@ export function AdminsMainTabs({
                       value={logQuery}
                       onChange={(e) => setLogQuery(e.target.value)}
                       placeholder="Aktor, aksi, detail, UUID…"
-                      className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-normal normal-case text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                      className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-normal normal-case text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -352,7 +352,7 @@ export function AdminsMainTabs({
                     <select
                       value={actionFilter}
                       onChange={(e) => setActionFilter(e.target.value)}
-                      className="min-w-[180px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal normal-case text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                      className="min-w-[180px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal normal-case text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
                     >
                       <option value="all">Semua</option>
                       {actionOptions.map((k) => (

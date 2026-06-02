@@ -291,12 +291,13 @@ export async function updateAnalystPortalAccessAction(input: {
   });
   if (memErr) return { success: false, error: memErr.message };
 
-  // Fetch existing memberships to compute stale set — avoids string-concatenation in filter.
+  // Fetch existing ACTIVE memberships to compute stale set — avoids touching already-inactive rows.
   const { data: existingMemRows, error: fetchMemErr } = await supabase
     .from("tenant_memberships")
     .select("tenant_apotek_id")
     .eq("user_id", input.userId)
-    .eq("role", "super_admin_bba");
+    .eq("role", "super_admin_bba")
+    .eq("is_active", true);
   if (fetchMemErr) return { success: false, error: fetchMemErr.message };
   const staleTenantIds = (existingMemRows ?? [])
     .map((r) => r.tenant_apotek_id as string)
@@ -307,6 +308,7 @@ export async function updateAnalystPortalAccessAction(input: {
       .delete()
       .eq("user_id", input.userId)
       .eq("role", "super_admin_bba")
+      .eq("is_active", true)
       .in("tenant_apotek_id", staleTenantIds);
     if (delMem) return { success: false, error: delMem.message };
   }

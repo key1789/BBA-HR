@@ -131,7 +131,7 @@ export function AdminRowActions({
                     type="button"
                     onClick={() => setConfirmDeactivate(false)}
                     disabled={isPending}
-                    className="rounded-lg border border-rose-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                    className="rounded-xl border border-rose-200 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
                   >
                     Batal
                   </button>
@@ -139,7 +139,7 @@ export function AdminRowActions({
                     type="button"
                     onClick={runToggle}
                     disabled={isPending}
-                    className="rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white transition hover:bg-rose-700 disabled:opacity-50"
+                    className="rounded-xl bg-rose-600 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-rose-700 disabled:opacity-50"
                   >
                     Nonaktifkan
                   </button>
@@ -159,7 +159,7 @@ export function AdminRowActions({
                     type="button"
                     onClick={() => setConfirmDemote(false)}
                     disabled={isPending}
-                    className="rounded-lg border border-amber-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                    className="rounded-xl border border-amber-200 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
                   >
                     Batal
                   </button>
@@ -167,7 +167,7 @@ export function AdminRowActions({
                     type="button"
                     onClick={runDemote}
                     disabled={isPending}
-                    className="rounded-lg bg-amber-700 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white transition hover:bg-amber-800 disabled:opacity-50"
+                    className="rounded-xl bg-amber-700 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-amber-800 disabled:opacity-50"
                   >
                     Cabut global
                   </button>

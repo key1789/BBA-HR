@@ -5,7 +5,7 @@ import { getSessionContext } from "@/lib/auth-context";
 import { redirect } from "next/navigation";
 import { AnimatedPage } from "@/components/shared/animated-page";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Shield } from "lucide-react";
+import { Shield, Users, Globe, Clock } from "lucide-react";
 import { AddAdminButton } from "./add-admin-button";
 import { BBA_PORTAL_MENU_REGISTRY } from "@/lib/bba-portal-menus";
 import { AdminsMainTabs } from "./admins-main-tabs";
@@ -172,25 +172,74 @@ export default async function AdminsPage({
   const auditDisplayRows = (auditRows ?? []).map((row: any) => toAuditDisplayRow(row, actorNameById));
   const initialAuditHasMore = auditAvailable && auditDisplayRows.length === AUDIT_PAGE_SIZE;
 
+  // Quick stats
+  const statTotal   = staffRows.length;
+  const statGlobal  = staffRows.filter(r => r.kind === "global").length;
+  const statPending = (pendingInvites ?? []).length;
+
   return (
-    <AnimatedPage className="mx-auto max-w-6xl space-y-6 pb-10">
-      <GlassCard className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between" variant="light">
-        <div className="flex min-w-0 items-start gap-4 sm:items-center">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-900/20">
-            <Shield size={26} strokeWidth={2} />
+    <AnimatedPage className="space-y-6 pb-10">
+      {/* HEADER */}
+      <GlassCard className="p-4 sm:p-5" variant="light">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-sky-600/25">
+              <Shield size={20} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase leading-tight">
+                Kelola Super Admin
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Undang <strong className="font-semibold text-slate-700">analyst</strong> dengan cabang &amp; modul terbatas, atau{" "}
+                <strong className="font-semibold text-slate-700">promote</strong> user ke global.
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">Kelola Super Admin</h1>
-            <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-slate-600">
-              Undang <strong className="font-semibold text-slate-800">analyst</strong> dengan cabang & modul terbatas, atau{" "}
-              <strong className="font-semibold text-slate-800">promote</strong> user ke global. Menonaktifkan akun mematikan login di semua portal.
-            </p>
+          <div className="shrink-0">
+            <AddAdminButton branches={allBranches || []} menuCatalog={BBA_PORTAL_MENU_REGISTRY} />
           </div>
-        </div>
-        <div className="shrink-0 sm:pt-1">
-          <AddAdminButton branches={allBranches || []} menuCatalog={BBA_PORTAL_MENU_REGISTRY} />
         </div>
       </GlassCard>
+
+      {/* QUICK STATS */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <GlassCard className="p-3.5 border-l-4 border-l-sky-500" variant="light">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+              <Users size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total Staff</p>
+              <p className="text-2xl font-black text-slate-900 leading-none">{statTotal}</p>
+            </div>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-l-4 border-l-emerald-500" variant="light">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <Globe size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Global Admin</p>
+              <p className="text-2xl font-black text-slate-900 leading-none">{statGlobal}</p>
+            </div>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-l-4 border-l-amber-400" variant="light">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+              <Clock size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Undangan Pending</p>
+              <p className="text-2xl font-black text-slate-900 leading-none">{statPending}</p>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
 
       <Suspense
         fallback={

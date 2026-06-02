@@ -4,7 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { BbaDashboardTab } from "@/lib/bba-dashboard-metrics";
-import { Building2, CalendarDays, BarChart2, Wrench } from "lucide-react";
+import { Building2, CalendarDays, BarChart2, Wrench, LayoutGrid } from "lucide-react";
 
 type TenantOpt = { id: string; code: string; name: string };
 
@@ -71,33 +71,36 @@ export function BbaDashboardTenantSelect({
         </select>
       </div>
 
-      {/* Period */}
-      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-        <CalendarDays size={13} className="text-slate-400 shrink-0" />
-        <select
-          className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer"
-          value={month}
-          onChange={(e) => push({ month: Number(e.target.value) })}
-        >
-          {MONTH_SHORT.map((m, i) => (
-            <option key={i + 1} value={i + 1}>{m}</option>
-          ))}
-        </select>
-        <div className="w-px h-3.5 bg-slate-300" />
-        <select
-          className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer"
-          value={year}
-          onChange={(e) => push({ year: Number(e.target.value) })}
-        >
-          {yearOptions.map((y) => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
-      </div>
+      {/* Period — hidden on Sales tab (has its own range picker) */}
+      {tab !== "sales" && (
+        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+          <CalendarDays size={13} className="text-slate-400 shrink-0" />
+          <select
+            className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer"
+            value={month}
+            onChange={(e) => push({ month: Number(e.target.value) })}
+          >
+            {MONTH_SHORT.map((m, i) => (
+              <option key={i + 1} value={i + 1}>{m}</option>
+            ))}
+          </select>
+          <div className="w-px h-3.5 bg-slate-300" />
+          <select
+            className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer"
+            value={year}
+            onChange={(e) => push({ year: Number(e.target.value) })}
+          >
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Tab switcher */}
       <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-1 ml-auto">
         {([
+          { id: "overview" as const, label: "Overview", icon: LayoutGrid },
           { id: "sales" as const, label: "Penjualan", icon: BarChart2 },
           { id: "ops" as const, label: "Operasional", icon: Wrench },
         ] as const).map((item) => {
@@ -110,7 +113,7 @@ export function BbaDashboardTenantSelect({
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition-all",
                 tab === item.id
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30"
                   : "text-slate-500 hover:text-slate-700",
               )}
             >

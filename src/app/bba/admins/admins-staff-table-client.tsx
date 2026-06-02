@@ -45,7 +45,7 @@ export function AdminsStaffTableClient({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Cari nama, email, cabang, atau kunci menu…"
-          className="w-full max-w-md rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 sm:min-w-[240px]"
+          className="w-full max-w-md rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/25 sm:min-w-[240px]"
           aria-label="Filter daftar staff"
         />
         <label className="flex items-center gap-2 text-sm text-slate-600">
@@ -53,7 +53,7 @@ export function AdminsStaffTableClient({
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as typeof role)}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
           >
             <option value="all">Semua</option>
             <option value="global">Global</option>
@@ -98,7 +98,7 @@ export function AdminsStaffTableClient({
                 <tr key={admin.id} className="transition-colors hover:bg-slate-50/90">
                   <td className="px-5 py-4 sm:px-6">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600 ring-1 ring-sky-100">
                         <UserCircle2 size={20} />
                       </div>
                       <div className="min-w-0">

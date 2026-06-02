@@ -2,7 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSessionContext } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/server";
 import { clampViewMonthYear } from "@/lib/bba-dashboard-metrics";
-import { parseOwnerVerifiedOnlyParam } from "@/lib/audit-branch-dashboard-data";
 import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 
 export type OwnerPortalSessionOk = {
@@ -12,8 +11,6 @@ export type OwnerPortalSessionOk = {
   month: number;
   year: number;
   dateParam: string;
-  /** Default true: omzet/KPI dari laporan terverifikasi (approved + edited_by_admin). */
-  verifiedOnly: boolean;
   tenantOptions: { id: string; code: string; name: string }[];
 };
 
@@ -22,7 +19,6 @@ export async function getOwnerPortalContext(params: {
   month?: string;
   year?: string;
   date?: string;
-  verifiedOnly?: string;
 }): Promise<{ ok: false; reason: "auth" | "no_owner" } | { ok: true; data: OwnerPortalSessionOk }> {
   const session = await getSessionContext();
   const active = session?.activeMembership;
@@ -54,7 +50,6 @@ export async function getOwnerPortalContext(params: {
     Number.isFinite(rawYear) ? rawYear : todayYear,
   );
   const dateParam = typeof params.date === "string" ? params.date.slice(0, 10) : "";
-  const verifiedOnly = parseOwnerVerifiedOnlyParam(params.verifiedOnly);
 
   const supabase = await createClient();
   const tenantOptions = ownerMemberships.map((m) => ({
@@ -72,7 +67,6 @@ export async function getOwnerPortalContext(params: {
       month,
       year,
       dateParam,
-      verifiedOnly,
       tenantOptions,
     },
   };

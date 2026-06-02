@@ -152,7 +152,7 @@ export async function toggleCrewLockAction(auditId: string, userId: string, curr
     .from("monthly_audits")
     .select("status, tenant_apotek_id, period_month, period_year")
     .eq("id", auditId)
-    .single();
+    .maybeSingle();
 
   if (!mainAudit) {
     return { error: "Data audit tidak ditemukan." };
@@ -182,7 +182,7 @@ export async function toggleCrewLockAction(auditId: string, userId: string, curr
       locked_at: !currentStatus ? new Date().toISOString() : null,
       locked_by: !currentStatus ? user.id : null,
       updated_at: new Date().toISOString()
-    }, { onConflict: 'monthly_audit_id, user_id' });
+    }, { onConflict: 'monthly_audit_id,user_id' });
 
   if (error) {
     console.error("Lock toggle error:", error);
@@ -253,7 +253,7 @@ export async function updateCrewAuditAction(
     .select("is_locked")
     .eq("monthly_audit_id", auditId)
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
 
   if (crewAudit?.is_locked) {
     return { error: "Data sudah dikunci, tidak dapat diubah." };
@@ -266,7 +266,7 @@ export async function updateCrewAuditAction(
       user_id: userId,
       ...updates,
       updated_at: new Date().toISOString()
-    }, { onConflict: 'monthly_audit_id, user_id' });
+    }, { onConflict: 'monthly_audit_id,user_id' });
 
   if (error) {
     console.error("Update crew audit error:", error);
@@ -679,7 +679,7 @@ export async function upsertMonthlyAddonAppraisalAction(input: {
       notes: input.notes?.trim() || null,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "tenant_apotek_id, crew_user_id, period_month, period_year, addon_key" },
+    { onConflict: "tenant_apotek_id,crew_user_id,period_month,period_year,addon_key" },
   );
 
   if (error) {
@@ -933,4 +933,195 @@ export async function recalculateAuditAppraisalAction(auditId: string, reason: s
 
   revalidatePath(`/bba/audit/${tenantId}`);
   return { success: true, affectedUserCount: result.affectedUserCount };
+}
+
+// ─── Payroll Draft ────────────────────────────────────────────────────────────
+
+type PayrollDraftItem = {
+  userId: string;
+  daysWorked: number | null;
+  baseSalary: number;
+  posAllowance: number;
+  /** per hari */
+  mealAllowance: number;
+  /** per hari */
+  transAllowance: number;
+  bpjsDeduction: number;
+  customAdjustments: Array<{ name: string; amount: number; type: string }>;
+  kpiBonus: number;
+  productBonus: number;
+  adjustment: number;
+  configSource: "default" | "override";
+};
+
+export async function savePayrollDraftAction(input: {
+  tenantId: string;
+  auditId: string;
+  month: number;
+  year: number;
+  items: PayrollDraftItem[];
+}) {
+  const supabaseAdmin = createAdminClient();
+  const supabase = await createClient();
+
+  const access = await assertAuditMutationAccess();
+  if ("error" in access) return { error: access.error };
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesi habis, silakan login kembali." };
+
+  // ── Validasi dasar ──────────────────────────────────────────────────────────
+  if (
+    !input.tenantId || !input.auditId ||
+    !input.month || !input.year ||
+    !Array.isArray(input.items) || input.items.length === 0
+  ) {
+    return { error: "Data tidak lengkap untuk menyimpan draft payroll." };
+  }
+  if (input.month < 1 || input.month > 12 || input.year < 2020 || input.year > 2100) {
+    return { error: "Periode tidak valid." };
+  }
+
+  // ── Verifikasi audit & tenant (selalu dijalankan — auditId sudah wajib) ────
+  {
+    const { data: auditRow } = await supabaseAdmin
+      .from("monthly_audits")
+      .select("tenant_apotek_id, status")
+      .eq("id", input.auditId)
+      .maybeSingle();
+
+    if (!auditRow) return { error: "Audit tidak ditemukan." };
+    if (String(auditRow.tenant_apotek_id) !== input.tenantId) {
+      return { error: "Tenant tidak sesuai dengan audit yang dipilih." };
+    }
+    if (auditRow.status === "APPROVED") {
+      return { error: "Audit sudah difinalisasi — draft payroll tidak dapat diubah." };
+    }
+  }
+
+  // ── Guard: payroll period belum dipublish ───────────────────────────────────
+  const publishCheck = await assertNotPublishedPayrollPeriod(
+    supabaseAdmin,
+    input.tenantId,
+    input.month,
+    input.year,
+  );
+  if (publishCheck.error) return { error: publishCheck.error };
+
+  // ── Hitung tanggal periode ──────────────────────────────────────────────────
+  const periodStartStr = `${input.year}-${String(input.month).padStart(2, "0")}-01`;
+  const lastDay = new Date(input.year, input.month, 0).getDate();
+  const periodEndStr   = `${input.year}-${String(input.month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+  // ── Upsert payroll_periods ──────────────────────────────────────────────────
+  const { data: periodRow, error: periodErr } = await supabaseAdmin
+    .from("payroll_periods")
+    .upsert(
+      {
+        tenant_apotek_id: input.tenantId,
+        period_start:     periodStartStr,
+        period_end:       periodEndStr,
+        status:           "draft",
+        updated_at:       new Date().toISOString(),
+      },
+      { onConflict: "tenant_apotek_id,period_start,period_end" },
+    )
+    .select("id")
+    .single();
+
+  if (periodErr || !periodRow?.id) {
+    console.error("savePayrollDraftAction: upsert payroll_periods", periodErr);
+    return { error: "Gagal menyimpan periode payroll." };
+  }
+
+  const periodId = periodRow.id as string;
+  const savedAt  = new Date().toISOString();
+
+  // ── Build payroll_items rows ────────────────────────────────────────────────
+  const itemRows = input.items.map((item) => {
+    const dw = typeof item.daysWorked === "number" && item.daysWorked >= 0
+      ? Math.round(item.daysWorked) : null;
+
+    const mealTotal  = dw !== null ? item.mealAllowance  * dw : 0;
+    const transTotal = dw !== null ? item.transAllowance * dw : 0;
+
+    const customAdds = (item.customAdjustments ?? [])
+      .filter((a) => a.type === "addition")
+      .reduce((s, a) => s + Math.max(0, Number(a.amount) || 0), 0);
+    const customDeds = (item.customAdjustments ?? [])
+      .filter((a) => a.type === "deduction")
+      .reduce((s, a) => s + Math.max(0, Number(a.amount) || 0), 0);
+
+    const allowance = item.posAllowance + mealTotal + transTotal + customAdds;
+    const deduction = item.bpjsDeduction + customDeds;
+
+    const bonusTotal = item.kpiBonus + item.productBonus + item.adjustment;
+    const grossIncome = item.baseSalary + allowance;
+    const netSalaryFull = grossIncome - deduction + bonusTotal;
+
+    const configSnapshot = {
+      days_worked:               dw,
+      base_salary:               item.baseSalary,
+      position_allowance:        item.posAllowance,
+      meal_allowance_per_day:    item.mealAllowance,
+      meal_allowance_total:      mealTotal,
+      transport_allowance_per_day: item.transAllowance,
+      transport_allowance_total: transTotal,
+      custom_adjustments:        item.customAdjustments ?? [],
+      bonus_from_audit: {
+        kpi:        item.kpiBonus,
+        produk_fokus: item.productBonus,
+        adjustment: item.adjustment,
+        total:      bonusTotal,
+      },
+      totals: {
+        gross_income:     grossIncome,
+        total_deductions: deduction,
+        bonus_total:      bonusTotal,
+        net_salary:       netSalaryFull,
+      },
+      config_source: item.configSource,
+      saved_at: savedAt,
+    };
+
+    return {
+      payroll_period_id:   periodId,
+      user_id:             item.userId,
+      // employee_profile_id nullable — not used for audit-linked items
+      base_salary:         item.baseSalary,
+      allowance,
+      deduction,
+      days_worked:         dw,
+      config_snapshot:     configSnapshot,
+      notes:               null as string | null,
+      updated_at:          savedAt,
+    };
+  });
+
+  // ── Upsert payroll_items on (payroll_period_id, user_id) ──────────────────
+  const { error: itemsErr } = await supabaseAdmin
+    .from("payroll_items")
+    .upsert(itemRows, { onConflict: "payroll_period_id,user_id" });
+
+  if (itemsErr) {
+    console.error("savePayrollDraftAction: upsert payroll_items", itemsErr);
+    return { error: "Gagal menyimpan item payroll karyawan." };
+  }
+
+  await logAuditStateEvent(supabaseAdmin, {
+    monthlyAuditId: input.auditId || null,
+    tenantApotekId: input.tenantId,
+    periodMonth:    input.month,
+    periodYear:     input.year,
+    action:         "payroll_draft_save",
+    actorUserId:    user.id,
+    metadata:       { item_count: itemRows.length, period_id: periodId },
+  });
+
+  revalidatePath(`/bba/audit/${input.tenantId}`);
+  revalidatePath("/bba/payroll");
+  return {
+    success: true,
+    message: `Draft payroll ${itemRows.length} karyawan berhasil disimpan.`,
+  };
 }

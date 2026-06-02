@@ -2,7 +2,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionContext } from "@/lib/auth-context";
 import { AuditListClient } from "./audit-list-client";
-import { ClipboardCheck } from "lucide-react";
+import { AnimatedPage } from "@/components/shared/animated-page";
+import { GlassCard } from "@/components/shared/glass-card";
+import { ClipboardCheck, Store, Eye, CheckCircle2 } from "lucide-react";
 import { isBranchOperationalPersonnel } from "@/lib/branch-personnel";
 import { getKpiV2SchemesEnabledForPeriod, isKpiConfigV2 } from "@/lib/kpi-v2/utils";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
@@ -37,11 +39,10 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   // 1. Fetch Branches — analyst hanya dapat cabang mereka
   const branchQuery = supabase
     .from("tenant_apotek")
-    .select("id, name, code, status")
+    .select("id, name, code, status, is_trial")
     .order("name", { ascending: true });
 
   if (analystBranchIds !== null) {
-    // Kalau analyst tidak punya assignment, pastikan return kosong
     branchQuery.in("id", analystBranchIds.length > 0 ? analystBranchIds : ["00000000-0000-0000-0000-000000000000"]);
   }
 
@@ -50,11 +51,14 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   const branchIds = (branches ?? []).map((b: any) => b.id).filter(Boolean);
 
   // 2. Fetch Audits for this period
-  const { data: audits } = await supabase
-    .from("monthly_audits")
-    .select("*")
-    .eq("period_month", month)
-    .eq("period_year", year);
+  const { data: audits } = branchIds.length
+    ? await supabase
+        .from("monthly_audits")
+        .select("id, tenant_apotek_id, status, period_month, period_year")
+        .eq("period_month", month)
+        .eq("period_year", year)
+        .in("tenant_apotek_id", branchIds)
+    : { data: [] as { id: string; tenant_apotek_id: string; status: string; period_month: number; period_year: number }[] };
 
   const [{ data: kpiConfigs }, { data: submissionRows }, { data: membershipRows }] = await Promise.all([
     branchIds.length
@@ -133,24 +137,71 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
     };
   }
 
+  // Quick stats
+  const prodBranches = (branches ?? []).filter((b: any) => !b.is_trial);
+  const statTotal       = prodBranches.length;
+  const statUnderReview = (audits ?? []).filter((a: any) => a.status === "UNDER_REVIEW").length;
+  const statApproved    = (audits ?? []).filter((a: any) => a.status === "APPROVED").length;
+
   return (
-    <div className="p-8 space-y-8 animate-in fade-in duration-700">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-600/20">
-              <ClipboardCheck className="text-white" size={24} />
-            </div>
-            <div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight">Approval & Audit</h1>
-              <p className="text-slate-500 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
-                {isAnalyst ? "Portal Analyst" : "Pusat Kendali Performa Cabang"} <span className="w-1 h-1 bg-slate-300 rounded-full"></span> {branches?.length || 0} Cabang
-              </p>
-            </div>
+    <AnimatedPage className="space-y-6">
+      {/* HEADER */}
+      <GlassCard className="p-4 sm:p-5" variant="light">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-sky-600/25">
+            <ClipboardCheck size={20} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase leading-tight">
+              Approval &amp; Audit
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {isAnalyst ? "Portal Analyst" : "Pusat Kendali Performa Cabang"} · {branches?.length || 0} cabang periode {month}/{year}
+            </p>
           </div>
         </div>
+      </GlassCard>
+
+      {/* QUICK STATS */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <GlassCard className="p-3.5 border-l-4 border-l-sky-500" variant="light">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+              <Store size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total Cabang</p>
+              <p className="text-2xl font-black text-slate-900 leading-none">{statTotal}</p>
+            </div>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-l-4 border-l-amber-400" variant="light">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+              <Eye size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Under Review</p>
+              <p className="text-2xl font-black text-slate-900 leading-none">{statUnderReview}</p>
+            </div>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-l-4 border-l-emerald-500" variant="light">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <CheckCircle2 size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Approved</p>
+              <p className="text-2xl font-black text-slate-900 leading-none">{statApproved}</p>
+            </div>
+          </div>
+        </GlassCard>
       </div>
 
+      {/* CLIENT COMPONENT */}
       <AuditListClient
         branches={branches || []}
         audits={audits || []}
@@ -163,6 +214,6 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
           effectiveEndDate,
         }}
       />
-    </div>
+    </AnimatedPage>
   );
 }

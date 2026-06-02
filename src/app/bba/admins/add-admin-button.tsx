@@ -132,7 +132,7 @@ export function AddAdminButton({
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-md shadow-indigo-900/15 transition hover:bg-indigo-700 hover:shadow-lg active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-md shadow-indigo-900/15 transition hover:bg-indigo-700 hover:shadow-lg active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
       >
         <Plus size={17} strokeWidth={2.5} aria-hidden />
         Kelola staff portal
@@ -267,7 +267,7 @@ export function AddAdminButton({
                               <Building2 size={16} className="text-indigo-500" aria-hidden />
                               <span className="text-sm font-bold">Cabang</span>
                             </div>
-                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-indigo-700">
+                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-indigo-700">
                               {selectedBranches.length} dipilih
                             </span>
                           </div>
@@ -308,7 +308,7 @@ export function AddAdminButton({
                               <LayoutGrid size={16} className="text-indigo-500" aria-hidden />
                               <span className="text-sm font-bold">Modul portal</span>
                             </div>
-                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-indigo-700">
+                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-indigo-700">
                               {selectedMenus.length} dipilih
                             </span>
                           </div>
@@ -375,7 +375,7 @@ export function AddAdminButton({
                         type="button"
                         onClick={handleInviteAnalyst}
                         disabled={isPending || branches.length === 0}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-black uppercase tracking-wide text-white transition hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white transition hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
                       >
                         {isPending ? <Loader2 size={18} className="animate-spin" aria-hidden /> : <Mail size={18} aria-hidden />}
                         Buat undangan & salin link
@@ -385,7 +385,7 @@ export function AddAdminButton({
                         type="button"
                         onClick={handlePromoteGlobal}
                         disabled={isPending}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-black uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white transition hover:bg-indigo-700 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
                       >
                         {isPending ? <Loader2 size={18} className="animate-spin" aria-hidden /> : <Globe size={18} aria-hidden />}
                         Set global admin

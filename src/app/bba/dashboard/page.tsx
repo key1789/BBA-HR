@@ -8,19 +8,22 @@ import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import {
   BBA_DASHBOARD_OMZET_STATUSES,
-  buildDailyOmzetSeries,
   clampViewMonthYear,
   computeDashboardKpis,
+  computeSalesTrend,
+  getMonthsInRange,
   monthBoundsKeys,
   parseDashboardTab,
+  parseSalesPeriod,
   type BbaDashboardTab,
+  type SalesBranchSummary,
+  type SalesMonthlyPoint,
 } from "@/lib/bba-dashboard-metrics";
 import {
   Activity,
-  ArrowDownRight,
-  ArrowUpRight,
+  AlertTriangle,
   Building2,
-  Calendar,
+  CalendarOff,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -29,10 +32,12 @@ import {
   TrendingUp,
   Users,
   Bell,
+  ArrowLeftRight,
+  FileCheck,
 } from "lucide-react";
-import { CustomLineChart } from "@/components/dashboard/custom-line-chart";
-import { BbaDashboardLeaderboard, type LeaderboardRow } from "./bba-dashboard-leaderboard";
 import { BbaDashboardTenantSelect } from "./bba-dashboard-tenant-select";
+import { BbaDashboardBranchMatrix, type BranchHealthRow } from "./bba-dashboard-branch-matrix";
+import { BbaDashboardSalesContent } from "./bba-dashboard-sales-content";
 
 type TenantRow = {
   id: string;
@@ -48,6 +53,7 @@ type ReminderLogRow = {
 };
 
 type OmzetSubmissionRow = {
+  tenant_apotek_id: string;
   submission_date: string;
   omzet_total: number | null;
   transaction_total: number | null;
@@ -62,6 +68,15 @@ type KpiConfigRow = {
   target_omzet: number | null;
   target_atv: number | null;
   target_atu: number | null;
+};
+
+type TodaySubmissionRow = {
+  tenant_apotek_id: string;
+  status: string;
+};
+
+type PendingApprovalRow = {
+  tenant_apotek_id: string;
 };
 
 function addCalendarMonths(m: number, y: number, delta: number): { month: number; year: number } {
@@ -110,7 +125,14 @@ async function getQueueStats(
 export default async function BbaControlDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tenant?: string; month?: string; year?: string; tab?: string }>;
+  searchParams: Promise<{
+    tenant?: string;
+    month?: string;
+    year?: string;
+    tab?: string;
+    sales_from?: string;
+    sales_to?: string;
+  }>;
 }) {
   const params = await searchParams;
   const session = await getSessionContext();
@@ -147,6 +169,7 @@ export default async function BbaControlDashboardPage({
   const { data: tenantData } = await supabase
     .from("tenant_apotek")
     .select("id, name, code, status")
+    .eq("is_trial", false)
     .order("name", { ascending: true });
   const tenants = (tenantData ?? []) as TenantRow[];
 
@@ -164,13 +187,27 @@ export default async function BbaControlDashboardPage({
     );
   }
 
-  const selectedTenantId =
-    params.tenant && params.tenant !== "all" ? params.tenant : tenants[0]?.id ?? null;
-  const scopedTenantIds =
-    params.tenant === "all" || !selectedTenantId ? tenants.map((t) => t.id) : [selectedTenantId];
+  // Parse sales period (only used when tab=sales)
+  const { salesFrom, salesTo } = parseSalesPeriod(
+    params.sales_from,
+    params.sales_to,
+    todayYear,
+    todayMonth,
+  );
 
+  // Overview and Sales both default to showing all branches when no tenant is explicitly selected
+  const isOverviewNoTenant = tab === "overview" && !params.tenant;
+  const isSalesNoTenant = tab === "sales" && !params.tenant;
+  const selectedTenantId =
+    isOverviewNoTenant || isSalesNoTenant || params.tenant === "all"
+      ? null
+      : (params.tenant ?? tenants[0]?.id ?? null);
+  const scopedTenantIds =
+    !selectedTenantId ? tenants.map((t) => t.id) : [selectedTenantId];
   const tenantQueryForLinks: string =
-    params.tenant === "all" ? "all" : (params.tenant ?? selectedTenantId ?? tenants[0]!.id);
+    isOverviewNoTenant || isSalesNoTenant || params.tenant === "all"
+      ? "all"
+      : (params.tenant ?? selectedTenantId ?? tenants[0]!.id);
 
   const { startKey, endKey: monthEndKey } = monthBoundsKeys(year, month);
   const isViewingCurrentMonth = year === todayYear && month === todayMonth;
@@ -196,6 +233,9 @@ export default async function BbaControlDashboardPage({
     { data: targetRowsData },
     { count: totalCrewCount },
     publishedAppraisalResult,
+    { data: todaySubmissionsData },
+    pendingLeaveResult,
+    pendingSwapResult,
   ] = await Promise.all([
     supabase
       .from("reminder_dispatch_logs")
@@ -220,7 +260,7 @@ export default async function BbaControlDashboardPage({
     supabase
       .from("daily_submissions")
       .select(
-        "submission_date, omzet_total, transaction_total, product_total, rejected_customer_total, user_id, user:user_id(full_name)",
+        "tenant_apotek_id, submission_date, omzet_total, transaction_total, product_total, rejected_customer_total, user_id, user:user_id(full_name)",
       )
       .in("tenant_apotek_id", scopedTenantIds)
       .in("status", [...BBA_DASHBOARD_OMZET_STATUSES])
@@ -245,6 +285,24 @@ export default async function BbaControlDashboardPage({
       .eq("period_month", month)
       .eq("period_year", year)
       .eq("is_published", true),
+    // Today's submission status per branch
+    supabase
+      .from("daily_submissions")
+      .select("tenant_apotek_id, status")
+      .in("tenant_apotek_id", scopedTenantIds)
+      .eq("submission_date", reminderWindow.dateKey),
+    // Pending leave requests
+    supabase
+      .from("leave_requests")
+      .select("tenant_apotek_id")
+      .in("tenant_apotek_id", scopedTenantIds)
+      .eq("status", "pending"),
+    // Pending shift swap requests
+    supabase
+      .from("shift_swap_requests")
+      .select("tenant_apotek_id")
+      .in("tenant_apotek_id", scopedTenantIds)
+      .in("status", ["pending_crew", "pending_admin"]),
   ]);
 
   const reminderLogs = (reminderRows ?? []) as ReminderLogRow[];
@@ -254,9 +312,20 @@ export default async function BbaControlDashboardPage({
     publishedAppraisalResult.error?.code === "42P01"
       ? []
       : ((publishedAppraisalResult.data ?? []) as { crew_user_id: string }[]);
+  const todaySubmissions = (todaySubmissionsData ?? []) as TodaySubmissionRow[];
+  const pendingLeaveRows =
+    pendingLeaveResult.error?.code === "42P01"
+      ? []
+      : ((pendingLeaveResult.data ?? []) as PendingApprovalRow[]);
+  const pendingSwapRows =
+    pendingSwapResult.error?.code === "42P01"
+      ? []
+      : ((pendingSwapResult.data ?? []) as PendingApprovalRow[]);
+
   const assignmentMap = new Map(assignmentStats);
   const queueMap = new Map(perTenantQueue);
 
+  // ── Reminder aggregation ──
   const reminderByTenant = new Map<
     string,
     { total: number; overdueVerification: number; verificationBacklog: number }
@@ -273,6 +342,7 @@ export default async function BbaControlDashboardPage({
     reminderByTenant.set(row.tenant_apotek_id, current);
   }
 
+  // ── Per-branch queue + reminder rows ──
   const tenantRows = scopedTenantIds
     .map((tenantId) => {
       const tenant = tenants.find((item) => item.id === tenantId);
@@ -300,23 +370,8 @@ export default async function BbaControlDashboardPage({
 
   const priorityBranches = tenantRows.slice(0, 6);
 
+  // ── Sales KPIs ──
   const kpis = computeDashboardKpis(omzetRows);
-  const dailySeries = buildDailyOmzetSeries(omzetRows, startKey, periodEnd);
-
-  const performerMap = new Map<string, { name: string; omzet: number }>();
-  for (const row of omzetRows) {
-    const actor = Array.isArray(row.user) ? row.user[0] : row.user;
-    const current = performerMap.get(row.user_id) ?? {
-      name: actor?.full_name ?? "Tanpa nama",
-      omzet: 0,
-    };
-    current.omzet += Number(row.omzet_total ?? 0);
-    performerMap.set(row.user_id, current);
-  }
-  const leaderboardRows: LeaderboardRow[] = Array.from(performerMap.entries())
-    .map(([userId, value]) => ({ userId, name: value.name, omzet: value.omzet }))
-    .sort((a, b) => b.omzet - a.omzet)
-    .slice(0, 12);
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const targetOmzetFull = targetRows.reduce((s, r) => s + Number(r.target_omzet ?? 0), 0);
@@ -326,11 +381,6 @@ export default async function BbaControlDashboardPage({
   const proratedTargetOmzet = targetOmzetFull * (mtdDays / Math.max(1, daysInMonth));
   const capaianPct =
     proratedTargetOmzet > 0 ? Math.min(200, Math.round((kpis.omzet / proratedTargetOmzet) * 100)) : 0;
-
-  const atvTargets = targetRows.map((r) => Number(r.target_atv ?? 0)).filter((n) => n > 0);
-  const atuTargets = targetRows.map((r) => Number(r.target_atu ?? 0)).filter((n) => n > 0);
-  const avgTargetAtv = atvTargets.length ? atvTargets.reduce((a, b) => a + b, 0) / atvTargets.length : 0;
-  const avgTargetAtu = atuTargets.length ? atuTargets.reduce((a, b) => a + b, 0) / atuTargets.length : 0;
 
   const publishedCrewCount = new Set(publishedAppraisalRows.map((row) => row.crew_user_id)).size;
   const publishProgressPercent =
@@ -349,75 +399,430 @@ export default async function BbaControlDashboardPage({
     { openQueue: 0, overdueQueue: 0, reminders7d: 0, assignments: 0 },
   );
 
+  // ── Per-branch omzet (for Overview matrix + Sales branch table) ──
+  const omzetByTenant = new Map<string, number>();
+  for (const row of omzetRows) {
+    omzetByTenant.set(
+      row.tenant_apotek_id,
+      (omzetByTenant.get(row.tenant_apotek_id) ?? 0) + Number(row.omzet_total ?? 0),
+    );
+  }
+  const targetByTenant = new Map(targetRows.map((r) => [r.tenant_apotek_id, Number(r.target_omzet ?? 0)]));
+
+  function branchMtdPct(tenantId: string): number {
+    const omzet = omzetByTenant.get(tenantId) ?? 0;
+    const targetFull = targetByTenant.get(tenantId) ?? 0;
+    if (targetFull <= 0) return 0;
+    const prorated = targetFull * (mtdDays / Math.max(1, daysInMonth));
+    return Math.min(999, Math.round((omzet / prorated) * 100));
+  }
+
+  // ── Today's submission status per branch ──
+  const todayStatusMap = new Map<string, "verified" | "pending" | "none">();
+  for (const id of scopedTenantIds) todayStatusMap.set(id, "none");
+  for (const row of todaySubmissions) {
+    const cur = todayStatusMap.get(row.tenant_apotek_id);
+    if (cur === "verified") continue;
+    if (BBA_DASHBOARD_OMZET_STATUSES.includes(row.status as (typeof BBA_DASHBOARD_OMZET_STATUSES)[number])) {
+      todayStatusMap.set(row.tenant_apotek_id, "verified");
+    } else {
+      todayStatusMap.set(row.tenant_apotek_id, "pending");
+    }
+  }
+
+  // ── Pending approvals per branch ──
+  const pendingLeaveMap = new Map<string, number>();
+  for (const row of pendingLeaveRows) {
+    pendingLeaveMap.set(row.tenant_apotek_id, (pendingLeaveMap.get(row.tenant_apotek_id) ?? 0) + 1);
+  }
+  const pendingSwapMap = new Map<string, number>();
+  for (const row of pendingSwapRows) {
+    pendingSwapMap.set(row.tenant_apotek_id, (pendingSwapMap.get(row.tenant_apotek_id) ?? 0) + 1);
+  }
+
+  // ── Branch Health Matrix rows ──
+  const branchHealthRows: BranchHealthRow[] = tenantRows.map((row) => ({
+    tenantId: row.tenantId,
+    tenantCode: row.tenantCode,
+    tenantName: row.tenantName,
+    todayStatus: todayStatusMap.get(row.tenantId) ?? "none",
+    mtdPct: branchMtdPct(row.tenantId),
+    openQueue: row.openQueue,
+    overdueQueue: row.overdueQueue,
+    pendingLeave: pendingLeaveMap.get(row.tenantId) ?? 0,
+    pendingSwap: pendingSwapMap.get(row.tenantId) ?? 0,
+    detailHref: `/bba/audit?tenant=${row.tenantId}&month=${month}&year=${year}`,
+  }));
+
+  // ── Overview KPIs ──
+  const laporedCount = branchHealthRows.filter((r) => r.todayStatus !== "none").length;
+  const totalBranches = branchHealthRows.length;
+  const perluPerhatianCount = branchHealthRows.filter(
+    (r) => r.overdueQueue > 0 || r.todayStatus === "none",
+  ).length;
+  const totalPendingApprovals = pendingLeaveRows.length + pendingSwapRows.length;
+
+  // ── Sales multi-month data (only fetched when tab=sales) ──
+  let salesBranchSummaries: SalesBranchSummary[] = [];
+
+  if (tab === "sales") {
+    const salesMonths = getMonthsInRange(salesFrom, salesTo);
+    if (salesMonths.length > 0) {
+      const firstMonth = salesMonths[0]!;
+      const lastMonth = salesMonths[salesMonths.length - 1]!;
+      const salesStartKey = `${firstMonth.year}-${String(firstMonth.month).padStart(2, "0")}-01`;
+      const salesEndKey = monthBoundsKeys(lastMonth.year, lastMonth.month).endKey;
+      const salesYears = [...new Set(salesMonths.map((m) => m.year))];
+
+      const [salesOmzetResult, salesTargetResult] = await Promise.all([
+        supabase
+          .from("daily_submissions")
+          .select("tenant_apotek_id, submission_date, omzet_total, transaction_total, product_total")
+          .in("tenant_apotek_id", scopedTenantIds)
+          .in("status", [...BBA_DASHBOARD_OMZET_STATUSES])
+          .gte("submission_date", salesStartKey)
+          .lte("submission_date", salesEndKey),
+        supabase
+          .from("kpi_configs")
+          .select("tenant_apotek_id, period_month, period_year, target_omzet, target_atv, target_atu")
+          .in("tenant_apotek_id", scopedTenantIds)
+          .in("period_year", salesYears),
+      ]);
+
+      type SalesOmzetRow = {
+        tenant_apotek_id: string;
+        submission_date: string;
+        omzet_total: number | null;
+        transaction_total: number | null;
+        product_total: number | null;
+      };
+      type SalesTargetRow = {
+        tenant_apotek_id: string;
+        period_month: number;
+        period_year: number;
+        target_omzet: number | null;
+        target_atv: number | null;
+        target_atu: number | null;
+      };
+
+      const salesOmzetRows = (salesOmzetResult.data ?? []) as SalesOmzetRow[];
+      const salesTargetRows = (salesTargetResult.data ?? []) as SalesTargetRow[];
+
+      // Group omzet by (tenantId, yearMonth)
+      type MonthBucket = { omzet: number; transactions: number; products: number };
+      const omzetBuckets = new Map<string, Map<string, MonthBucket>>();
+      for (const row of salesOmzetRows) {
+        const ym = (row.submission_date ?? "").slice(0, 7);
+        if (!ym) continue;
+        if (!omzetBuckets.has(row.tenant_apotek_id)) omzetBuckets.set(row.tenant_apotek_id, new Map());
+        const bm = omzetBuckets.get(row.tenant_apotek_id)!;
+        const cur = bm.get(ym) ?? { omzet: 0, transactions: 0, products: 0 };
+        cur.omzet += Number(row.omzet_total ?? 0);
+        cur.transactions += Number(row.transaction_total ?? 0);
+        cur.products += Number(row.product_total ?? 0);
+        bm.set(ym, cur);
+      }
+
+      // Group targets by (tenantId, yearMonth)
+      type TargetBucket = { targetOmzet: number; targetAtv: number; targetAtu: number };
+      const targetBuckets = new Map<string, Map<string, TargetBucket>>();
+      for (const row of salesTargetRows) {
+        // Only include months in our range
+        if (!salesMonths.some((m) => m.year === row.period_year && m.month === row.period_month)) continue;
+        const ym = `${row.period_year}-${String(row.period_month).padStart(2, "0")}`;
+        if (!targetBuckets.has(row.tenant_apotek_id)) targetBuckets.set(row.tenant_apotek_id, new Map());
+        targetBuckets.get(row.tenant_apotek_id)!.set(ym, {
+          targetOmzet: Number(row.target_omzet ?? 0),
+          targetAtv: Number(row.target_atv ?? 0),
+          targetAtu: Number(row.target_atu ?? 0),
+        });
+      }
+
+      // Build SalesBranchSummary for each tenant
+      for (const tenantId of scopedTenantIds) {
+        const tenant = tenants.find((t) => t.id === tenantId);
+        if (!tenant) continue;
+
+        const monthlyData: SalesMonthlyPoint[] = salesMonths.map(({ year, month, yearMonth }) => {
+          const bucket = omzetBuckets.get(tenantId)?.get(yearMonth) ?? { omzet: 0, transactions: 0, products: 0 };
+          const tgt = targetBuckets.get(tenantId)?.get(yearMonth) ?? { targetOmzet: 0, targetAtv: 0, targetAtu: 0 };
+          const atv = bucket.transactions > 0 ? bucket.omzet / bucket.transactions : 0;
+          const atu = bucket.transactions > 0 ? bucket.products / bucket.transactions : 0;
+          const omzetCapaian =
+            tgt.targetOmzet > 0 ? Math.min(999, Math.round((bucket.omzet / tgt.targetOmzet) * 100)) : 0;
+          const atvCapaian =
+            tgt.targetAtv > 0 ? Math.min(999, Math.round((atv / tgt.targetAtv) * 100)) : 0;
+          const atuCapaian =
+            tgt.targetAtu > 0 ? Math.min(999, Math.round((atu / tgt.targetAtu) * 100)) : 0;
+          return { yearMonth, year, month, ...bucket, atv, atu, ...tgt, omzetCapaian, atvCapaian, atuCapaian };
+        });
+
+        const withData = monthlyData.filter((p) => p.omzet > 0);
+        const totalOmzet = withData.reduce((s, p) => s + p.omzet, 0);
+        const withCapaian = monthlyData.filter((p) => p.omzetCapaian > 0);
+        const avgOmzetCapaian =
+          withCapaian.length > 0
+            ? withCapaian.reduce((s, p) => s + p.omzetCapaian, 0) / withCapaian.length
+            : 0;
+
+        salesBranchSummaries.push({
+          tenantId,
+          tenantCode: tenant.code,
+          tenantName: tenant.name,
+          avgOmzetCapaian: Math.round(avgOmzetCapaian),
+          totalOmzet,
+          trend: computeSalesTrend(monthlyData),
+          monthlyData,
+        });
+      }
+    }
+  }
+
   const tenantOpts = tenants.map((t) => ({ id: t.id, code: t.code, name: t.name }));
+  const effectiveTenantId =
+    isOverviewNoTenant || isSalesNoTenant
+      ? "all"
+      : (params.tenant === "all" ? "all" : (params.tenant ?? selectedTenantId ?? tenants[0]!.id));
 
   return (
     <AnimatedPage className="space-y-5 pb-10">
-      {/* ── Compact header ── */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shrink-0">
-            <Activity size={14} />
+      {/* ── Header ── */}
+      <GlassCard className="p-4 sm:p-5" variant="light">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-sky-600/25">
+              <Activity size={20} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase leading-tight">
+                Dashboard BBA
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5 truncate">
+                {reminderWindow.dateKey}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="text-base font-black text-slate-900 uppercase tracking-tight leading-none">
-              Dashboard <span className="text-indigo-600">BBA</span>
-            </h1>
-            <p className="text-[10px] font-medium text-slate-400 mt-0.5 truncate">
-              {reminderWindow.dateKey} · cut-off {reminderWindow.cutoffHour}.00 {reminderWindow.timezoneLabel}
-            </p>
-          </div>
-        </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:block">
-            {periodLabel}
-          </span>
-          <div className="flex rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-            <Link
-              href={dashboardHref({ tenant: tenantQueryForLinks, month: prevPeriod.month, year: prevPeriod.year, tab })}
-              className="p-1.5 hover:bg-slate-50 text-slate-500 transition-colors"
-              aria-label="Bulan sebelumnya"
-            >
-              <ChevronLeft size={16} />
-            </Link>
-            <span className="px-3 flex items-center text-[11px] font-black text-slate-700 border-x border-slate-100">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:block">
               {periodLabel}
             </span>
-            <Link
-              href={dashboardHref({ tenant: tenantQueryForLinks, month: nextPeriod.month, year: nextPeriod.year, tab })}
-              className="p-1.5 hover:bg-slate-50 text-slate-500 transition-colors"
-              aria-label="Bulan berikutnya"
-            >
-              <ChevronRight size={16} />
-            </Link>
+            <div className="flex rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+              <Link
+                href={dashboardHref({
+                  tenant: tenantQueryForLinks,
+                  month: prevPeriod.month,
+                  year: prevPeriod.year,
+                  tab,
+                })}
+                className="p-1.5 hover:bg-slate-50 text-slate-500 transition-colors"
+                aria-label="Bulan sebelumnya"
+              >
+                <ChevronLeft size={16} />
+              </Link>
+              <span className="px-3 flex items-center text-[11px] font-black text-slate-700 border-x border-slate-100">
+                {periodLabel}
+              </span>
+              <Link
+                href={dashboardHref({
+                  tenant: tenantQueryForLinks,
+                  month: nextPeriod.month,
+                  year: nextPeriod.year,
+                  tab,
+                })}
+                className="p-1.5 hover:bg-slate-50 text-slate-500 transition-colors"
+                aria-label="Bulan berikutnya"
+              >
+                <ChevronRight size={16} />
+              </Link>
+            </div>
           </div>
         </div>
-      </div>
+      </GlassCard>
 
       {/* ── Filter strip ── */}
-      <Suspense
-        fallback={
-          <div className="h-12 rounded-2xl bg-slate-100 animate-pulse" />
-        }
-      >
+      <Suspense fallback={<div className="h-12 rounded-2xl bg-slate-100 animate-pulse" />}>
         <BbaDashboardTenantSelect
           tenants={tenantOpts}
-          tenantId={params.tenant === "all" ? "all" : (params.tenant ?? selectedTenantId ?? tenants[0]!.id)}
+          tenantId={effectiveTenantId}
           month={month}
           year={year}
           tab={tab}
         />
       </Suspense>
 
-      {tab === "ops" ? (
+      {/* ══════════════════════════════════════════════════════════ */}
+      {/*  TAB: OVERVIEW                                            */}
+      {/* ══════════════════════════════════════════════════════════ */}
+      {tab === "overview" ? (
+        <>
+          {/* ── 4 KPI alert cards ── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Lapor hari ini */}
+            <GlassCard interactive className="group !py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-all shrink-0">
+                  <FileCheck size={14} />
+                </div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-tight">
+                  Lapor hari ini
+                </p>
+              </div>
+              <p className="text-2xl font-black text-slate-900 tracking-tight">
+                {laporedCount}
+                <span className="text-sm font-bold text-slate-400">/{totalBranches}</span>
+              </p>
+              <p className="text-[9px] font-bold text-slate-400 mt-1">
+                {totalBranches - laporedCount > 0 ? (
+                  <span className="text-rose-500">{totalBranches - laporedCount} belum lapor</span>
+                ) : (
+                  <span className="text-emerald-600">Semua sudah lapor ✓</span>
+                )}
+              </p>
+            </GlassCard>
+
+            {/* MTD capaian */}
+            <GlassCard interactive className="group !py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div
+                  className={cn(
+                    "w-7 h-7 rounded-lg flex items-center justify-center transition-all shrink-0",
+                    capaianPct >= 100
+                      ? "bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white"
+                      : capaianPct >= 75
+                        ? "bg-sky-50 text-sky-600 group-hover:bg-sky-600 group-hover:text-white"
+                        : "bg-amber-50 text-amber-600 group-hover:bg-amber-500 group-hover:text-white",
+                  )}
+                >
+                  <TrendingUp size={14} />
+                </div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-tight">
+                  MTD capaian
+                </p>
+              </div>
+              <p
+                className={cn(
+                  "text-2xl font-black tracking-tight",
+                  capaianPct >= 100
+                    ? "text-emerald-600"
+                    : capaianPct >= 75
+                      ? "text-sky-600"
+                      : "text-amber-600",
+                )}
+              >
+                {capaianPct}%
+              </p>
+              <p className="text-[9px] font-bold text-slate-400 mt-1">{mtdDays} hari data</p>
+            </GlassCard>
+
+            {/* Verifikasi queue */}
+            <GlassCard interactive className="group !py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-slate-800 group-hover:text-white transition-all shrink-0">
+                  <Clock size={14} />
+                </div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-tight">
+                  Verifikasi queue
+                </p>
+              </div>
+              <p className="text-2xl font-black text-slate-900 tracking-tight">
+                {numberFormatter.format(totals.openQueue)}
+              </p>
+              {totals.overdueQueue > 0 && (
+                <p className="text-[9px] font-bold text-rose-500 mt-1">
+                  {numberFormatter.format(totals.overdueQueue)} overdue
+                </p>
+              )}
+            </GlassCard>
+
+            {/* Perlu perhatian */}
+            <GlassCard interactive className="group !py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div
+                  className={cn(
+                    "w-7 h-7 rounded-lg flex items-center justify-center transition-all shrink-0",
+                    perluPerhatianCount > 0
+                      ? "bg-rose-50 text-rose-600 group-hover:bg-rose-600 group-hover:text-white"
+                      : "bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white",
+                  )}
+                >
+                  <AlertTriangle size={14} />
+                </div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-tight">
+                  Perlu perhatian
+                </p>
+              </div>
+              <p
+                className={cn(
+                  "text-2xl font-black tracking-tight",
+                  perluPerhatianCount > 0 ? "text-rose-600" : "text-emerald-600",
+                )}
+              >
+                {perluPerhatianCount}
+              </p>
+              <p className="text-[9px] font-bold text-slate-400 mt-1">
+                {totalPendingApprovals > 0 && (
+                  <span className="text-amber-500">{totalPendingApprovals} pending approval · </span>
+                )}
+                cabang bermasalah
+              </p>
+            </GlassCard>
+          </div>
+
+          {/* ── Branch Health Matrix ── */}
+          <GlassCard className="!p-0 overflow-hidden border-slate-100/50">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <LayoutGrid size={14} className="text-sky-600" />
+                <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                  Branch Health Matrix
+                </h2>
+                <span className="px-2 py-0.5 bg-sky-100 text-sky-700 rounded text-[9px] font-black uppercase">
+                  {totalBranches} cabang
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                  Lapor
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                  Pending
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+                  Belum
+                </span>
+              </div>
+            </div>
+            <div className="p-4">
+              <BbaDashboardBranchMatrix rows={branchHealthRows} />
+            </div>
+          </GlassCard>
+        </>
+      ) : tab === "sales" ? (
+        /* ══════════════════════════════════════════════════════════ */
+        /*  TAB: PENJUALAN (multi-month, branch comparison)          */
+        /* ══════════════════════════════════════════════════════════ */
+        <BbaDashboardSalesContent
+          branches={salesBranchSummaries}
+          selectedTenantId={selectedTenantId}
+          salesFrom={salesFrom}
+          salesTo={salesTo}
+          currentTenant={effectiveTenantId}
+        />
+      ) : (
+        /* ══════════════════════════════════════════════════════════ */
+        /*  TAB: OPERASIONAL                                         */
+        /* ══════════════════════════════════════════════════════════ */
         <>
           {/* ── 4-stat strip ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <GlassCard interactive className="group !py-4">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-slate-800 group-hover:text-white transition-all shrink-0">
-                  <LayoutGrid size={14} />
+                  <Clock size={14} />
                 </div>
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Open queue</p>
               </div>
@@ -429,7 +834,7 @@ export default async function BbaControlDashboardPage({
             <GlassCard interactive className="group !py-4">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500 group-hover:bg-rose-600 group-hover:text-white transition-all shrink-0">
-                  <Clock size={14} />
+                  <AlertTriangle size={14} />
                 </div>
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Overdue</p>
               </div>
@@ -452,7 +857,7 @@ export default async function BbaControlDashboardPage({
 
             <GlassCard interactive className="group !py-4">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500 group-hover:bg-indigo-600 group-hover:text-white transition-all shrink-0">
+                <div className="w-7 h-7 rounded-lg bg-sky-50 flex items-center justify-center text-sky-600 group-hover:bg-sky-600 group-hover:text-white transition-all shrink-0">
                   <Users size={14} />
                 </div>
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Assignment</p>
@@ -463,24 +868,71 @@ export default async function BbaControlDashboardPage({
             </GlassCard>
           </div>
 
+          {/* ── Pending Approvals ── */}
+          {totalPendingApprovals > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <GlassCard className="border-amber-100/60">
+                <div className="flex items-center gap-2 mb-3">
+                  <CalendarOff size={14} className="text-amber-600 shrink-0" />
+                  <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                    Pengajuan Izin Pending
+                  </h2>
+                </div>
+                <p className="text-3xl font-black text-amber-600">{pendingLeaveRows.length}</p>
+                <p className="text-[10px] font-bold text-slate-400 mt-1">
+                  Menunggu persetujuan admin
+                </p>
+                {pendingLeaveRows.length > 0 && (
+                  <Link
+                    href="/admin/absensi"
+                    className="mt-2 inline-block text-[10px] font-black uppercase tracking-widest text-sky-600 hover:underline"
+                  >
+                    Kelola →
+                  </Link>
+                )}
+              </GlassCard>
+
+              <GlassCard className="border-sky-100/60">
+                <div className="flex items-center gap-2 mb-3">
+                  <ArrowLeftRight size={14} className="text-sky-600 shrink-0" />
+                  <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                    Tukar Shift Pending
+                  </h2>
+                </div>
+                <p className="text-3xl font-black text-sky-600">{pendingSwapRows.length}</p>
+                <p className="text-[10px] font-bold text-slate-400 mt-1">
+                  Menunggu persetujuan
+                </p>
+                {pendingSwapRows.length > 0 && (
+                  <Link
+                    href="/admin/absensi"
+                    className="mt-2 inline-block text-[10px] font-black uppercase tracking-widest text-sky-600 hover:underline"
+                  >
+                    Kelola →
+                  </Link>
+                )}
+              </GlassCard>
+            </div>
+          )}
+
           {/* ── Publish progress + Priority branches ── */}
           <div className="grid gap-4 lg:grid-cols-3">
-            <GlassCard className="border-indigo-100/50">
+            <GlassCard className="border-slate-100/50">
               <div className="flex items-center gap-2 mb-3">
-                <CheckCircle2 size={14} className="text-indigo-600 shrink-0" />
+                <CheckCircle2 size={14} className="text-sky-600 shrink-0" />
                 <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
                   Kesiapan insentif
                 </h2>
               </div>
               <div className="flex justify-between items-end mb-2">
                 <p className="text-3xl font-black text-slate-900">{publishProgressPercent}%</p>
-                <p className="text-[10px] font-bold text-indigo-600">
+                <p className="text-[10px] font-bold text-sky-600">
                   {numberFormatter.format(publishedCrewCount)}/{numberFormatter.format(totalCrewCount ?? 0)} crew
                 </p>
               </div>
               <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-indigo-600 transition-all"
+                  className="h-full rounded-full bg-sky-600 transition-all"
                   style={{ width: `${publishProgressPercent}%` }}
                 />
               </div>
@@ -490,27 +942,36 @@ export default async function BbaControlDashboardPage({
             {priorityBranches.length > 0 && (
               <GlassCard className="lg:col-span-2">
                 <div className="flex items-center gap-2 mb-3">
-                  <Building2 size={14} className="text-indigo-600 shrink-0" />
+                  <Building2 size={14} className="text-sky-600 shrink-0" />
                   <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
                     Cabang prioritas
                   </h2>
                 </div>
                 <ul className="divide-y divide-slate-100">
                   {priorityBranches.map((row) => (
-                    <li key={row.tenantId} className="py-2 flex flex-wrap items-center justify-between gap-2">
+                    <li
+                      key={row.tenantId}
+                      className="py-2 flex flex-wrap items-center justify-between gap-2"
+                    >
                       <div>
                         <p className="text-xs font-black text-slate-800">{row.tenantCode}</p>
                         <p className="text-[9px] font-bold text-slate-400 uppercase">{row.tenantName}</p>
                       </div>
                       <div className="flex gap-3">
                         <span className="text-[10px] font-bold text-slate-500">
-                          Open <span className="text-slate-800 font-black">{numberFormatter.format(row.openQueue)}</span>
+                          Open{" "}
+                          <span className="text-slate-800 font-black">
+                            {numberFormatter.format(row.openQueue)}
+                          </span>
                         </span>
-                        <span className={cn(
-                          "text-[10px] font-bold",
-                          row.overdueQueue > 0 ? "text-rose-600" : "text-emerald-600",
-                        )}>
-                          Overdue <span className="font-black">{numberFormatter.format(row.overdueQueue)}</span>
+                        <span
+                          className={cn(
+                            "text-[10px] font-bold",
+                            row.overdueQueue > 0 ? "text-rose-600" : "text-emerald-600",
+                          )}
+                        >
+                          Overdue{" "}
+                          <span className="font-black">{numberFormatter.format(row.overdueQueue)}</span>
                         </span>
                       </div>
                     </li>
@@ -521,22 +982,22 @@ export default async function BbaControlDashboardPage({
           </div>
 
           {/* ── Full ops table ── */}
-          <GlassCard className="!p-0 overflow-hidden border-indigo-100/50">
+          <GlassCard className="!p-0 overflow-hidden border-slate-100/50">
             <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                <Building2 size={14} className="text-indigo-600" />
+                <Building2 size={14} className="text-sky-600" />
                 Ringkasan operasional per cabang
               </h2>
               <Link
                 href={auditHrefThisPeriod}
-                className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline"
+                className="text-[10px] font-black uppercase tracking-widest text-sky-600 hover:underline"
               >
                 Buka audit →
               </Link>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left">
-                <thead className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                   <tr>
                     <th className="px-5 py-3">Cabang</th>
                     <th className="px-5 py-3">Antrean</th>
@@ -552,158 +1013,27 @@ export default async function BbaControlDashboardPage({
                         <p className="text-xs font-black text-slate-800">{row.tenantCode}</p>
                         <p className="text-[9px] font-bold text-slate-400 uppercase">{row.tenantName}</p>
                       </td>
-                      <td className="px-5 py-3 text-xs font-bold text-slate-700">
+                      <td className="px-5 py-3 text-xs font-bold text-slate-700 tabular-nums">
                         {numberFormatter.format(row.openQueue)}
                       </td>
                       <td className="px-5 py-3">
-                        <span className={cn(
-                          "text-xs font-black",
-                          row.overdueQueue > 0 ? "text-rose-600" : "text-emerald-600",
-                        )}>
+                        <span
+                          className={cn(
+                            "text-xs font-black tabular-nums",
+                            row.overdueQueue > 0 ? "text-rose-600" : "text-emerald-600",
+                          )}
+                        >
                           {numberFormatter.format(row.overdueQueue)}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-xs font-bold text-slate-700">
+                      <td className="px-5 py-3 text-xs font-bold text-slate-700 tabular-nums">
                         {numberFormatter.format(row.reminders7d)}
                       </td>
-                      <td className="px-5 py-3 text-xs font-bold text-slate-700">
+                      <td className="px-5 py-3 text-xs font-bold text-slate-700 tabular-nums">
                         {numberFormatter.format(row.assignments)}
                       </td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </GlassCard>
-        </>
-      ) : (
-        <>
-          {/* ── Hero omzet card ── */}
-          <GlassCard className="border-indigo-100/50">
-            <div className="flex flex-wrap gap-6 items-start">
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                  Total omzet · s.d. {periodEnd}
-                </p>
-                <p className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-none">
-                  {currencyFormatter.format(kpis.omzet)}
-                </p>
-                <p className="text-[10px] font-bold text-slate-400 mt-2">
-                  Target prorata {currencyFormatter.format(Math.round(proratedTargetOmzet))} · {mtdDays} hari
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Capaian</p>
-                <p className={cn(
-                  "text-3xl md:text-4xl font-black tracking-tight leading-none",
-                  capaianPct >= 100 ? "text-emerald-600" : capaianPct >= 75 ? "text-indigo-600" : "text-amber-600",
-                )}>
-                  {capaianPct}%
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  capaianPct >= 100 ? "bg-emerald-500" : capaianPct >= 75 ? "bg-indigo-600" : "bg-amber-500",
-                )}
-                style={{ width: `${Math.min(100, capaianPct)}%` }}
-              />
-            </div>
-          </GlassCard>
-
-          {/* ── Secondary KPIs ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <GlassCard className="!py-4">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">ATV aktual</p>
-              <p className="mt-1 text-xl font-black text-slate-900">{currencyFormatter.format(kpis.atv)}</p>
-              <p className="text-[9px] font-bold text-slate-400 mt-1">
-                Target {avgTargetAtv > 0 ? currencyFormatter.format(avgTargetAtv) : "—"}
-              </p>
-            </GlassCard>
-            <GlassCard className="!py-4">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">ATU aktual</p>
-              <p className="mt-1 text-xl font-black text-slate-900">{kpis.atu.toFixed(2)}</p>
-              <p className="text-[9px] font-bold text-slate-400 mt-1">
-                Target {avgTargetAtu > 0 ? avgTargetAtu.toFixed(2) : "—"}
-              </p>
-            </GlassCard>
-            <GlassCard className="!py-4">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pelanggan hilang</p>
-              <p className="mt-1 text-xl font-black text-amber-700">
-                {numberFormatter.format(kpis.lostCustomers)}
-              </p>
-              <Link
-                href={auditHrefThisPeriod}
-                className="text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:underline mt-1 inline-block"
-              >
-                Audit →
-              </Link>
-            </GlassCard>
-          </div>
-
-          {/* ── Chart + Leaderboard ── */}
-          <div className="grid gap-4 lg:grid-cols-5">
-            <GlassCard className="lg:col-span-3 !p-0 overflow-hidden border-indigo-100/50">
-              <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-                <TrendingUp size={14} className="text-indigo-600 shrink-0" />
-                <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                  Omzet harian — {periodLabel}
-                </h2>
-              </div>
-              <div className="p-4">
-                <CustomLineChart points={dailySeries} />
-              </div>
-            </GlassCard>
-
-            <div className="lg:col-span-2">
-              <BbaDashboardLeaderboard
-                periodLabel={`s.d. ${periodEnd}`}
-                rows={leaderboardRows}
-                currencyFormatter={currencyFormatter}
-              />
-            </div>
-          </div>
-
-          {/* ── Daily history table ── */}
-          <GlassCard className="!p-0 overflow-hidden border-indigo-100/50">
-            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50">
-              <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                Riwayat omzet harian
-              </h2>
-            </div>
-            <div className="max-h-80 overflow-y-auto overflow-x-auto">
-              <table className="min-w-full text-left">
-                <thead className="sticky top-0 bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest z-10">
-                  <tr>
-                    <th className="px-5 py-3">Tanggal</th>
-                    <th className="px-5 py-3">Omzet</th>
-                    <th className="px-5 py-3">Δ harian</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {[...dailySeries].reverse().map((row, idx, arr) => {
-                    const prev = arr[idx + 1];
-                    const delta = prev ? row.amount - prev.amount : 0;
-                    return (
-                      <tr key={row.dateKey} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-5 py-2.5 text-xs font-bold text-slate-600">{row.dateKey}</td>
-                        <td className="px-5 py-2.5 text-xs font-bold text-slate-900">
-                          {currencyFormatter.format(row.amount)}
-                        </td>
-                        <td className="px-5 py-2.5">
-                          <span className={cn(
-                            "inline-flex items-center gap-1 text-[10px] font-black",
-                            delta >= 0 ? "text-emerald-600" : "text-rose-600",
-                          )}>
-                            {delta >= 0 ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-                            {currencyFormatter.format(Math.abs(delta))}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
                 </tbody>
               </table>
             </div>

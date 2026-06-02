@@ -26,7 +26,7 @@ export function BbaDashboardLeaderboard({
   const rest = rows.slice(3);
 
   return (
-    <GlassCard className="border-indigo-100/50 !p-0 overflow-hidden">
+    <GlassCard className="border-slate-100/50 !p-0 overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60 flex items-center gap-2">
         <Trophy size={14} className="text-amber-500 shrink-0" />
         <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">
