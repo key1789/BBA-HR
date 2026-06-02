@@ -6,6 +6,7 @@ import { AnimatedModal } from "@/components/shared/animated-modal";
 import { editCrewAction } from "./actions";
 import { toast } from "sonner";
 import { Loader2, UserCog, Store, Info } from "lucide-react";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 
 interface Props {
   isOpen: boolean;
@@ -37,14 +38,12 @@ export function EditCrewModal({ isOpen, onClose, branchId, branchName, userData 
 
   return (
     <AnimatedModal isOpen={isOpen} onClose={onClose} title="Edit data crew">
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form key={userData?.id || ""} onSubmit={handleSubmit} className="space-y-5">
         
         {/* Hidden inputs to pass branch context and user IDs */}
         <input type="hidden" name="tenantId" value={branchId} />
         <input type="hidden" name="membershipId" value={userData.id} />
         <input type="hidden" name="userId" value={userData.app_users?.id || userData.user_id || ""} />
-
-        <input type="hidden" name="role" value={userData.role} />
 
         <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center">
@@ -57,9 +56,12 @@ export function EditCrewModal({ isOpen, onClose, branchId, branchName, userData 
         </div>
         
         <div className="space-y-1.5">
-          <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Nama Lengkap</label>
-          <input 
-            type="text" 
+          <label className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+            Nama Lengkap
+            <InfoTooltip content="Nama lengkap tampil di semua laporan, rapor, dan slip gaji karyawan." side="right" width="w-64" />
+          </label>
+          <input
+            type="text"
             name="fullName"
             required
             defaultValue={userData.app_users?.full_name}
@@ -81,17 +83,10 @@ export function EditCrewModal({ isOpen, onClose, branchId, branchName, userData 
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Ganti Password (Opsional)</label>
-          <input 
-            type="text" 
-            name="password"
-            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium placeholder:text-slate-300"
-            placeholder="Kosongkan jika tidak ingin mengubah password"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Peran di cabang ini</label>
+          <label className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+            Peran di cabang ini
+            <InfoTooltip content="Mengubah role akan mengubah akses menu di aplikasi karyawan secara langsung." side="right" width="w-64" />
+          </label>
           <p className="text-sm font-bold text-slate-800 capitalize">{String(userData.role || "").replace("_", " ")}</p>
           <p className="text-[11px] text-slate-500">
             Peran tidak diubah dari sini. Admin meja: tab «Akun admin cabang».
@@ -101,7 +96,7 @@ export function EditCrewModal({ isOpen, onClose, branchId, branchName, userData 
         <div className="flex items-start gap-2 bg-amber-50 text-amber-700 p-3 rounded-xl border border-amber-100">
           <Info size={16} className="shrink-0 mt-0.5" />
           <p className="text-xs font-medium leading-relaxed">
-            Perubahan nama dan email akan disinkronkan ke akun login.
+            Perubahan nama dan email akan disinkronkan ke akun login. Untuk reset password gunakan menu <strong>Kirim Link Reset</strong> di dropdown aksi crew.
           </p>
         </div>
 

@@ -59,7 +59,7 @@ export default async function BranchDetailPage({ params, searchParams }: { param
     .eq("period_year", currentYear)
     .order("created_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   // KPI Policy deprecated - merged into KPI V2 config (tenant_kpi_policies tidak lagi di-fetch di halaman ini).
 

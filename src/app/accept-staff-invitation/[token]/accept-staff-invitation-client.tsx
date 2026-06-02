@@ -64,9 +64,9 @@ export function AcceptStaffInvitationClient({ invitation, token }: Props) {
                 type="password"
                 name="password"
                 required
-                minLength={6}
+                minLength={8}
                 className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 outline-none transition-all text-sm font-medium"
-                placeholder="Minimal 6 karakter..."
+                placeholder="Minimal 8 karakter..."
               />
             </div>
           </div>

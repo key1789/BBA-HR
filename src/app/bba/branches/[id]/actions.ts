@@ -43,11 +43,16 @@ export async function getAvailableUsersForBranch(tenantId: string) {
 
   // Hanya crew aktif yang pernah terdaftar di tenant mana pun —
   // admin apotek adalah shared desk account, tidak di-assign antar cabang via flow ini.
-  const { data: crewMemberships } = await supabaseAdmin
+  // Non-global admins: limit search to the target tenant to prevent cross-tenant leakage.
+  let crewQuery = supabaseAdmin
     .from("tenant_memberships")
     .select("user_id")
     .eq("is_active", true)
     .eq("role", "crew");
+  if (!gate.session?.isGlobalSuperAdmin) {
+    crewQuery = crewQuery.eq("tenant_apotek_id", tenantId);
+  }
+  const { data: crewMemberships } = await crewQuery;
 
   const eligibleUserIds = [
     ...new Set(
@@ -290,6 +295,11 @@ export async function completeStaffInvitationAction(prevState: any, formData: Fo
   }
 
   const isDeskAdmin = inv.role === "admin_apotek";
+  const now = new Date().toISOString();
+
+  // --- Step 1: Create (or recover) auth user ---
+  let userId: string;
+  let isNewAuthUser = false;
 
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email: inv.email,
@@ -299,49 +309,76 @@ export async function completeStaffInvitationAction(prevState: any, formData: Fo
   });
 
   if (authError) {
-    if (authError.message?.includes("already registered")) {
-      return { error: "Email ini sudah terdaftar. Hubungi admin untuk assign ke cabang." };
+    if (!authError.message?.includes("already registered")) {
+      return { error: `Gagal membuat akun: ${authError.message}` };
     }
-    return { error: `Gagal membuat akun: ${authError.message}` };
+
+    // Recovery path: a previous attempt created the auth user but failed before completing
+    // DB records. Find the existing auth user and re-use them.
+    const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+    const existingAuthUser = listData?.users?.find(
+      (u) => u.email?.toLowerCase() === inv.email.toLowerCase()
+    );
+    if (!existingAuthUser) {
+      return { error: "Akun dengan email ini sudah terdaftar tetapi tidak dapat ditemukan. Hubungi administrator." };
+    }
+    userId = existingAuthUser.id;
+
+    // Update password so the new one they just typed is set
+    const { error: pwError } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
+    if (pwError) {
+      return { error: `Gagal memperbarui akun: ${pwError.message}` };
+    }
+  } else {
+    if (!authData.user?.id) {
+      return { error: "Gagal membuat akun: tidak ada ID pengguna." };
+    }
+    userId = authData.user.id;
+    isNewAuthUser = true;
   }
 
-  const userId = authData.user?.id;
-  if (!userId) {
-    return { error: "Gagal membuat akun: tidak ada ID pengguna." };
-  }
-
-  const now = new Date().toISOString();
-
+  // --- Step 2: Upsert app_users (idempotent — safe on retry) ---
   const { error: appUserError } = await supabaseAdmin
     .from("app_users")
-    .insert({
-      id: userId,
-      full_name: inv.full_name,
-      email: inv.email,
-      role: inv.role,
-      is_active: true,
-      is_branch_desk_account: isDeskAdmin,
-      created_at: now,
-      updated_at: now,
-    });
+    .upsert(
+      {
+        id: userId,
+        full_name: inv.full_name,
+        email: inv.email,
+        is_active: true,
+        is_branch_desk_account: isDeskAdmin,
+        updated_at: now,
+      },
+      { onConflict: "id" }
+    );
 
   if (appUserError) {
+    // Rollback the freshly-created auth user to leave no orphaned records
+    if (isNewAuthUser) {
+      await supabaseAdmin.auth.admin.deleteUser(userId);
+    }
     return { error: `Gagal menyimpan profil user: ${appUserError.message}` };
   }
 
+  // --- Step 3: Upsert tenant_memberships (idempotent) ---
+  // Unique constraint is (tenant_apotek_id, user_id, role) — all three columns.
   const { error: membershipError } = await supabaseAdmin
     .from("tenant_memberships")
-    .insert({
-      tenant_apotek_id: inv.tenant_apotek_id,
-      user_id: userId,
-      role: inv.role,
-      is_active: true,
-    });
+    .upsert(
+      {
+        tenant_apotek_id: inv.tenant_apotek_id,
+        user_id: userId,
+        role: inv.role,
+        is_active: true,
+      },
+      { onConflict: "tenant_apotek_id,user_id,role" }
+    );
 
   if (membershipError) {
     return { error: `Gagal menyimpan penugasan cabang: ${membershipError.message}` };
   }
 
+  // --- Step 4: Mark invitation as accepted ---
   await supabaseAdmin
     .from("staff_invitations")
     .update({
@@ -462,6 +499,11 @@ export async function saveAddonAction(prevState: any, formData: FormData) {
   }
 
   const tenantId = formData.get("tenantId") as string;
+
+  // Prevent cross-tenant privilege escalation: admin_apotek may only modify their own branch
+  if (activeRole === "admin_apotek" && session?.activeMembership?.tenantId !== tenantId) {
+    return { error: "Akses ditolak. Anda hanya dapat mengubah pengaturan cabang Anda sendiri." };
+  }
   const produkFokus = formData.get("produk_fokus") === "on";
   const payroll = formData.get("payroll") === "on";
   const reviewPelanggan = formData.get("review_pelanggan") === "on";
@@ -530,6 +572,7 @@ export async function updateBranchAction(prevState: any, formData: FormData) {
   const phone = formData.get("phone") as string;
 
   if (!tenantId || !name || !code) return { error: "Nama dan Kode wajib diisi." };
+  if (status && !["active", "inactive"].includes(status)) return { error: "Status tidak valid." };
 
   const supabaseAdmin = createAdminClient();
   const supabase = await createClient();
@@ -871,6 +914,12 @@ export async function saveAddonSettingsAction(prevState: any, formData: FormData
   }
 
   const tenantId = formData.get("tenantId") as string;
+
+  // Prevent cross-tenant privilege escalation: admin_apotek may only modify their own branch
+  if (activeRole === "admin_apotek" && session?.activeMembership?.tenantId !== tenantId) {
+    return { error: "Akses ditolak. Anda hanya dapat mengubah konfigurasi cabang Anda sendiri." };
+  }
+
   const addonKey = formData.get("addonKey") as string;
   let patch: Record<string, unknown>;
   try {
@@ -1219,17 +1268,7 @@ export async function applyShiftTemplateAction(prevState: any, formData: FormDat
   const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-  // Delete existing shift_schedules for this month at this branch
-  const { error: deleteError } = await supabase
-    .from("shift_schedules")
-    .delete()
-    .eq("tenant_apotek_id", branchId)
-    .gte("schedule_date", firstDay)
-    .lte("schedule_date", lastDay);
-
-  if (deleteError) return { error: `Gagal reset jadwal: ${deleteError.message}` };
-
-  // Bulk insert new entries
+  // Upsert new entries first — if this fails, existing schedules remain intact.
   if (entries.length > 0) {
     const rows = entries.map((e) => ({
       tenant_apotek_id: branchId,
@@ -1238,8 +1277,26 @@ export async function applyShiftTemplateAction(prevState: any, formData: FormDat
       shift_id: e.shiftId,
       is_off: false,
     }));
-    const { error: insertError } = await supabase.from("shift_schedules").insert(rows);
-    if (insertError) return { error: `Gagal menyimpan jadwal: ${insertError.message}` };
+    const { error: upsertError } = await supabase
+      .from("shift_schedules")
+      .upsert(rows, { onConflict: "tenant_apotek_id,user_id,schedule_date" });
+    if (upsertError) return { error: `Gagal menyimpan jadwal: ${upsertError.message}` };
+  }
+
+  // After a successful upsert, remove stale entries for this month that are not in the new set.
+  const keepSet = new Set(entries.map((e) => `${e.userId}::${e.date}`));
+  const { data: existing } = await supabase
+    .from("shift_schedules")
+    .select("id, user_id, schedule_date")
+    .eq("tenant_apotek_id", branchId)
+    .gte("schedule_date", firstDay)
+    .lte("schedule_date", lastDay);
+  const staleIds = (existing ?? [])
+    .filter((r) => !keepSet.has(`${r.user_id}::${r.schedule_date}`))
+    .map((r) => r.id);
+  if (staleIds.length > 0) {
+    const { error: deleteError } = await supabase.from("shift_schedules").delete().in("id", staleIds);
+    if (deleteError) return { error: `Gagal menghapus jadwal lama: ${deleteError.message}` };
   }
 
   revalidatePath(`/bba/branches/${branchId}`);
@@ -1388,6 +1445,10 @@ export async function savePayrollConfigAction(prevState: any, formData: FormData
   const gate = await assertBbaAccess();
   if (!gate.ok) return { error: gate.error };
 
+  if (gate.session?.bbaPortalStaffRole === "analyst") {
+    return { error: "Akses ditolak. Analyst tidak dapat mengubah konfigurasi payroll." };
+  }
+
   const tenantId = formData.get("tenantId") as string;
   const userId = formData.get("userId") as string;
   const baseSalary = parseFloat(formData.get("baseSalary") as string) || 0;
@@ -1396,7 +1457,14 @@ export async function savePayrollConfigAction(prevState: any, formData: FormData
   const transportAllowance = parseFloat(formData.get("transportAllowance") as string) || 0;
   const bpjsDeduction = parseFloat(formData.get("bpjsDeduction") as string) || 0;
   const customAdjustmentsStr = formData.get("customAdjustments") as string;
-  const customAdjustments = customAdjustmentsStr ? JSON.parse(customAdjustmentsStr) : [];
+  let customAdjustments: unknown[] = [];
+  if (customAdjustmentsStr) {
+    try {
+      customAdjustments = JSON.parse(customAdjustmentsStr);
+    } catch {
+      return { error: "Format custom adjustments tidak valid." };
+    }
+  }
 
   if (!tenantId || !userId) return { error: "Data tidak valid." };
 
@@ -1427,7 +1495,7 @@ export async function savePayrollConfigAction(prevState: any, formData: FormData
 
   const { error } = await supabase
     .from("payroll_configs")
-    .upsert(payload, { onConflict: 'user_id, tenant_apotek_id' });
+    .upsert(payload, { onConflict: 'user_id,tenant_apotek_id' });
 
   if (error) return { error: `Gagal menyimpan konfigurasi payroll: ${error.message}` };
 
@@ -1439,6 +1507,67 @@ export async function savePayrollConfigAction(prevState: any, formData: FormData
   return { success: true, message: "Konfigurasi gaji pegawai berhasil disimpan!" };
 }
 
+/**
+ * Update payroll addon settings — controls whether admin_apotek and/or owner
+ * can view and edit payroll configs for their branch.
+ */
+export async function updatePayrollAddonSettingsAction(prevState: any, formData: FormData) {
+  const gate = await assertBbaAccess();
+  if (!gate.ok) return { error: gate.error };
+  if (gate.session?.bbaPortalStaffRole === "analyst") {
+    return { error: "Akses ditolak. Analyst tidak dapat mengubah pengaturan payroll." };
+  }
+
+  const tenantId = formData.get("tenantId") as string;
+  if (!tenantId) return { error: "Data tidak valid." };
+
+  const allowAdminInput = formData.get("allow_admin_input") === "true";
+  const allowOwnerInput = formData.get("allow_owner_input") === "true";
+
+  const supabase = createAdminClient();
+
+  // Fetch existing row by natural key — avoids relying on a DB unique constraint for upsert
+  const { data: existing } = await supabase
+    .from("addon_settings")
+    .select("id, settings")
+    .eq("tenant_apotek_id", tenantId)
+    .eq("addon_key", "payroll")
+    .maybeSingle();
+
+  const currentSettings = ((existing?.settings as Record<string, unknown>) ?? {});
+  const newSettings = { ...currentSettings, allow_admin_input: allowAdminInput, allow_owner_input: allowOwnerInput };
+
+  let dbError;
+  if (existing?.id) {
+    // Row exists — update by primary key (safest path)
+    const { error } = await supabase
+      .from("addon_settings")
+      .update({ settings: newSettings })
+      .eq("id", existing.id);
+    dbError = error;
+  } else {
+    // Row doesn't exist yet — insert with is_enabled: false so NOT NULL is satisfied
+    const { error } = await supabase
+      .from("addon_settings")
+      .insert({
+        tenant_apotek_id: tenantId,
+        addon_key: "payroll",
+        is_enabled: false,
+        settings: newSettings,
+      });
+    dbError = error;
+  }
+
+  if (dbError) {
+    console.error("updatePayrollAddonSettingsAction:", dbError);
+    return { error: "Gagal menyimpan pengaturan akses payroll." };
+  }
+
+  revalidatePath(`/bba/branches/${tenantId}`);
+  revalidatePath(`/admin/konfigurasi-gaji`);
+  revalidatePath(`/owner/konfigurasi-gaji`);
+  return { success: true, message: "Pengaturan akses payroll berhasil disimpan." };
+}
 
 export async function createStaffPasswordResetLinkAction(formData: FormData) {
   const gate = await assertBbaAccess();
@@ -1727,227 +1856,4 @@ export async function cloneBranchConfigAction(prevState: any, formData: FormData
     console.error("Clone error:", err);
     return { error: `Terjadi kesalahan saat menyalin data: ${err.message}` };
   }
-}
-
-// ─── PAYROLL RUN ────────────────────────────────────────────────────────────
-
-export type PayrollRunItem = {
-  userId: string;
-  hariMasuk: number;
-  baseSalary: number;
-  positionAllowance: number;
-  mealRate: number;
-  mealTotal: number;
-  transportRate: number;
-  transportTotal: number;
-  bpjs: number;
-  customAdditions: number;
-  customDeductions: number;
-  netTotal: number;
-};
-
-export async function getPayrollRunDataAction(
-  branchId: string,
-  month: number,
-  year: number,
-): Promise<
-  | { error: string }
-  | {
-      isAbsensiEnabled: boolean;
-      attendanceCounts: Record<string, number>;
-      existingPeriod: { id: string; status: string; submitted_at: string | null; notes: string | null } | null;
-    }
-> {
-  const gate = await assertBbaAccess();
-  if (!gate.ok) return { error: gate.error };
-
-  const supabaseAdmin = createAdminClient();
-
-  const { data: addon } = await supabaseAdmin
-    .from("addon_settings")
-    .select("is_enabled")
-    .eq("tenant_apotek_id", branchId)
-    .eq("addon_key", "absensi_shift")
-    .maybeSingle();
-
-  const isAbsensiEnabled = addon?.is_enabled ?? false;
-
-  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-
-  const attendanceCounts: Record<string, number> = {};
-  if (isAbsensiEnabled) {
-    // clock_in_time disimpan sebagai UTC; gunakan WIB boundary (+07:00) agar tidak miss/overcounting
-    const startUtc = new Date(`${startDate}T00:00:00+07:00`).toISOString();
-    const endUtc   = new Date(`${endDate}T23:59:59.999+07:00`).toISOString();
-    const { data: logs } = await supabaseAdmin
-      .from("attendance_logs")
-      .select("user_id")
-      .eq("tenant_apotek_id", branchId)
-      .gte("clock_in_time", startUtc)
-      .lte("clock_in_time", endUtc)
-      .not("clock_in_time", "is", null);
-
-    for (const log of logs || []) {
-      attendanceCounts[log.user_id] = (attendanceCounts[log.user_id] || 0) + 1;
-    }
-  }
-
-  const { data: period } = await supabaseAdmin
-    .from("payroll_periods")
-    .select("id, status, submitted_at, notes")
-    .eq("tenant_apotek_id", branchId)
-    .eq("period_start", startDate)
-    .eq("period_end", endDate)
-    .maybeSingle();
-
-  return {
-    isAbsensiEnabled,
-    attendanceCounts,
-    existingPeriod: period ?? null,
-  };
-}
-
-export async function savePayrollRunAction(
-  _prev: { success?: boolean; error?: string } | null,
-  formData: FormData,
-): Promise<{ success?: boolean; error?: string; message?: string }> {
-  const gate = await assertBbaAccess();
-  if (!gate.ok) return { error: gate.error };
-
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Tidak terautentikasi." };
-
-  const supabaseAdmin = createAdminClient();
-
-  const branchId = (formData.get("branchId") as string)?.trim();
-  const month = Number(formData.get("month"));
-  const year = Number(formData.get("year"));
-  const itemsJson = formData.get("itemsJson") as string;
-
-  if (!branchId || !month || !year || !itemsJson) return { error: "Data tidak lengkap." };
-
-  let items: PayrollRunItem[];
-  try {
-    items = JSON.parse(itemsJson);
-  } catch {
-    return { error: "Data payroll tidak valid." };
-  }
-
-  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-  const now = new Date().toISOString();
-
-  // Cek status period yang sudah ada — jangan izinkan edit jika sudah dikirim/terkunci
-  const { data: existingPeriod } = await supabaseAdmin
-    .from("payroll_periods")
-    .select("id, status")
-    .eq("tenant_apotek_id", branchId)
-    .eq("period_start", startDate)
-    .eq("period_end", endDate)
-    .maybeSingle();
-
-  if (existingPeriod?.status === "sent_to_owner") {
-    return { error: "Payroll sudah dikirim ke owner dan menunggu review. Tidak bisa diubah." };
-  }
-  if (existingPeriod?.status === "locked") {
-    return { error: "Payroll sudah terkunci (disetujui owner). Hubungi BBA Admin untuk membuka kunci." };
-  }
-
-  const { data: period, error: periodError } = await supabaseAdmin
-    .from("payroll_periods")
-    .upsert(
-      {
-        tenant_apotek_id: branchId,
-        period_start: startDate,
-        period_end: endDate,
-        // Preserve status jika sudah ada (misal: revision_requested_by_owner)
-        status: existingPeriod?.status ?? "draft_bba",
-        submitted_by_user_id: user.id,
-        submitted_at: now,
-      },
-      { onConflict: "tenant_apotek_id,period_start,period_end" },
-    )
-    .select("id")
-    .single();
-
-  if (periodError) return { error: `Gagal membuat periode: ${periodError.message}` };
-
-  // Bulk-collect payroll items then upsert per-item
-  for (const item of items) {
-    const { error: itemError } = await supabaseAdmin
-      .from("payroll_items")
-      .upsert(
-        {
-          payroll_period_id: period.id,
-          employee_profile_id: item.userId,
-          base_salary: item.baseSalary,
-          allowance: item.positionAllowance + item.mealTotal + item.transportTotal + item.customAdditions,
-          deduction: item.bpjs + item.customDeductions,
-        },
-        { onConflict: "payroll_period_id,employee_profile_id" },
-      );
-
-    if (itemError) return { error: `Gagal menyimpan data pegawai: ${itemError.message}` };
-  }
-
-  revalidatePath(`/bba/branches/${branchId}`);
-  revalidatePath(`/owner/payroll`);
-  return { success: true, message: "Data payroll bulanan berhasil disimpan sebagai draft." };
-}
-
-export async function submitPayrollToOwnerAction(
-  _prev: { success?: boolean; error?: string } | null,
-  formData: FormData,
-): Promise<{ success?: boolean; error?: string; message?: string }> {
-  const gate = await assertBbaAccess();
-  if (!gate.ok) return { error: gate.error };
-
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Tidak terautentikasi." };
-
-  const supabaseAdmin = createAdminClient();
-
-  const branchId = (formData.get("branchId") as string)?.trim();
-  const month = Number(formData.get("month"));
-  const year = Number(formData.get("year"));
-
-  if (!branchId || !month || !year) return { error: "Data tidak lengkap." };
-
-  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-
-  const { data: period } = await supabaseAdmin
-    .from("payroll_periods")
-    .select("id, status")
-    .eq("tenant_apotek_id", branchId)
-    .eq("period_start", startDate)
-    .eq("period_end", endDate)
-    .maybeSingle();
-
-  if (!period) return { error: "Data payroll belum disimpan. Simpan draft terlebih dahulu." };
-  if (period.status === "sent_to_owner") return { error: "Payroll sudah dikirim ke owner, menunggu review." };
-  if (period.status === "locked") return { error: "Payroll sudah terkunci." };
-  if (period.status !== "draft_bba" && period.status !== "revision_requested_by_owner") {
-    return { error: "Status payroll tidak valid untuk dikirim." };
-  }
-
-  const { error: updateError } = await supabaseAdmin
-    .from("payroll_periods")
-    .update({ status: "sent_to_owner", notes: null, updated_at: new Date().toISOString() })
-    .eq("id", period.id);
-
-  if (updateError) return { error: `Gagal mengirim: ${updateError.message}` };
-
-  await logActivity(supabaseAdmin, branchId, user.id, "payroll_periods", period.id, "UPDATE",
-    { status: period.status }, { status: "sent_to_owner" });
-
-  revalidatePath(`/bba/branches/${branchId}`);
-  revalidatePath(`/owner/payroll`);
-  return { success: true, message: "Payroll berhasil dikirim ke owner untuk review." };
 }

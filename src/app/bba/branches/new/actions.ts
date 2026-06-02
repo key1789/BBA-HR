@@ -64,12 +64,9 @@ export async function createBranchOnboardingAction(
     return { error: "Nama, Kode Apotek, dan Owner wajib diisi." };
   }
 
-  // --- Admin apotek info (optional) ---
-  const adminFullName = (formData.get("adminFullName") as string)?.trim();
+  // --- Admin apotek (invitation, 7 hari) ---
   const adminEmail = (formData.get("adminEmail") as string)?.trim().toLowerCase();
-  const adminPhone = (formData.get("adminPhone") as string)?.trim() || "";
-
-  const includeAdmin = !!(adminFullName && adminEmail);
+  const includeAdmin = !!adminEmail;
 
   // --- Custom shifts (optional) ---
   let customShifts: { shift_name: string; start_time: string; end_time: string }[] = [];
@@ -93,8 +90,24 @@ export async function createBranchOnboardingAction(
   const supabaseAdmin = createAdminClient();
   const supabase = await createClient();
   const { data: { user: actor } } = await supabase.auth.getUser();
-  const actorId = actor?.id ?? ownerId;
+
+  if (!actor) {
+    return { error: "Sesi tidak valid. Silakan login ulang." };
+  }
+
+  const actorId = actor.id;
   const now = new Date().toISOString();
+
+  // Validasi owner exists
+  const { data: ownerUser } = await supabaseAdmin
+    .from("app_users")
+    .select("id")
+    .eq("id", ownerId)
+    .maybeSingle();
+
+  if (!ownerUser) {
+    return { error: "Owner yang dipilih tidak ditemukan. Refresh halaman dan coba lagi." };
+  }
 
   // 1. Create branch
   const { data: newBranch, error: branchError } = await supabaseAdmin
@@ -109,16 +122,31 @@ export async function createBranchOnboardingAction(
 
   const tenantId = newBranch.id;
 
+  // Helper: rollback semua data yang sudah dibuat jika bootstrap gagal di tengah jalan.
+  // Setiap delete idempotent — baris yang tidak ada tidak masalah.
+  const cleanupBranch = async () => {
+    await supabaseAdmin.from("master_shifts").delete().eq("tenant_apotek_id", tenantId);
+    await supabaseAdmin.from("kpi_configs").delete().eq("tenant_apotek_id", tenantId);
+    await supabaseAdmin.from("addon_settings").delete().eq("tenant_apotek_id", tenantId);
+    await supabaseAdmin.from("tenant_memberships").delete().eq("tenant_apotek_id", tenantId);
+    await supabaseAdmin.from("tenant_apotek").delete().eq("id", tenantId);
+  };
+
   // 2. Assign owner membership
-  await supabaseAdmin.from("tenant_memberships").insert({
+  const { error: ownerMembershipError } = await supabaseAdmin.from("tenant_memberships").insert({
     user_id: ownerId,
     tenant_apotek_id: tenantId,
     role: "owner",
     is_active: true,
   });
 
+  if (ownerMembershipError) {
+    await cleanupBranch();
+    return { error: `Gagal menetapkan owner: ${ownerMembershipError.message}` };
+  }
+
   // 3. Bootstrap addons
-  await supabaseAdmin.from("addon_settings").insert(
+  const { error: addonsError } = await supabaseAdmin.from("addon_settings").insert(
     BRANCH_BOOTSTRAP_ADDONS.map((addon_key) => ({
       tenant_apotek_id: tenantId,
       addon_key,
@@ -129,8 +157,13 @@ export async function createBranchOnboardingAction(
     })),
   );
 
+  if (addonsError) {
+    await cleanupBranch();
+    return { error: `Gagal bootstrap addon: ${addonsError.message}` };
+  }
+
   // 4. Bootstrap KPI
-  await supabaseAdmin.from("kpi_configs").insert({
+  const { error: kpiError } = await supabaseAdmin.from("kpi_configs").insert({
     tenant_apotek_id: tenantId,
     period_month: new Date().getMonth() + 1,
     period_year: new Date().getFullYear(),
@@ -140,8 +173,13 @@ export async function createBranchOnboardingAction(
     created_by_user_id: actorId,
   });
 
+  if (kpiError) {
+    await cleanupBranch();
+    return { error: `Gagal bootstrap KPI: ${kpiError.message}` };
+  }
+
   // 5. Bootstrap shifts (default atau custom dari wizard)
-  await supabaseAdmin.from("master_shifts").insert(
+  const { error: shiftsError } = await supabaseAdmin.from("master_shifts").insert(
     shiftsToCreate.map((row) => ({
       tenant_apotek_id: tenantId,
       shift_name: row.shift_name,
@@ -153,15 +191,18 @@ export async function createBranchOnboardingAction(
     })),
   );
 
+  if (shiftsError) {
+    await cleanupBranch();
+    return { error: `Gagal bootstrap shift: ${shiftsError.message}` };
+  }
+
   // 6. Create invitations
   const appUrl = getAppUrl();
   const staffResults: StaffOnboardingResult[] = [];
 
-  const makeInvitation = async (
+  const makeCrewInvitation = async (
     fullName: string,
     email: string,
-    phone: string,
-    role: "admin_apotek" | "crew",
   ): Promise<StaffOnboardingResult> => {
     // Check for duplicate email
     const { data: existing } = await supabaseAdmin
@@ -171,7 +212,7 @@ export async function createBranchOnboardingAction(
       .maybeSingle();
 
     if (existing) {
-      return { fullName, email, role, inviteLink: null, skipped: true, skipReason: "Email sudah terdaftar" };
+      return { fullName, email, role: "crew", inviteLink: null, skipped: true, skipReason: "Email sudah terdaftar" };
     }
 
     const token = crypto.randomUUID();
@@ -182,7 +223,7 @@ export async function createBranchOnboardingAction(
       tenant_apotek_id: tenantId,
       email,
       full_name: fullName,
-      role,
+      role: "crew",
       token,
       status: "pending",
       expires_at: expiresAt.toISOString(),
@@ -192,25 +233,79 @@ export async function createBranchOnboardingAction(
 
     if (error) {
       if (error.message?.toLowerCase().includes("unique")) {
-        return { fullName, email, role, inviteLink: null, skipped: true, skipReason: "Undangan sudah ada" };
+        return { fullName, email, role: "crew", inviteLink: null, skipped: true, skipReason: "Undangan sudah ada" };
       }
-      return { fullName, email, role, inviteLink: null, skipped: true, skipReason: error.message };
+      return { fullName, email, role: "crew", inviteLink: null, skipped: true, skipReason: error.message };
     }
 
     const inviteLink = `${appUrl}/accept-staff-invitation/${token}`;
-    return { fullName, email, role, inviteLink, skipped: false };
+    return { fullName, email, role: "crew", inviteLink, skipped: false };
   };
 
+  // Buat undangan admin apotek (7 hari, admin set password sendiri via link aktivasi)
   if (includeAdmin) {
-    const result = await makeInvitation(adminFullName, adminEmail, adminPhone, "admin_apotek");
-    staffResults.push(result);
+    const adminFullName = `Admin — ${name}`;
+
+    const { data: existingAdmin } = await supabaseAdmin
+      .from("app_users")
+      .select("id")
+      .eq("email", adminEmail)
+      .maybeSingle();
+
+    if (existingAdmin) {
+      staffResults.push({
+        fullName: adminFullName,
+        email: adminEmail,
+        role: "admin_apotek",
+        inviteLink: null,
+        skipped: true,
+        skipReason: "Email sudah terdaftar",
+      });
+    } else {
+      const token = crypto.randomUUID();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // 7 hari
+
+      const { error: invError } = await supabaseAdmin.from("staff_invitations").insert({
+        tenant_apotek_id: tenantId,
+        email: adminEmail,
+        full_name: adminFullName,
+        role: "admin_apotek",
+        token,
+        status: "pending",
+        expires_at: expiresAt.toISOString(),
+        invited_by_user_id: actorId,
+        updated_at: now,
+      });
+
+      if (invError) {
+        staffResults.push({
+          fullName: adminFullName,
+          email: adminEmail,
+          role: "admin_apotek",
+          inviteLink: null,
+          skipped: true,
+          skipReason: invError.message?.toLowerCase().includes("unique")
+            ? "Undangan sudah ada"
+            : invError.message,
+        });
+      } else {
+        staffResults.push({
+          fullName: adminFullName,
+          email: adminEmail,
+          role: "admin_apotek",
+          inviteLink: `${appUrl}/accept-staff-invitation/${token}`,
+          skipped: false,
+        });
+      }
+    }
   }
 
   for (const staff of staffList) {
     const cleanEmail = staff.email?.trim().toLowerCase();
     const cleanName = staff.fullName?.trim();
     if (!cleanEmail || !cleanName) continue;
-    const result = await makeInvitation(cleanName, cleanEmail, staff.phone || "", "crew");
+    const result = await makeCrewInvitation(cleanName, cleanEmail);
     staffResults.push(result);
   }
 

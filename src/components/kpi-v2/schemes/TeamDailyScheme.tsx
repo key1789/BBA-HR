@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { Calendar } from "lucide-react";
 import { SchemeCard } from "../shared/SchemeCard";
 import { BonusTypeSelector } from "../shared/BonusTypeSelector";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 import type { TeamSchemeConfig, KpiGlobalConfig } from "@/lib/types/kpi-v2";
 import { calculateTeamDailyTarget } from "@/lib/kpi-v2/utils";
 
@@ -49,8 +50,9 @@ export function TeamDailyScheme({ config, globalConfig, onChange }: TeamDailySch
 
         {/* Min Achievement */}
         <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
-          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
+          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
             Minimum Pencapaian untuk Dapat Bonus (Per Hari)
+            <InfoTooltip content="Persentase pencapaian harian minimum agar bonus hari itu cair. Contoh: 80% berarti team harus mencapai minimal 80% dari target harian untuk mendapatkan bonus di hari itu." />
           </label>
           <div className="flex items-center gap-3">
             <input
@@ -88,8 +90,9 @@ export function TeamDailyScheme({ config, globalConfig, onChange }: TeamDailySch
 
         {/* Distribution Method */}
         <div className="space-y-3">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
             Cara Distribusi Bonus Harian ke Anggota Team
+            <InfoTooltip content="Bagi Rata: bonus harian dibagi sama rata ke semua crew yang hadir. Proporsional: dibagi sesuai kontribusi omzet masing-masing crew di hari itu." />
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label

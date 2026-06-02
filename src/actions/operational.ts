@@ -27,6 +27,40 @@ function verificationPath(params: Record<string, string | undefined>) {
   return qs ? `/admin/verifikasi?${qs}` : "/admin/verifikasi";
 }
 
+/**
+ * After a verification action, compute the page to redirect to.
+ * Re-counts items using the same filters as the page query so the result is
+ * consistent with the pagination the user was looking at.  If the current page
+ * no longer exists (count shrank), returns "1" so the user sees the next batch
+ * instead of an empty page.
+ */
+async function safeRedirectPage(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  tenantId: string,
+  currentPage: string,
+  selectedStatus: string,
+  from: string,
+  to: string,
+): Promise<string> {
+  const PAGE_SIZE = 15;
+  let countQuery = supabase
+    .from("daily_submissions")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_apotek_id", tenantId);
+  if (selectedStatus && selectedStatus !== "all") {
+    countQuery = countQuery.eq("status", selectedStatus);
+  }
+  if (from) countQuery = countQuery.gte("submission_date", from);
+  if (to) countQuery = countQuery.lte("submission_date", to);
+
+  const { count } = await countQuery;
+  const total = count ?? 0;
+  const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageNum = Math.max(1, Number(currentPage) || 1);
+  return pageNum > maxPage ? "1" : String(pageNum);
+}
+
 function inputHarianPath(role: "crew" | "admin_apotek", params: Record<string, string | undefined>) {
   const base = role === "admin_apotek" ? "/admin/input-harian" : "/crew/input-harian";
   const qs = toQueryString(params);
@@ -47,7 +81,7 @@ export async function createDailySubmissionAction(
 ): Promise<InputFormState> {
   const session = await getSessionContext();
   const active = session?.activeMembership;
-  if (!active || (active.role !== "crew" && active.role !== "admin_apotek")) {
+  if (!active || active.role !== "crew") {
     return null;
   }
 
@@ -201,6 +235,13 @@ export async function createDailySubmissionAction(
     });
   }
 
+  await setFlashMessage({
+    status: "success",
+    message: submitNow
+      ? "Laporan berhasil dikirim ke admin untuk verifikasi."
+      : "Draft laporan berhasil disimpan.",
+  });
+
   revalidatePath("/crew/input-harian");
   revalidatePath("/admin/input-harian");
   revalidatePath(getDefaultPortalPath(currentRole));
@@ -293,7 +334,8 @@ export async function verifySubmissionAction(formData: FormData) {
     status: "success",
     message: `Verifikasi "${action === "approve" ? "Setujui" : "Tolak"}" berhasil diproses.`,
   });
-  redirect(verificationPath(baseParams));
+  const redirectPage = await safeRedirectPage(supabase, active.tenantId, currentPage, selectedStatus, from, to);
+  redirect(verificationPath({ ...baseParams, page: redirectPage }));
 }
 
 export async function bulkVerifySubmissionsAction(formData: FormData) {
@@ -402,7 +444,9 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
     message: getFeedbackMessage(isReject ? "bulk_rejected" : "bulk_approved"),
     count: eligibleIds.length,
   });
-  redirect(verificationPath(baseParams));
+  // Bulk action processes all items on the current page — always go to page 1
+  // so the user immediately sees the next batch to process.
+  redirect(verificationPath({ ...baseParams, page: "1" }));
 }
 
 export async function bulkAssignSubmissionsAction(formData: FormData) {
@@ -674,5 +718,6 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
   revalidatePath("/crew/riwayat-input");
   revalidatePath("/owner/laporan");
   await setFlashMessage({ status: "success", message: `Data diperbarui dan disetujui. ${changeNote}` });
-  redirect(verificationPath(baseParams));
+  const redirectPage = await safeRedirectPage(supabase, active.tenantId, currentPage, selectedStatus, from, to);
+  redirect(verificationPath({ ...baseParams, page: redirectPage }));
 }

@@ -33,7 +33,11 @@ function parseTargets(raw: string): TargetRow[] {
 
 async function ensureBbaPublisher() {
   const session = await getSessionContext();
-  if (!session || session.activeMembership?.role !== "super_admin_bba") {
+  const role = session?.activeMembership?.role;
+  const isAllowed =
+    session?.isGlobalSuperAdmin ||
+    role === "super_admin_bba";
+  if (!session || !isAllowed) {
     return { error: "Akses ditolak.", userId: null as string | null };
   }
   return { error: null, userId: session.userId };
@@ -196,10 +200,27 @@ export async function saveAnnouncementAction(_prev: unknown, formData: FormData)
     announcementId = inserted.id;
   }
 
-  await supabase.from("announcement_targets").delete().eq("announcement_id", announcementId);
+  // Insert/upsert new targets first — user always has recipients even if delete step fails.
+  const targetRows = targets.map((target) => ({ announcement_id: announcementId, ...target }));
   await supabase
     .from("announcement_targets")
-    .insert(targets.map((target) => ({ announcement_id: announcementId, ...target })));
+    .upsert(targetRows, { onConflict: "announcement_id,target_role,tenant_apotek_id" });
+
+  // Fetch all existing targets to compute stale set, then remove them.
+  const { data: existingTargets } = await supabase
+    .from("announcement_targets")
+    .select("id, target_role, tenant_apotek_id")
+    .eq("announcement_id", announcementId);
+
+  const newSet = new Set(
+    targetRows.map((t) => `${t.target_role}::${t.tenant_apotek_id ?? "null"}`)
+  );
+  const staleIds = (existingTargets ?? [])
+    .filter((t) => !newSet.has(`${t.target_role}::${t.tenant_apotek_id ?? "null"}`))
+    .map((t) => t.id);
+  if (staleIds.length > 0) {
+    await supabase.from("announcement_targets").delete().in("id", staleIds);
+  }
 
   if (status === "published") {
     await hydrateAnnouncementReceiptsAction(announcementId);

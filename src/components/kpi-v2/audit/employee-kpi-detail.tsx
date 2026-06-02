@@ -1,9 +1,8 @@
 ﻿"use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { createPortal } from "react-dom";
-import { X, ExternalLink, Info } from "lucide-react";
+import { X, Info } from "lucide-react";
 import type { BonusResult } from "@/lib/kpi-v2/calculator";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { getKpiV2SchemesEnabledForPeriod, type KpiV2SchemeId } from "@/lib/kpi-v2/utils";
@@ -189,16 +188,12 @@ function KpiSchemeReadOnlyModal({
   schemeId,
   config,
   formatIDR,
-  branchEditHref,
-  showEditLink,
 }: {
   open: boolean;
   onClose: () => void;
   schemeId: KpiV2SchemeId | null;
   config: KpiConfigV2;
   formatIDR: FormatFn;
-  branchEditHref: string;
-  showEditLink: boolean;
 }) {
   if (!open || !schemeId) return null;
 
@@ -228,15 +223,6 @@ function KpiSchemeReadOnlyModal({
           <SchemeConfigSummary schemeId={schemeId} config={config} formatIDR={formatIDR} />
         </div>
         <div className="flex flex-col gap-2 border-t border-slate-100 px-5 py-4 sm:flex-row sm:justify-end">
-          {showEditLink ? (
-            <Link
-              href={branchEditHref}
-              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-[10px] font-black uppercase tracking-widest text-indigo-800 hover:bg-indigo-100"
-            >
-              Edit Target KPI
-              <ExternalLink size={14} />
-            </Link>
-          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -317,8 +303,6 @@ export function EmployeeKpiBonusSection({
   crewRows,
   dailyRows,
   formatIDR,
-  branchEditHref,
-  showEditLink,
 }: {
   config: KpiConfigV2;
   v2BonusRow: BonusResult | null;
@@ -327,8 +311,6 @@ export function EmployeeKpiBonusSection({
   crewRows: Array<{ user_id: string; achievement_date: string; omzet: number }>;
   dailyRows: Array<{ achievement_date: string; total_omzet: number }>;
   formatIDR: FormatFn;
-  branchEditHref: string;
-  showEditLink: boolean;
 }) {
   const enabledSchemes = getKpiV2SchemesEnabledForPeriod(config);
   const [schemeModalId, setSchemeModalId] = useState<KpiV2SchemeId | null>(null);
@@ -467,8 +449,6 @@ export function EmployeeKpiBonusSection({
         schemeId={schemeModalId}
         config={config}
         formatIDR={formatIDR}
-        branchEditHref={branchEditHref}
-        showEditLink={showEditLink}
         onClose={() => setSchemeModalId(null)}
       />
     </>

@@ -825,6 +825,8 @@ export async function createTenantWithOwnerAction(formData: FormData) {
 
   let ownerUserId = existingOwnerUser?.id ?? null;
   let ownerName = existingOwnerUser?.full_name ?? ownerFullName ?? "-";
+  // Track whether we created a brand-new user so the rollback knows what to undo.
+  let createdNewOwnerUser = false;
 
   if (!ownerUserId) {
     if (!ownerFullName || ownerPassword.length < 8) {
@@ -851,6 +853,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
 
     ownerUserId = createdAuthUser.user.id;
     ownerName = ownerFullName;
+    createdNewOwnerUser = true;
     const { error: insertAppUserError } = await adminClient.from("app_users").insert({
       id: ownerUserId,
       full_name: ownerFullName,
@@ -892,7 +895,13 @@ export async function createTenantWithOwnerAction(formData: FormData) {
       .select("id")
       .maybeSingle();
     if (insertMembershipError || !insertedMembership?.id) {
+      // Roll back in reverse creation order: tenant first, then newly created user records.
       await supabase.from("tenant_apotek").delete().eq("id", createdTenant.id);
+      if (createdNewOwnerUser && ownerUserId) {
+        // User was created in this request — clean up auth + app_users to avoid orphaned records.
+        await adminClient.from("app_users").delete().eq("id", ownerUserId);
+        await adminClient.auth.admin.deleteUser(ownerUserId);
+      }
       return redirectWithFeedback("/bba/master-apotek", "error", "tenant_create_failed", {
         scope: "tenant_create",
       });
@@ -962,7 +971,23 @@ export async function upsertKpiConfigAction(formData: FormData) {
     });
   }
 
-  const bonus_config_v2 = mergeKpiConfigs(createDefaultKpiV2Config(), {
+  // Fetch existing V2 config so we don't wipe scheme/bonus settings already configured.
+  const supabaseAdmin = createAdminClient();
+  const { data: existingKpiRow } = await supabaseAdmin
+    .from("kpi_configs")
+    .select("bonus_config_v2")
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_month", periodMonth)
+    .eq("period_year", periodYear)
+    .maybeSingle();
+
+  const existingV2 = existingKpiRow?.bonus_config_v2;
+  const baseConfig =
+    existingV2 && typeof existingV2 === "object" && (existingV2 as KpiConfigV2).version === "2.0"
+      ? (existingV2 as KpiConfigV2)
+      : createDefaultKpiV2Config();
+
+  const bonus_config_v2 = mergeKpiConfigs(baseConfig, {
     global: {
       target_omzet: targetOmzet,
       target_atv: targetAtv,

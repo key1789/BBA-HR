@@ -49,15 +49,11 @@ export default function LoginPage() {
               />
             </div>
             
-            <h1 className="mb-6 text-3xl md:text-4xl font-bold tracking-tight">BBA Portal</h1>
+            <h1 className="mb-6 text-3xl md:text-4xl font-bold tracking-tight">BBA System</h1>
             
             <p className="mt-4 text-[11px] md:text-xs font-light leading-relaxed opacity-90 max-w-[280px]">
               Sistem manajemen operasional apotek terpadu. Masukkan kredensial resmi Anda untuk mengakses dashboard.
             </p>
-          </div>
-
-          <div className="absolute bottom-6 left-0 right-0 flex justify-center text-[9px] uppercase tracking-widest opacity-60">
-            <span>Creator Here</span> <span className="mx-4">|</span> <span>Designer Here</span>
           </div>
 
           {/* SVG Wave Edge (Desktop) */}

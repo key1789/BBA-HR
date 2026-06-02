@@ -17,7 +17,7 @@ function toQueryString(params: Record<string, string | undefined>) {
 
 function adminAttendanceApprovalPath(params: Record<string, string | undefined>) {
   const qs = toQueryString(params);
-  return qs ? `/admin/laporan?${qs}` : "/admin/laporan";
+  return qs ? `/admin/absensi?${qs}` : "/admin/absensi";
 }
 
 function getJakartaDateKey(now = new Date()): string {
@@ -84,17 +84,17 @@ export async function clockInAction(formData: FormData) {
 
   if (schedule.master_shifts) {
     scheduleId = schedule.id;
-    const now = new Date();
     const shift = Array.isArray(schedule.master_shifts)
       ? schedule.master_shifts[0]
       : schedule.master_shifts;
     if (shift?.start_time) {
-      // Parse start_time (format usually "HH:mm:ss")
+      // Compare in WIB (Asia/Jakarta) — Vercel runs UTC so setHours without timezone
+      // would compare against UTC hours, not WIB hours.
+      const nowWib = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
       const [hours, minutes] = shift.start_time.split(":").map(Number);
-      const expectedStart = new Date();
+      const expectedStart = new Date(nowWib);
       expectedStart.setHours(hours, minutes, 0, 0);
-
-      if (now > expectedStart) {
+      if (nowWib > expectedStart) {
         isLate = true;
       }
     }
@@ -125,8 +125,12 @@ export async function clockInAction(formData: FormData) {
   });
 
   if (insertError) {
+    // Unique constraint violation: concurrent clock-in attempt on the same day
+    if (insertError.code === "23505") {
+      return { error: "Anda sudah absen masuk hari ini." };
+    }
     console.error("Failed to insert attendance log:", insertError);
-    return { error: "Database error" };
+    return { error: "Gagal menyimpan absensi. Coba lagi." };
   }
 
   revalidatePath("/crew/kehadiran");
@@ -263,7 +267,7 @@ export async function requestShiftSwapAction(formData: FormData) {
     target_user_id: targetUserId,
     target_schedule_id: targetSchedule.id,
     reason: reason,
-    status: "pending_crew"
+    status: "pending_admin", // langsung ke admin — tidak ada tahap persetujuan rekan
   });
 
   if (error) {
@@ -273,6 +277,79 @@ export async function requestShiftSwapAction(formData: FormData) {
 
   revalidatePath("/crew/kehadiran");
   return { success: true, message: "Pengajuan tukar shift berhasil dikirim." };
+}
+
+// 4. CANCEL LEAVE REQUEST — crew batalkan pengajuan izin yang masih pending
+export async function cancelLeaveRequestAction(leaveId: string) {
+  const session = await getSessionContext();
+  if (!session || !session.activeMembership) return { error: "Unauthorized" };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  // Verify ownership + status sebelum delete (defense in depth di atas RLS)
+  const { data: leave } = await supabase
+    .from("leave_requests")
+    .select("id, status")
+    .eq("id", leaveId)
+    .eq("user_id", user.id)
+    .eq("tenant_apotek_id", session.activeMembership.tenantId)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (!leave) return { error: "Pengajuan tidak ditemukan atau sudah tidak bisa dibatalkan." };
+
+  const { error } = await supabase
+    .from("leave_requests")
+    .delete()
+    .eq("id", leaveId)
+    .eq("user_id", user.id)
+    .eq("status", "pending");
+
+  if (error) {
+    console.error("Failed to cancel leave request:", error);
+    return { error: "Gagal membatalkan pengajuan." };
+  }
+
+  revalidatePath("/crew/kehadiran");
+  return { success: true };
+}
+
+// 5. CANCEL SHIFT SWAP — crew batalkan pengajuan tukar shift yang masih pending
+export async function cancelShiftSwapAction(swapId: string) {
+  const session = await getSessionContext();
+  if (!session || !session.activeMembership) return { error: "Unauthorized" };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const { data: swap } = await supabase
+    .from("shift_swap_requests")
+    .select("id, status")
+    .eq("id", swapId)
+    .eq("requester_user_id", user.id)
+    .eq("tenant_apotek_id", session.activeMembership.tenantId)
+    .in("status", ["pending_crew", "pending_admin"])
+    .maybeSingle();
+
+  if (!swap) return { error: "Pengajuan tidak ditemukan atau sudah tidak bisa dibatalkan." };
+
+  const { error } = await supabase
+    .from("shift_swap_requests")
+    .delete()
+    .eq("id", swapId)
+    .eq("requester_user_id", user.id)
+    .in("status", ["pending_crew", "pending_admin"]);
+
+  if (error) {
+    console.error("Failed to cancel shift swap:", error);
+    return { error: "Gagal membatalkan pengajuan tukar shift." };
+  }
+
+  revalidatePath("/crew/kehadiran");
+  return { success: true };
 }
 
 export async function reviewLeaveRequestAction(
@@ -378,7 +455,7 @@ export async function reviewLeaveRequestAction(
     },
   });
 
-  revalidatePath("/admin/laporan");
+  revalidatePath("/admin/absensi");
   revalidatePath("/crew/kehadiran");
   return redirect(
     adminAttendanceApprovalPath({
@@ -474,7 +551,7 @@ export async function reviewShiftSwapRequestAction(
       },
     });
 
-    revalidatePath("/admin/laporan");
+    revalidatePath("/admin/absensi");
     revalidatePath("/crew/kehadiran");
     return redirect(
       adminAttendanceApprovalPath({
@@ -556,7 +633,7 @@ export async function reviewShiftSwapRequestAction(
     },
   });
 
-  revalidatePath("/admin/laporan");
+  revalidatePath("/admin/absensi");
   revalidatePath("/crew/kehadiran");
   return redirect(
     adminAttendanceApprovalPath({

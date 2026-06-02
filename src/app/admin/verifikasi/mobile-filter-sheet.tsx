@@ -1,15 +1,8 @@
 import { Button } from "@/components/shared/button";
 import { Input } from "@/components/shared/input";
+import { getSubmissionFilterStatusLabel } from "@/lib/labels";
 import Link from "next/link";
 import { SlidersHorizontal } from "lucide-react";
-
-const STATUS_LABEL: Record<string, string> = {
-  all:             "Semua",
-  submitted:       "Menunggu",
-  edited_by_admin: "Diedit Admin",
-  reject:          "Ditolak",
-  approved:        "Disetujui",
-};
 
 export function MobileFilterSheet({
   queueCount,
@@ -32,7 +25,7 @@ export function MobileFilterSheet({
           Filter
           {isFiltered ? (
             <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-black text-indigo-700">
-              {STATUS_LABEL[selectedStatus] ?? selectedStatus}
+              {getSubmissionFilterStatusLabel(selectedStatus)}
               {from || to ? ` · ${from || "…"} – ${to || "…"}` : ""}
             </span>
           ) : (
@@ -52,7 +45,7 @@ export function MobileFilterSheet({
         </svg>
       </summary>
 
-      <form className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-2.5">
+      <form action="/admin/verifikasi" className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-2.5">
         <select
           name="status"
           defaultValue={selectedStatus}

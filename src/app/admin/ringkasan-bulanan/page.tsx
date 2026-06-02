@@ -83,8 +83,9 @@ export default async function AdminRingkasanBulananPage({
         monthlyAddonAppraisals={auditPayload.monthlyAddonAppraisals}
         activeCrewCount={auditPayload.activeCrewCount}
         raportPeriodPublished={auditPayload.raportPeriodPublished}
+        branchOmzetHistori={auditPayload.branchOmzetHistori}
         portalMode="owner"
-        ownerSurface="ringkasan"
+        ownerSurface="bulanan"
         ownerVerifiedOnly={true}
         ownerNavBasePath="/admin/ringkasan-bulanan"
       />

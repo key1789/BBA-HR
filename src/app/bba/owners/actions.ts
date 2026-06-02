@@ -67,18 +67,40 @@ export async function toggleOwnerStatusAction(userId: string, currentStatus: boo
   if (!gate.ok) return { error: gate.error };
 
   const supabaseAdmin = createAdminClient();
-  
-  const { error } = await supabaseAdmin
+  const newStatus = !currentStatus;
+
+  // Blokir / buka di level Auth (ban_duration)
+  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    ban_duration: newStatus ? "none" : "876000h",
+  });
+
+  if (authError) {
+    return { error: `Gagal mengubah status auth: ${authError.message}` };
+  }
+
+  // Update app_users.is_active untuk tampilan badge di UI
+  const { error: appUserError } = await supabaseAdmin
     .from("app_users")
-    .update({ is_active: !currentStatus })
+    .update({ is_active: newStatus })
     .eq("id", userId);
 
-  if (error) {
-    return { error: `Gagal mengubah status: ${error.message}` };
+  if (appUserError) {
+    return { error: `Gagal mengubah status akun: ${appUserError.message}` };
+  }
+
+  // Update tenant_memberships.is_active — ini yang benar-benar dikecek saat login
+  const { error: membershipError } = await supabaseAdmin
+    .from("tenant_memberships")
+    .update({ is_active: newStatus })
+    .eq("user_id", userId)
+    .eq("role", "owner");
+
+  if (membershipError) {
+    return { error: `Gagal mengubah akses membership: ${membershipError.message}` };
   }
 
   revalidatePath("/bba/owners");
-  return { success: true, message: `Status akun berhasil di${!currentStatus ? 'aktifkan' : 'nonaktifkan'}.` };
+  return { success: true, message: `Status akun berhasil di${newStatus ? 'aktifkan' : 'nonaktifkan'}.` };
 }
 
 export async function editOwnerAction(prevState: any, formData: FormData) {
@@ -89,24 +111,17 @@ export async function editOwnerAction(prevState: any, formData: FormData) {
   const fullName = formData.get("fullName") as string;
   const email = formData.get("email") as string;
   const phone = formData.get("phone") as string;
-  const password = formData.get("password") as string;
 
   if (!userId || !fullName || !email) {
     return { error: "Nama dan Email wajib diisi." };
   }
 
   const supabaseAdmin = createAdminClient();
-  
-  const authUpdatePayload: any = {
-    email: email,
-    user_metadata: { full_name: fullName, phone: phone || null, role: "owner" },
-  };
-  
-  if (password && password.trim() !== "") {
-    authUpdatePayload.password = password;
-  }
 
-  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, authUpdatePayload);
+  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    email,
+    user_metadata: { full_name: fullName, phone: phone || null, role: "owner" },
+  });
 
   if (authError) {
     if (authError.message.includes("already registered")) {
@@ -115,13 +130,16 @@ export async function editOwnerAction(prevState: any, formData: FormData) {
     return { error: `Gagal memperbarui kredensial: ${authError.message}` };
   }
 
+  const isDemo = formData.get("is_demo") === "true";
+
   const { error: appUserError } = await supabaseAdmin
     .from("app_users")
-    .update({ 
-      full_name: fullName, 
+    .update({
+      full_name: fullName,
       email: email,
       phone: phone || null,
-      updated_at: new Date().toISOString() 
+      is_demo: isDemo,
+      updated_at: new Date().toISOString()
     })
     .eq("id", userId);
 
@@ -198,17 +216,16 @@ export async function createOwnerPasswordResetLinkAction(formData: FormData) {
   return { success: true, message: "Link reset password berhasil dibuat.", inviteLink };
 }
 
-/** Undangan owner global (tanpa tenant): sama pola dengan staff_invitations di tab pegawai. */
+/** Undangan owner global (tanpa tenant): BBA hanya mengisi nama, email diisi owner saat menerima undangan. */
 export async function createOwnerInvitationAction(prevState: any, formData: FormData) {
   void prevState;
   const gate = await assertGlobalBbaPortalManager();
   if (!gate.ok) return { error: gate.error };
 
   const fullName = (formData.get("fullName") as string)?.trim();
-  const email = (formData.get("email") as string)?.trim().toLowerCase();
 
-  if (!fullName || !email) {
-    return { error: "Nama dan Email wajib diisi." };
+  if (!fullName) {
+    return { error: "Nama wajib diisi." };
   }
 
   const supabaseAdmin = createAdminClient();
@@ -217,22 +234,12 @@ export async function createOwnerInvitationAction(prevState: any, formData: Form
 
   if (!admin) return { error: "Sesi admin tidak valid." };
 
-  const { data: existingAppUser } = await supabaseAdmin
-    .from("app_users")
-    .select("id")
-    .eq("email", email)
-    .maybeSingle();
-  if (existingAppUser) {
-    return { error: "Email sudah terdaftar. Tidak perlu undangan." };
-  }
-
   const token = crypto.randomUUID();
   const now = new Date();
   const expiresAt = new Date(now);
   expiresAt.setHours(expiresAt.getHours() + 48);
 
   const { error } = await supabaseAdmin.from("owner_invitations").insert({
-    email,
     full_name: fullName,
     token,
     status: "pending",
@@ -242,13 +249,6 @@ export async function createOwnerInvitationAction(prevState: any, formData: Form
   });
 
   if (error) {
-    const msg = error.message?.toLowerCase() ?? "";
-    if (msg.includes("unique") || msg.includes("duplicate")) {
-      return {
-        error:
-          "Sudah ada undangan pending untuk email ini. Gunakan salin link atau Regenerate di daftar undangan.",
-      };
-    }
     return { error: `Gagal membuat undangan: ${error.message}` };
   }
 
@@ -334,10 +334,17 @@ export async function regenerateOwnerInvitationAction(invitationId: string) {
 
 export async function completeInvitationAction(prevState: any, formData: FormData) {
   const token = formData.get("token") as string;
+  const fullName = (formData.get("fullName") as string)?.trim();
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
   const password = formData.get("password") as string;
+  const phone = (formData.get("phone") as string)?.trim() || null;
 
-  if (!token || !password) {
-    return { error: "Data tidak valid." };
+  if (!token || !fullName || !email || !password) {
+    return { error: "Semua field wajib diisi." };
+  }
+
+  if (password.length < 8) {
+    return { error: "Password minimal 8 karakter." };
   }
 
   const supabaseAdmin = createAdminClient();
@@ -361,14 +368,28 @@ export async function completeInvitationAction(prevState: any, formData: FormDat
     return { error: "Link undangan sudah kadaluwarsa." };
   }
 
+  // Cek apakah email sudah terdaftar
+  const { data: existingUser } = await supabaseAdmin
+    .from("app_users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (existingUser) {
+    return { error: "Email ini sudah terdaftar. Gunakan email lain." };
+  }
+
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email: inv.email,
-    password: password,
+    email,
+    password,
     email_confirm: true,
-    user_metadata: { full_name: inv.full_name, role: "owner" }
+    user_metadata: { full_name: fullName, role: "owner" }
   });
 
   if (authError) {
+    if (authError.message.toLowerCase().includes("already registered")) {
+      return { error: "Email ini sudah terdaftar. Gunakan email lain." };
+    }
     return { error: `Gagal membuat akun: ${authError.message}` };
   }
 
@@ -379,8 +400,9 @@ export async function completeInvitationAction(prevState: any, formData: FormDat
     .from("app_users")
     .insert({
       id: userId,
-      full_name: inv.full_name,
-      email: inv.email,
+      full_name: fullName,
+      email,
+      phone,
       is_active: true,
       created_at: now,
       updated_at: now

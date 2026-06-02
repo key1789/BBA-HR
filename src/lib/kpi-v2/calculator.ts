@@ -336,8 +336,14 @@ function calculateIndividualMonthly(
     {} as Record<string, { omzet: number; transactions: number; items: number }>,
   );
 
+  // Fair-share per orang = target global ÷ jumlah crew yang ada data periode ini.
+  // Dipakai sebagai target default untuk KEDUA mode (rata maupun manual).
+  // Mode manual meng-override nilai ini via user_configs[userId].target_omzet di bawah.
+  const userCount = Math.max(Object.keys(userTotals).length, 1);
+  const baseTarget = config.global.target_omzet / userCount;
+
   Object.entries(userTotals).forEach(([userId, totals]) => {
-    let userTarget = config.global.target_omzet;
+    let userTarget = baseTarget;
     const userConfig = scheme.user_configs?.[userId];
     const weights = { omzet: scheme.weight_omzet, atv: scheme.weight_atv, atu: scheme.weight_atu };
     const bonusCfg = {
@@ -417,9 +423,11 @@ function calculateIndividualDaily(
 
   crewAchievements.forEach((ca) => {
     let workingDays = wdGlobal;
+    // Fair-share sebagai default untuk kedua mode (rata & manual).
+    // Mode manual meng-override via userConfig.target_omzet_daily di bawah.
     let dailyTarget = calculateDailyTargetPerUser(
       config.global.target_omzet,
-      scheme.target_distribution === "rata" ? activeUserCount : 1,
+      activeUserCount,
       workingDays,
     );
     const bonusCfg = {
@@ -481,15 +489,14 @@ function calculateIndividualDaily(
     const userConfig = scheme.user_configs?.[userId];
     const wdGlobal = config.global.default_working_days || 26;
     const workingDays = userConfig?.working_days ?? wdGlobal;
+    // Fair-share sebagai default; override via target_omzet_daily jika ada.
     let dailyTarget = calculateDailyTargetPerUser(
       config.global.target_omzet,
-      scheme.target_distribution === "rata" ? activeUserCount : 1,
+      activeUserCount,
       workingDays,
     );
     if (userConfig?.target_omzet_daily != null) {
       dailyTarget = Number(userConfig.target_omzet_daily) || dailyTarget;
-    } else if (userConfig && scheme.target_distribution === "rata") {
-      dailyTarget = calculateDailyTargetPerUser(config.global.target_omzet, activeUserCount, workingDays);
     }
 
     const byDate = new Map<string, number>();
@@ -579,7 +586,18 @@ export function pickPrimaryKpiDisplayFromBonusResult(
   }
   if (config.individual_daily.enabled && br.breakdown.individual_daily) {
     const b = br.breakdown.individual_daily;
-    return { achievement_percent: b.achievement_percent, target_omzet_display: b.target };
+    // b.target is the DAILY target from the calculator (which may use a stale activeUserCount).
+    // Return the MONTHLY equivalent using the actual crew count (n) so the chart can divide
+    // by effectiveWorkDays and get the correct per-day target line.
+    const userConfig = config.individual_daily.user_configs?.[br.user_id];
+    const monthlyEquivalent =
+      userConfig?.target_omzet_daily != null
+        ? // Manual override: daily → monthly
+          (Number(userConfig.target_omzet_daily) || 0) *
+          ((userConfig.working_days ?? config.global.default_working_days ?? 26) || 26)
+        : // Fair-share using actual crew count (n) passed from the caller
+          n > 0 ? config.global.target_omzet / n : config.global.target_omzet;
+    return { achievement_percent: b.achievement_percent, target_omzet_display: monthlyEquivalent };
   }
   if (config.team_daily.enabled && br.breakdown.team_daily) {
     const b = br.breakdown.team_daily;

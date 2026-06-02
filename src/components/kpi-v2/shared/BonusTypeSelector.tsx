@@ -3,6 +3,7 @@
 import { useId } from "react";
 import { Banknote, Activity, Star } from "lucide-react";
 import { CurrencyInput } from "@/components/shared/currency-input";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 import type { BonusType } from "@/lib/types/kpi-v2";
 
 interface BonusTypeSelectorProps {
@@ -75,6 +76,7 @@ export function BonusTypeSelector({
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
               <Banknote size={12} /> Nominal Bonus Flat (Rp)
+              <InfoTooltip content="Jumlah bonus tetap yang diterima jika target tercapai, tidak peduli seberapa jauh target terlampaui. Contoh: Rp 300.000 flat setiap bulan target terpenuhi." />
             </label>
             <CurrencyInput
               value={flatNominal}
@@ -87,6 +89,7 @@ export function BonusTypeSelector({
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <Activity size={12} /> Setiap Kelipatan (Rp)
+                <InfoTooltip content="Kelipatan omzet di atas target yang memicu reward. Contoh: step Rp 1.000.000 berarti setiap Rp 1 juta kelebihan omzet = 1 reward." />
               </label>
               <CurrencyInput
                 value={kelipatanStep}
@@ -97,6 +100,7 @@ export function BonusTypeSelector({
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <Star size={12} /> Reward per Kelipatan (Rp)
+                <InfoTooltip content="Bonus yang diterima untuk setiap kelipatan yang terpenuhi. Contoh: Rp 50.000 per kelipatan — jika ada 3 kelipatan terpenuhi, bonus total Rp 150.000." />
               </label>
               <CurrencyInput
                 value={kelipatanReward}

@@ -37,7 +37,7 @@ export function TabInfo({ branch, owner }: { branch: any, owner?: any }) {
               <button 
                 type="button"
                 onClick={() => setIsEditing(true)}
-                className="text-xs font-bold text-sky-600 bg-sky-50 px-3 py-1.5 rounded-lg hover:bg-sky-100 transition-colors"
+                className="text-xs font-bold text-sky-600 bg-sky-50 px-3 py-1.5 rounded-xl hover:bg-sky-100 transition-colors"
               >
                 Edit Profil
               </button>
@@ -47,14 +47,14 @@ export function TabInfo({ branch, owner }: { branch: any, owner?: any }) {
                   type="button"
                   onClick={() => setIsEditing(false)}
                   disabled={isPending}
-                  className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-1 disabled:opacity-50"
+                  className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl hover:bg-slate-200 transition-colors flex items-center gap-1 disabled:opacity-50"
                 >
                   <X size={14}/> Batal
                 </button>
                 <button 
                   type="submit"
                   disabled={isPending}
-                  className="text-xs font-bold text-white bg-sky-600 px-3 py-1.5 rounded-lg hover:bg-sky-700 transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50"
+                  className="text-xs font-bold text-white bg-sky-600 px-3 py-1.5 rounded-xl hover:bg-sky-700 transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50"
                 >
                   {isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14}/>} Simpan
                 </button>
@@ -71,7 +71,7 @@ export function TabInfo({ branch, owner }: { branch: any, owner?: any }) {
                   name="name"
                   defaultValue={branch.name}
                   required
-                  className="w-full mt-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  className="w-full mt-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                 />
               ) : (
                 <p className="font-bold text-slate-800 text-sm mt-0.5">{branch.name}</p>
@@ -101,7 +101,7 @@ export function TabInfo({ branch, owner }: { branch: any, owner?: any }) {
                     name="status"
                     defaultValue={branch.status}
                     required
-                    className="w-full mt-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                    className="w-full mt-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                   >
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
@@ -123,7 +123,7 @@ export function TabInfo({ branch, owner }: { branch: any, owner?: any }) {
                   defaultValue={branch.address || ""}
                   rows={2}
                   placeholder="Masukkan alamat apotek..."
-                  className="w-full mt-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 resize-none"
+                  className="w-full mt-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 resize-none"
                 />
               ) : (
                 <p className="font-medium text-slate-600 text-sm mt-0.5">{branch.address || <span className="text-slate-400 italic">Belum diisi</span>}</p>
@@ -137,7 +137,7 @@ export function TabInfo({ branch, owner }: { branch: any, owner?: any }) {
                   name="phone"
                   defaultValue={branch.phone || ""}
                   placeholder="Cth: 08123456789"
-                  className="w-full mt-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  className="w-full mt-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                 />
               ) : (
                 <p className="font-medium text-slate-600 text-sm mt-0.5">{branch.phone || <span className="text-slate-400 italic">Belum diisi</span>}</p>
@@ -152,7 +152,7 @@ export function TabInfo({ branch, owner }: { branch: any, owner?: any }) {
           <h2 className="text-lg font-black text-slate-800">Informasi Owner</h2>
           <Link 
             href="/bba/owners" 
-            className="text-xs font-bold text-slate-500 hover:text-sky-600 bg-slate-100 hover:bg-sky-50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+            className="text-xs font-bold text-slate-500 hover:text-sky-600 bg-slate-100 hover:bg-sky-50 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1"
           >
             <Settings size={14} /> Kelola Owner
           </Link>

@@ -6,6 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { createDefaultKpiV2Config, isKpiConfigV2 } from "@/lib/kpi-v2/utils";
 import { writeAuditLog } from "@/lib/audit-log";
+import { getSessionContext } from "@/lib/auth-context";
+import { syncMonthlyAppraisalsForPeriod } from "@/lib/kpi-v2/sync-monthly-appraisals";
 
 // =====================================================
 // KPI V2 Server Actions
@@ -23,6 +25,17 @@ export interface ActionResult<T = unknown> {
  */
 export async function saveKpiV2Action(prevState: unknown, formData: FormData): Promise<ActionResult> {
   try {
+    // Role + analyst guard
+    const session = await getSessionContext();
+    if (!session) return { error: "Unauthorized" };
+    const role = session.activeMembership?.role;
+    if (!session.isGlobalSuperAdmin && role !== "super_admin_bba") {
+      return { error: "Akses ditolak." };
+    }
+    if (session.bbaPortalStaffRole === "analyst") {
+      return { error: "Akses ditolak. Analyst tidak dapat mengubah konfigurasi KPI." };
+    }
+
     const supabase = await createClient();
 
     const {
@@ -101,11 +114,14 @@ export async function saveKpiV2Action(prevState: unknown, formData: FormData): P
         },
       });
 
+      // Auto-recalculate appraisals if they already exist for this period
+      await autoRecalcIfAppraisalsExist(supabaseAdmin, tenantId, month, year, user.id);
+
       revalidatePath(`/bba/branches/${tenantId}`);
       revalidatePath(`/bba/audit/${tenantId}`);
       return {
         success: true,
-        message: "Konfigurasi KPI berhasil diperbarui!",
+        message: "Konfigurasi KPI berhasil diperbarui dan bonus otomatis direcalculate!",
       };
     }
 
@@ -156,6 +172,9 @@ export async function saveKpiV2Action(prevState: unknown, formData: FormData): P
       });
     }
 
+    // Auto-recalculate appraisals if they already exist for this period
+    await autoRecalcIfAppraisalsExist(supabaseAdmin, tenantId, month, year, user.id);
+
     revalidatePath(`/bba/branches/${tenantId}`);
     revalidatePath(`/bba/audit/${tenantId}`);
     return {
@@ -169,6 +188,43 @@ export async function saveKpiV2Action(prevState: unknown, formData: FormData): P
 }
 
 /**
+ * Internal helper: trigger appraisal recalculation if rows already exist for the period.
+ * Preserves publish state and manual adjustments so BBA edits are not lost.
+ */
+async function autoRecalcIfAppraisalsExist(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  month: number,
+  year: number,
+  actorUserId: string,
+): Promise<void> {
+  try {
+    const { count } = await supabase
+      .from("monthly_appraisals")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_apotek_id", tenantId)
+      .eq("period_month", month)
+      .eq("period_year", year);
+
+    if ((count ?? 0) > 0) {
+      await syncMonthlyAppraisalsForPeriod(supabase, {
+        tenantApotekId: tenantId,
+        periodMonth: month,
+        periodYear: year,
+        actorUserId,
+        reason: "kpi_config_saved",
+        source: "kpi_v2_action",
+        preservePublishState: true,
+        preserveExistingAdjustments: true,
+      });
+    }
+  } catch (err) {
+    // Non-fatal: recalc failure should not block the config save response
+    console.error("autoRecalcIfAppraisalsExist failed:", err);
+  }
+}
+
+/**
  * Get previous month KPI configuration
  */
 export async function getPreviousKpiV2Action(
@@ -177,6 +233,18 @@ export async function getPreviousKpiV2Action(
   currentYear: number,
 ): Promise<ActionResult<KpiConfigV2>> {
   try {
+    // Auth guard — only BBA admins may read KPI config for any branch
+    const session = await getSessionContext();
+    if (!session) return { error: "Unauthorized" };
+    const role = session.activeMembership?.role;
+    if (
+      !session.isGlobalSuperAdmin &&
+      role !== "super_admin_bba" &&
+      session.bbaPortalStaffRole !== "analyst"
+    ) {
+      return { error: "Akses ditolak." };
+    }
+
     const supabaseAdmin = createAdminClient();
 
     let prevMonth = currentMonth - 1;

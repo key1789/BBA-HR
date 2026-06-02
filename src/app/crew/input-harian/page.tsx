@@ -5,6 +5,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { CrewInputForm } from "./crew-input-form";
 import { AnimatedPage } from "@/components/shared/animated-page";
+import { HelpDrawer } from "@/components/shared/help-drawer";
+import { FlashMessage } from "@/components/shared/flash-message";
+import { readFlashMessage } from "@/lib/flash-message";
+import { INPUT_HARIAN_HELP } from "./help-content";
+import { PenLine } from "lucide-react";
 
 export default async function CrewInputHarianPage() {
   const session = await getSessionContext();
@@ -18,6 +23,7 @@ export default async function CrewInputHarianPage() {
     );
   }
 
+  const flash = await readFlashMessage();
   const supabase = await createClient();
   const supabaseAdmin = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -120,11 +126,29 @@ export default async function CrewInputHarianPage() {
 
   return (
     <AnimatedPage className="space-y-4 pb-10">
+      <div className="bg-white rounded-3xl p-5 shadow-md border border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-sky-600 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+            <PenLine size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Input Harian</h1>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              {active.tenantCode} · {reminderWindow.dateKey}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <HelpDrawer content={INPUT_HARIAN_HELP} />
+      <FlashMessage flash={flash} />
+
       <CrewInputForm
         shifts={shifts}
         addonProdukFokusEnabled={addonProdukFokusEnabled}
         focusProducts={focusProducts}
         recentSubmissions={recentSubmissionsWithDetails}
+        todayDateKey={reminderWindow.dateKey}
       />
     </AnimatedPage>
   );

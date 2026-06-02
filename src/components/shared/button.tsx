@@ -9,15 +9,15 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variantClass: Record<Variant, string> = {
-  primary: "bg-slate-900 text-white hover:bg-slate-800",
-  secondary: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
-  danger: "border border-rose-300 bg-white text-rose-700 hover:bg-rose-50",
-  ghost: "text-slate-700 hover:bg-slate-100",
+  primary:   "bg-slate-900 text-white hover:bg-slate-800",
+  secondary: "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+  danger:    "border border-rose-200 bg-white text-rose-700 hover:bg-rose-50",
+  ghost:     "text-slate-700 hover:bg-slate-100",
 };
 
 const sizeClass: Record<Size, string> = {
-  sm: "px-3 py-1.5 text-xs",
-  md: "px-3 py-2 text-sm",
+  sm: "px-3 py-1.5 text-[10px] tracking-widest uppercase",
+  md: "px-4 py-2.5 text-xs    tracking-widest uppercase",
 };
 
 export function Button({
@@ -30,7 +30,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={`rounded-md font-medium transition ${sizeClass[size]} ${variantClass[variant]} ${className}`}
+      className={`rounded-xl font-black transition disabled:opacity-50 ${sizeClass[size]} ${variantClass[variant]} ${className}`}
       {...props}
     />
   );

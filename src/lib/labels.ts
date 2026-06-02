@@ -45,6 +45,15 @@ const AUDIT_STATUS_LABEL: Record<string, string> = {
   approved: "Approved",
 };
 
+// Label untuk filter status di halaman verifikasi (berbeda dari display status submission)
+const SUBMISSION_FILTER_STATUS_LABEL: Record<string, string> = {
+  all:             "Semua",
+  submitted:       "Menunggu",
+  edited_by_admin: "Diedit Admin",
+  reject:          "Ditolak",
+  approved:        "Disetujui",
+};
+
 export function humanizeEnum(value: string) {
   return value
     .split("_")
@@ -128,4 +137,8 @@ export function getAuditStatusBadgeClass(status: string) {
   if (s === "approved") return "bg-emerald-100 text-emerald-700";
   if (s === "under_review") return "bg-amber-100 text-amber-700";
   return "bg-slate-100 text-slate-600";
+}
+
+export function getSubmissionFilterStatusLabel(status: string) {
+  return SUBMISSION_FILTER_STATUS_LABEL[status] ?? humanizeEnum(status);
 }

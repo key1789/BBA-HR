@@ -43,8 +43,8 @@ export interface IndividualUserConfig {
   target_omzet?: number;
   target_atv?: number;
   target_atu?: number;
-  target_omzet_daily?: number; // For daily scheme
-  working_days?: number; // For daily scheme
+  target_omzet_daily?: number; // For daily scheme — override harian manual
+  working_days?: number; // Digunakan di skema harian & bulanan manual
 
   // Weights (manual bonus distribution only)
   weight_omzet?: number;

@@ -1,5 +1,7 @@
-import { TenantLeaderboard } from "@/components/leaderboard/tenant-leaderboard";
+import { redirect } from "next/navigation";
 
+// Leaderboard sudah tersedia di tab Peringkat halaman Rapor
+// dengan tampilan yang lebih lengkap (podium, medal, progress bar)
 export default function CrewLeaderboardPage() {
-  return <TenantLeaderboard title="Crew - Leaderboard" subtitle="Leaderboard performa tim." />;
+  redirect("/crew/rapor?tab=peringkat");
 }

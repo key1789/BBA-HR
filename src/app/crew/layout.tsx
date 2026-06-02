@@ -8,13 +8,12 @@ import {
   Users,
   ClipboardCheck,
   LogOut,
-  ShieldCheck,
-  ChevronRight,
 } from "lucide-react";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { CrewBottomNav } from "@/components/shared/crew-bottom-nav";
 import { logoutAction } from "@/actions/auth";
-import { cn } from "@/lib/utils";
+import { SwitchModeModal } from "@/components/shared/switch-mode-modal";
 
 const ALL_SIDEBAR_ITEMS = [
   { key: "dashboard", name: "Dashboard",   path: "/crew/dashboard",    icon: LayoutDashboard },
@@ -36,15 +35,15 @@ export default async function CrewLayout({ children }: { children: React.ReactNo
   }
 
   const supabase = await createClient();
+
   const { data: addons } = await supabase
     .from("addon_settings")
     .select("addon_key, is_enabled")
     .eq("tenant_apotek_id", session.activeMembership?.tenantId ?? "");
 
   const branchConfig = {
-    addon_absensi:    addons?.find(a => a.addon_key === "absensi_shift")?.is_enabled    ?? false,
-    addon_grooming:   addons?.find(a => a.addon_key === "review_internal")?.is_enabled  ?? false,
-    addon_peer_review:addons?.find(a => a.addon_key === "review_internal")?.is_enabled  ?? false,
+    addon_absensi:  addons?.find(a => a.addon_key === "absensi_shift")?.is_enabled   ?? false,
+    addon_grooming: addons?.find(a => a.addon_key === "review_internal")?.is_enabled ?? false,
   };
 
   const sidebarItems = ALL_SIDEBAR_ITEMS.filter((item) => {
@@ -66,15 +65,13 @@ export default async function CrewLayout({ children }: { children: React.ReactNo
     <div className="bg-slate-50 min-h-screen font-sans text-slate-900 flex flex-col md:flex-row w-full">
 
       {/* ── SIDEBAR DESKTOP ── */}
-      <aside className="hidden md:flex flex-col w-60 lg:w-64 bg-white border-r border-slate-100 min-h-screen sticky top-0 z-50 shrink-0">
+      <aside className="hidden md:flex flex-col w-60 lg:w-64 bg-white border-r border-slate-100 h-screen sticky top-0 z-50 shrink-0">
 
         {/* Brand */}
         <div className="px-5 py-5 border-b border-slate-100 flex items-center gap-3">
-          <div className="w-9 h-9 bg-sky-600 text-white rounded-xl flex items-center justify-center font-black text-base shadow-sm shrink-0">
-            B
-          </div>
+          <Image src="/bba-logo.png" alt="BBA System" width={36} height={36} className="rounded-xl shrink-0" />
           <div className="min-w-0">
-            <p className="font-black text-slate-800 tracking-tight text-sm leading-none">BBA Portal</p>
+            <p className="font-black text-slate-800 tracking-tight text-sm leading-none">BBA System</p>
             <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest mt-0.5">Crew Access</p>
           </div>
         </div>
@@ -103,16 +100,7 @@ export default async function CrewLayout({ children }: { children: React.ReactNo
           </div>
 
           {/* Admin mode shortcut */}
-          {activeRole === "admin_apotek" && (
-            <Link
-              href="/admin/dashboard"
-              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-slate-500 hover:text-sky-700 hover:bg-sky-50 transition-colors group"
-            >
-              <ShieldCheck size={16} className="shrink-0 text-slate-400 group-hover:text-sky-600" />
-              <span className="text-xs font-bold flex-1">Mode Admin</span>
-              <ChevronRight size={13} className="text-slate-300 group-hover:text-sky-400" />
-            </Link>
-          )}
+          <SwitchModeModal target="admin" />
 
           {/* Logout */}
           <form action={handleLogout}>
@@ -133,28 +121,15 @@ export default async function CrewLayout({ children }: { children: React.ReactNo
         {/* Mobile header */}
         <header className="md:hidden bg-sky-600 px-5 pt-8 pb-16 flex items-center justify-between rounded-b-[2rem] shadow-sm relative z-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white text-sky-600 rounded-full flex items-center justify-center font-black shadow-sm text-base">
-              B
-            </div>
+            <Image src="/bba-logo.png" alt="BBA System" width={36} height={36} className="rounded-full shrink-0" />
             <div>
-              <p className="font-black text-base text-white tracking-tight leading-none">BBA Portal</p>
+              <p className="font-black text-base text-white tracking-tight leading-none">BBA System</p>
               <p className="text-[9px] text-sky-200 uppercase tracking-widest font-bold mt-0.5">Crew Access</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {activeRole === "admin_apotek" && (
-              <Link
-                href="/admin/dashboard"
-                className="flex items-center gap-1.5 bg-white/15 text-white px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wide border border-white/20"
-              >
-                <ShieldCheck size={13} />
-                Admin
-              </Link>
-            )}
-            <div className="w-9 h-9 bg-white/20 text-white rounded-full flex items-center justify-center font-black border border-white/30 text-sm">
-              {userInitial}
-            </div>
+            <SwitchModeModal target="admin" variant="pill" />
             <form action={handleLogout}>
               <button type="submit" className="p-2 text-sky-200 hover:text-white hover:bg-white/20 rounded-full transition-colors">
                 <LogOut size={18} />
@@ -164,21 +139,12 @@ export default async function CrewLayout({ children }: { children: React.ReactNo
         </header>
 
         {/* Desktop header strip */}
-        <header className="hidden md:flex items-center justify-between px-8 py-3.5 bg-white border-b border-slate-100 sticky top-0 z-40 shadow-sm">
+        <header className="hidden md:flex items-center px-8 py-3.5 bg-white border-b border-slate-100 sticky top-0 z-40 shadow-sm">
           <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Portal Operasional</p>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-xs font-black text-slate-800 leading-none">{userName}</p>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{tenantName}</p>
-            </div>
-            <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-black text-sm">
-              {userInitial}
-            </div>
-          </div>
         </header>
 
         {/* Main content */}
-        <main className="w-full px-4 md:px-8 flex-1 max-w-5xl mx-auto -mt-10 md:mt-0 relative z-10 pb-6 md:py-6">
+        <main className="w-full px-4 md:px-8 flex-1 max-w-5xl mx-auto -mt-10 md:mt-0 relative pb-6 md:py-6">
           {children}
         </main>
 

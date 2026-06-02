@@ -1,16 +1,12 @@
 /**
  * Pegawai operasional (headcount, payroll, KPI per orang, dll.):
- * crew + admin apotek yang BUKAN akun meja cabang.
+ * hanya crew — admin apotek adalah shared desk account, ditampilkan di tab tersendiri.
  */
 export function isBranchOperationalPersonnel(user: {
   role: string;
   app_users?: { is_branch_desk_account?: boolean | null } | null;
 }): boolean {
-  if (user.role === "crew") return true;
-  if (user.role === "admin_apotek") {
-    return !user.app_users?.is_branch_desk_account;
-  }
-  return false;
+  return user.role === "crew";
 }
 
 export function isBranchDeskAdminAccount(user: {

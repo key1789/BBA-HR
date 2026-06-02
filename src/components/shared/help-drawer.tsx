@@ -63,7 +63,7 @@ export function HelpDrawer({ content }: { content: HelpContent }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Buka panduan menu"
-        className="fixed bottom-[88px] right-4 z-40 w-11 h-11 bg-indigo-600 text-white rounded-full shadow-lg shadow-indigo-200/60 flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all"
+        className="fixed bottom-[88px] right-4 z-[55] w-11 h-11 bg-indigo-600 text-white rounded-full shadow-lg shadow-indigo-200/60 flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all"
       >
         <HelpCircle size={20} />
       </button>
@@ -71,14 +71,14 @@ export function HelpDrawer({ content }: { content: HelpContent }) {
       {/* Backdrop */}
       <div
         onClick={() => setOpen(false)}
-        className={`fixed inset-0 z-50 bg-black/25 backdrop-blur-[2px] transition-opacity duration-300 ${
+        className={`fixed inset-0 z-[70] bg-black/25 backdrop-blur-[2px] transition-opacity duration-300 ${
           open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
       />
 
       {/* Drawer — selalu di DOM agar animasi mulus */}
       <div
-        className={`fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-white shadow-2xl transition-transform duration-300 ease-in-out w-full max-w-[360px] ${
+        className={`fixed top-0 right-0 bottom-0 z-[70] flex flex-col bg-white shadow-2xl transition-transform duration-300 ease-in-out w-full max-w-[360px] ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >

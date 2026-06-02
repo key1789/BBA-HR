@@ -1,16 +1,17 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { LinkPendingHint } from "@/components/shared/link-pending-hint";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { SessionContext } from "@/lib/auth-context";
 import type { BbaPortalMenuKey } from "@/lib/bba-portal-menus";
-import { 
+import {
   LayoutDashboard, Building2, Store, Package,
   ClipboardCheck, Download, Megaphone, ShieldCheck,
-  ChevronLeft, ChevronRight, HeartPulse, LogOut
+  ChevronLeft, ChevronRight, LogOut
 } from "lucide-react";
 
 const MENU_GROUPS: {
@@ -77,8 +78,15 @@ export function BbaSidebar({
 
       {/* Logo Area */}
       <div className={cn("flex items-center gap-3 mb-10", isCollapsed ? "justify-center" : "px-2")}>
-        <div className="w-10 h-10 min-w-[40px] bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-900 shrink-0">
-          <HeartPulse className="w-6 h-6 text-white" />
+        <div className="w-10 h-10 min-w-[40px] rounded-xl overflow-hidden shrink-0 shadow-lg ring-1 ring-white/10">
+          <Image
+            src="/bba-logo.png"
+            width={40}
+            height={40}
+            alt="BBA Logo"
+            className="w-full h-full object-cover"
+            priority
+          />
         </div>
         {!isCollapsed && (
           <motion.div 

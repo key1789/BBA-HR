@@ -4,7 +4,7 @@
 import { useState, useTransition, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Info, Users, Target, ArrowLeft, Clock, CalendarDays, Loader2, Wand2, CheckSquare, Hash, MapPin } from "lucide-react";
+import { Info, Users, Target, ArrowLeft, Clock, CalendarDays, Loader2, Wand2, CheckSquare, Hash, MapPin, Puzzle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { TabOverview } from "./tab-overview";
@@ -13,6 +13,7 @@ import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { TabOperasional } from "./tab-operasional";
 import { TabTimAkses } from "./tab-tim-akses";
 import { TabActivity } from "./tab-activity";
+import { TabAddons } from "./tab-addons";
 import { ScrollText, X } from "lucide-react";
 import { getOtherBranchesAction, cloneBranchConfigAction } from "./actions";
 import { toast } from "sonner";
@@ -79,9 +80,12 @@ export function BranchDetailClient({
     });
   };
 
-  const isPayrollEnabled       = addons.find(a => a.addon_key === 'payroll')?.is_enabled       ?? false;
-  const isAbsensiEnabled       = addons.find(a => a.addon_key === 'absensi_shift')?.is_enabled  ?? false;
-  const isProductFokusEnabled  = addons.find(a => a.addon_key === 'produk_fokus')?.is_enabled   ?? false;
+  const payrollAddon           = addons.find((a: any) => a.addon_key === 'payroll');
+  const isPayrollEnabled       = payrollAddon?.is_enabled                                        ?? false;
+  const allowOwnerInput        = Boolean((payrollAddon?.settings as any)?.allow_owner_input);
+  const allowAdminInput        = Boolean((payrollAddon?.settings as any)?.allow_admin_input);
+  const isAbsensiEnabled       = addons.find((a: any) => a.addon_key === 'absensi_shift')?.is_enabled ?? false;
+  const isProductFokusEnabled  = addons.find((a: any) => a.addon_key === 'produk_fokus')?.is_enabled  ?? false;
 
   const yearOptions = useMemo(() => {
     const y = new Date().getFullYear();
@@ -89,79 +93,90 @@ export function BranchDetailClient({
   }, []);
 
   const currentTabs = [
-    { id: "info",       label: "Executive Overview",       icon: Info },
-    { id: "tim",        label: "Tim & Akses",              icon: Users },
-    { id: "operasional",label: "Shift, Absensi & Payroll", icon: Clock },
-    { id: "kpi",        label: "Target, KPI & Produk Fokus", icon: Target },
-    { id: "activity",   label: "Log aktivitas",            icon: ScrollText },
+    { id: "info",       label: "Executive Overview",         icon: Info      },
+    { id: "tim",        label: "Tim & Akses",                icon: Users     },
+    { id: "kpi",        label: "Target, KPI & Produk Fokus", icon: Target    },
+    { id: "addons",     label: "Fitur & Add-on",             icon: Puzzle    },
+    { id: "operasional",label: "Shift, Absensi & Payroll",   icon: Clock     },
+    { id: "activity",   label: "Log Aktivitas",              icon: ScrollText},
   ];
 
   return (
     <div className="flex flex-col h-full space-y-6">
-      {/* HEADER PAGE — compact single-row on desktop */}
-      <GlassCard className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-4 shrink-0 w-full bg-white/80 backdrop-blur-xl border-slate-200/60 shadow-xl shadow-slate-200/50" variant="light">
-        {/* Left: back + branch info */}
-        <div className="flex items-center gap-3 min-w-0">
-          <Link href="/bba/branches" className="w-9 h-9 shrink-0 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-sky-600 hover:text-white transition-all duration-300 shadow-sm border border-slate-100 group">
+      {/* HEADER PAGE */}
+      <GlassCard className="p-4 sm:p-5 shrink-0 w-full" variant="light">
+        {/* Row 1: back button + branch name + clone icon */}
+        <div className="flex items-center gap-3">
+          <Link
+            href="/bba/branches"
+            className="w-9 h-9 shrink-0 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-sky-600 hover:text-white transition-all duration-300 shadow-sm border border-slate-100 group"
+          >
             <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
           </Link>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg md:text-xl font-black text-slate-800 uppercase tracking-tight leading-none truncate">{branch.name}</h1>
-              <span className={`shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${branch.status === 'active' ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-slate-500 bg-slate-100 border-slate-200'}`}>
-                {branch.status}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-sky-50 text-sky-600 rounded-md border border-sky-100 text-[10px] font-black uppercase tracking-widest">
-                <Hash size={10} />{branch.code}
-              </span>
-              <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 truncate">
-                <MapPin size={10} />{branch.location || 'Lokasi belum diatur'}
-              </span>
-            </div>
-          </div>
-        </div>
 
-        {/* Right: actions + period selector */}
-        <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
-          {/* Salin Aturan — icon + short label */}
+          <h1 className="flex-1 text-xl md:text-2xl font-black text-slate-800 uppercase tracking-tight leading-none truncate">
+            {branch.name}
+          </h1>
+
           <button
             type="button"
             onClick={openCloneModal}
             disabled={!canCloneBranch}
             title="Salin Aturan Cabang"
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-black text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-slate-900/20 transition-all hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:pointer-events-none group"
+            className="w-9 h-9 shrink-0 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-all shadow-sm disabled:opacity-40 disabled:pointer-events-none"
           >
-            <Wand2 size={13} className="text-sky-400 group-hover:scale-110 transition-transform" />
-            <span className="hidden sm:inline">Salin Aturan</span>
+            <Wand2 size={15} />
           </button>
+        </div>
 
-          {/* Period selector */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-sm">
-            <CalendarDays size={13} className="text-slate-400 shrink-0" />
+        {/* Row 2: status · code · location | period selector */}
+        <div className="flex items-center gap-x-2.5 mt-2.5 ml-12 flex-wrap gap-y-1.5">
+          <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${
+            branch.status === "active"
+              ? "text-emerald-600 bg-emerald-50 border-emerald-100"
+              : "text-slate-500 bg-slate-100 border-slate-200"
+          }`}>
+            {branch.status}
+          </span>
+
+          <span className="text-slate-200 select-none">·</span>
+
+          <span className="inline-flex items-center gap-1 text-[10px] font-black text-sky-600 uppercase tracking-widest">
+            <Hash size={10} />{branch.code}
+          </span>
+
+          <span className="text-slate-200 select-none">·</span>
+
+          <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1 truncate">
+            <MapPin size={10} />{branch.location || "Lokasi belum diatur"}
+          </span>
+
+          <div className="w-px h-3.5 bg-slate-200 mx-0.5 shrink-0" />
+
+          {/* Period selector — inline, no container box */}
+          <div className="flex items-center gap-1.5">
+            <CalendarDays size={11} className="text-slate-400 shrink-0" />
             <select
               value={currentMonth}
               onChange={(e) => handlePeriodChange(parseInt(e.target.value), currentYear)}
               disabled={isPending}
-              className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer hover:text-sky-600 transition-colors disabled:opacity-50"
+              className="bg-transparent text-[11px] font-black text-slate-600 outline-none cursor-pointer hover:text-sky-600 transition-colors disabled:opacity-50"
             >
-              {['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agt','Sep','Okt','Nov','Des'].map((m, i) => (
-                <option key={i+1} value={i+1}>{m}</option>
+              {["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"].map((m, i) => (
+                <option key={i + 1} value={i + 1}>{m}</option>
               ))}
             </select>
-            <div className="w-px h-4 bg-slate-200 shrink-0" />
             <select
               value={currentYear}
               onChange={(e) => handlePeriodChange(currentMonth, parseInt(e.target.value))}
               disabled={isPending}
-              className="bg-transparent text-[11px] font-black text-slate-700 outline-none cursor-pointer hover:text-sky-600 transition-colors disabled:opacity-50"
+              className="bg-transparent text-[11px] font-black text-slate-600 outline-none cursor-pointer hover:text-sky-600 transition-colors disabled:opacity-50"
             >
               {yearOptions.map((y) => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
-            {isPending && <Loader2 size={12} className="animate-spin text-sky-500 ml-1" />}
+            {isPending && <Loader2 size={11} className="animate-spin text-sky-500" />}
           </div>
         </div>
       </GlassCard>
@@ -233,6 +248,19 @@ export function BranchDetailClient({
                 currentYear={currentYear}
                 isAbsensiEnabled={isAbsensiEnabled}
                 isPayrollEnabled={isPayrollEnabled}
+                allowOwnerInput={allowOwnerInput}
+                allowAdminInput={allowAdminInput}
+              />
+            )}
+            {activeTab === "addons" && (
+              <TabAddons
+                branchId={branch.id}
+                addons={addons}
+                products={products}
+                productFokus={productFokus}
+                currentMonth={currentMonth}
+                currentYear={currentYear}
+                onNavigateToTab={setActiveTab}
               />
             )}
             {activeTab === "activity" && <TabActivity logs={activityLogs} users={users} />}

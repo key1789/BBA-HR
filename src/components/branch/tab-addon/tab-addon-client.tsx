@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { saveAddonAction } from "@/app/bba/branches/[id]/actions";
 import { toast } from "sonner";
 import { AppraisalAddonsSection } from "./AppraisalAddonsSection";
+import { PayrollAccessSection } from "./PayrollAccessSection";
 
 export function TabAddon({
   branchId,
@@ -44,10 +45,43 @@ export function TabAddon({
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [configModal, setConfigModal] = useState<string | null>(null);
   const [confirmDisableKey, setConfirmDisableKey] = useState<string | null>(null);
+  const [confirmEnableKey, setConfirmEnableKey] = useState<string | null>(null);
 
-  const CRITICAL_ADDONS: Record<string, string> = {
-    payroll: "Menonaktifkan Payroll akan menyembunyikan tab Setup Payroll dan Payroll Bulanan. Konfigurasi gaji pegawai tidak dihapus, tapi tidak bisa diakses sampai diaktifkan kembali.",
-    absensi_shift: "Menonaktifkan Absensi & Jadwal akan menghentikan fitur absensi selfie dan Jadwal & Absensi. Data absensi yang sudah ada tetap tersimpan di database.",
+  // ── Disable confirmation messages (all 5 add-ons) ──────────────────────────
+  const ADDON_DISABLE_MSG: Record<string, string> = {
+    produk_fokus:
+      "Menonaktifkan Produk Fokus akan menghentikan perhitungan insentif produk. Konfigurasi yang sudah diatur tidak dihapus dan bisa diakses kembali jika fitur diaktifkan lagi.",
+    absensi_shift:
+      "Menonaktifkan Jadwal & Absensi akan menghentikan fitur absensi selfie, pengajuan izin, dan penjadwalan shift. Data kehadiran yang sudah ada tetap tersimpan di database.",
+    review_pelanggan:
+      "Menonaktifkan Review Pelanggan akan menghentikan input ulasan baru dari admin cabang. Data review yang sudah ada tetap tersimpan.",
+    review_internal:
+      "Menonaktifkan Review Internal akan menghentikan siklus peer review antar karyawan. Data penilaian yang sudah ada tetap tersimpan di database.",
+    payroll:
+      "Menonaktifkan Payroll akan menyembunyikan tab Setup Gaji dan mencegah generate slip gaji. Konfigurasi gaji pegawai tetap tersimpan dan bisa diakses kembali jika fitur diaktifkan lagi.",
+  };
+
+  // ── Activation info (shown after user confirms enable) ─────────────────────
+  const ADDON_ENABLE_INFO: Record<string, { body: string; configNote?: string }> = {
+    produk_fokus: {
+      body: "Fitur Produk Fokus aktif. Sistem akan menghitung insentif otomatis untuk penjualan produk-produk yang sudah dikonfigurasi.",
+      configNote: "Tambahkan produk beserta target & nominal insentifnya di tab Target, KPI & Produk Fokus.",
+    },
+    absensi_shift: {
+      body: "Fitur Jadwal & Absensi aktif. Crew dapat melakukan absensi selfie dan pengajuan izin.",
+      configNote: "Atur pola mingguan tiap crew di tab Shift, Absensi & Payroll → Pola Mingguan agar jadwal bulanan bisa di-generate otomatis.",
+    },
+    review_pelanggan: {
+      body: "Fitur Review Pelanggan aktif. Admin cabang dapat langsung menginput ulasan dari pelanggan — tidak ada konfigurasi tambahan yang diperlukan.",
+    },
+    review_internal: {
+      body: "Fitur Review Internal aktif. Sistem peer review antar karyawan siap digunakan.",
+      configNote: "Atur frekuensi review per bulan dengan klik tombol 'Set Aturan' yang muncul di kartu ini setelah fitur aktif.",
+    },
+    payroll: {
+      body: "Fitur Payroll & Gaji aktif. Modul pengelolaan gaji pokok dan komponen penghasilan crew siap digunakan.",
+      configNote: "Atur komponen gaji tiap karyawan di tab Shift, Absensi & Payroll → Setup Gaji. Tanpa konfigurasi ini, slip gaji tidak dapat di-generate.",
+    },
   };
 
   const [activeAddons, setActiveAddons] = useState<Record<string, boolean>>(() => {
@@ -95,24 +129,33 @@ export function TabAddon({
         return productFokus.length > 0;
       case "review_internal":
         return typeof settings.frequency_per_month === "number";
+      case "payroll":
+        return Boolean(settings.allow_admin_input) || Boolean(settings.allow_owner_input);
       default:
         return false;
     }
   }
 
   const handleToggle = (key: string) => {
-    // If disabling a critical add-on, ask for confirmation first
-    if (CRITICAL_ADDONS[key] && activeAddons[key]) {
+    if (activeAddons[key]) {
+      // Currently ON → show disable confirmation for every add-on
       setConfirmDisableKey(key);
-      return;
+    } else {
+      // Currently OFF → show activation info modal first
+      setConfirmEnableKey(key);
     }
-    setActiveAddons((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleConfirmDisable = () => {
     if (!confirmDisableKey) return;
     setActiveAddons((prev) => ({ ...prev, [confirmDisableKey]: false }));
     setConfirmDisableKey(null);
+  };
+
+  const handleConfirmEnable = () => {
+    if (!confirmEnableKey) return;
+    setActiveAddons((prev) => ({ ...prev, [confirmEnableKey]: true }));
+    setConfirmEnableKey(null);
   };
 
   const doSaveRules = (snapshot: Record<string, boolean>) => {
@@ -184,8 +227,8 @@ export function TabAddon({
     },
     {
       key: "absensi_shift",
-      title: "Absensi & Roster",
-      desc: "Selfie absensi, pengajuan izin, dan penjadwalan shift (Roster).",
+      title: "Jadwal & Absensi",
+      desc: "Selfie absensi, pengajuan izin, dan penjadwalan shift crew.",
       icon: Clock,
       color: "cyan",
       isAccountability: false,
@@ -269,7 +312,7 @@ export function TabAddon({
           {ADDON_CARDS.map((card) => {
             const active = isEnabled(card.key);
             const Icon = card.icon;
-            const hasConfig = card.key !== "payroll" && card.key !== "review_pelanggan" && card.key !== "absensi_shift" && card.key !== "produk_fokus";
+            const hasConfig = card.key === "review_internal" || card.key === "payroll";
             const iconActiveClass = addonIconActive[card.color] ?? addonIconActive.sky;
 
             return (
@@ -354,7 +397,7 @@ export function TabAddon({
                         }}
                         className="flex items-center gap-1.5 text-[10px] font-black text-sky-600 hover:text-sky-800 uppercase tracking-widest transition-all group"
                       >
-                        {card.key === "absensi_shift" ? "Atur di Shift & Absensi" : card.key === "produk_fokus" ? "Atur di Target & KPI" : "Atur di Shift & Payroll"}
+                        {card.key === "absensi_shift" ? "Atur di Jadwal & Absensi" : card.key === "produk_fokus" ? "Atur di Target & KPI" : "Atur di Setup Gaji"}
                         <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
                       </button>
                     ) : (
@@ -382,7 +425,7 @@ export function TabAddon({
         </div>
       </form>
 
-      {/* CONFIRM DISABLE MODAL */}
+      {/* ── CONFIRM DISABLE MODAL ── */}
       {typeof document !== "undefined" &&
         createPortal(
           <AnimatePresence>
@@ -409,13 +452,14 @@ export function TabAddon({
                       <div>
                         <h3 className="font-black text-slate-800 text-sm">Nonaktifkan Add-on?</h3>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          {confirmDisableKey.replace("_", " ")}
+                          {ADDON_CARDS.find((c) => c.key === confirmDisableKey)?.title ?? confirmDisableKey}
                         </p>
                       </div>
                     </div>
                     <p className="text-xs text-slate-600 leading-relaxed bg-amber-50/60 border border-amber-100 rounded-xl p-3">
-                      {CRITICAL_ADDONS[confirmDisableKey]}
+                      {ADDON_DISABLE_MSG[confirmDisableKey]}
                     </p>
+                    <p className="text-[10px] font-bold text-slate-400 text-center">Data yang sudah ada tidak akan dihapus.</p>
                     <div className="flex gap-3">
                       <button
                         type="button"
@@ -436,6 +480,85 @@ export function TabAddon({
                 </motion.div>
               </div>
             )}
+          </AnimatePresence>,
+          document.body,
+        )}
+
+      {/* ── CONFIRM ENABLE MODAL ── */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {confirmEnableKey && (() => {
+              const card = ADDON_CARDS.find((c) => c.key === confirmEnableKey);
+              const info = ADDON_ENABLE_INFO[confirmEnableKey];
+              const Icon = card?.icon ?? CheckCircle2;
+              return (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setConfirmEnableKey(null)}
+                    className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                    className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden"
+                  >
+                    <div className="p-6 flex flex-col gap-4">
+                      {/* Header */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center shrink-0">
+                          <Icon size={22} className="text-sky-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-slate-800 text-sm">Aktifkan Add-on?</h3>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            {card?.title ?? confirmEnableKey}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* What this addon does */}
+                      <p className="text-xs text-slate-700 leading-relaxed bg-sky-50/60 border border-sky-100 rounded-xl p-3">
+                        {info?.body}
+                      </p>
+
+                      {/* Config reminder (if any) */}
+                      {info?.configNote && (
+                        <div className="flex gap-2.5 bg-amber-50/70 border border-amber-100 rounded-xl p-3">
+                          <AlertCircle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                          <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                            <span className="font-black">Langkah lanjutan: </span>
+                            {info.configNote}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex gap-3 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmEnableKey(null)}
+                          className="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleConfirmEnable}
+                          className="flex-[2] px-4 py-2.5 rounded-xl font-black text-sm text-white bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-600/20 transition-all active:scale-95"
+                        >
+                          Ya, Aktifkan
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+              );
+            })()}
           </AnimatePresence>,
           document.body,
         )}
@@ -490,7 +613,16 @@ export function TabAddon({
                         reviewInternalFrequency={reviewInternalFrequency}
                       />
                     )}
-
+                    {configModal === "payroll" && (() => {
+                      const payrollSettings = getSettings("payroll") as Record<string, unknown>;
+                      return (
+                        <PayrollAccessSection
+                          branchId={branchId}
+                          allowAdminInput={Boolean(payrollSettings.allow_admin_input)}
+                          allowOwnerInput={Boolean(payrollSettings.allow_owner_input)}
+                        />
+                      );
+                    })()}
                   </div>
                 </motion.div>
               </div>

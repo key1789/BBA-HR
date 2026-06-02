@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useActionState, startTransition } from "react";
 import { Copy, Loader2, ChevronRight, Users, User, AlertCircle } from "lucide-react";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 import { toast } from "sonner";
 import { GlassCard } from "@/components/shared/glass-card";
 import { GlobalTargetSection } from "@/components/kpi-v2/schemes/GlobalTargetSection";
@@ -174,23 +175,26 @@ function TabKpiV2({ branchId, currentMonth, currentYear, users, initialConfig, c
             Konfigurasi target performa & skema bonus periode ini
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleCopyPrevious}
-          disabled={isCopying || !canEditKpi}
-          className="group flex items-center gap-3 px-5 py-2.5 bg-white hover:bg-slate-900 text-slate-600 hover:text-white border border-slate-200 hover:border-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all duration-500 hover:shadow-xl hover:shadow-slate-200 hover:-translate-y-0.5 disabled:opacity-50"
-        >
-          <div
-            className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all duration-500 ${
-              isCopying
-                ? "bg-sky-100 text-sky-600"
-                : "bg-slate-50 text-slate-400 group-hover:bg-sky-500 group-hover:text-white group-hover:rotate-12"
-            }`}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopyPrevious}
+            disabled={isCopying || !canEditKpi}
+            className="group flex items-center gap-3 px-5 py-2.5 bg-white hover:bg-slate-900 text-slate-600 hover:text-white border border-slate-200 hover:border-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all duration-500 hover:shadow-xl hover:shadow-slate-200 hover:-translate-y-0.5 disabled:opacity-50"
           >
-            {isCopying ? <Loader2 size={14} className="animate-spin" /> : <Copy size={12} />}
-          </div>
-          Salin Data Bulan Lalu
-        </button>
+            <div
+              className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all duration-500 ${
+                isCopying
+                  ? "bg-sky-100 text-sky-600"
+                  : "bg-slate-50 text-slate-400 group-hover:bg-sky-500 group-hover:text-white group-hover:rotate-12"
+              }`}
+            >
+              {isCopying ? <Loader2 size={14} className="animate-spin" /> : <Copy size={12} />}
+            </div>
+            Salin Data Bulan Lalu
+          </button>
+          <InfoTooltip content="Salin semua konfigurasi KPI dari bulan sebelumnya ke bulan ini — target, bobot metrik, dan semua skema bonus. Perubahan tetap perlu disimpan secara manual setelah penyalinan." />
+        </div>
       </div>
 
       <GlassCard
@@ -279,7 +283,7 @@ function TabKpiV2({ branchId, currentMonth, currentYear, users, initialConfig, c
               <SimulasiBonus config={withDerivedActiveSchemes(config)} users={simulasiUsers} />
               <button
                 type="submit"
-                disabled={isSavePending || !canEditKpi}
+                disabled={isSavePending || !canEditKpi || !isDirty}
                 className="w-full sm:w-auto px-8 py-3.5 sm:py-3 rounded-2xl font-black text-sm text-white bg-sky-600 hover:bg-sky-700 shadow-xl shadow-sky-600/30 transition-all hover:-translate-y-0.5 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSavePending ? <Loader2 size={18} className="animate-spin" /> : "Simpan Konfigurasi KPI"}

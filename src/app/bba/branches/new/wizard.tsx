@@ -41,10 +41,7 @@ type BranchInfo = {
 };
 
 type AdminInfo = {
-  skip: boolean;
-  fullName: string;
   email: string;
-  phone: string;
 };
 
 type StaffRow = {
@@ -52,6 +49,7 @@ type StaffRow = {
   fullName: string;
   email: string;
   phone: string;
+  emailTouched: boolean;
 };
 
 type ShiftRow = {
@@ -60,6 +58,41 @@ type ShiftRow = {
   start_time: string;
   end_time: string;
 };
+
+// ---------------------------------------------------------------------------
+// Email & code generation helpers
+// ---------------------------------------------------------------------------
+
+/** Ambil inisial setiap kata, maks 4 huruf, + counter "-01". */
+function generateBranchCode(name: string): string {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+  return initials ? `${initials}-01` : "";
+}
+
+/** Normalisasi string jadi safe untuk local-part email: huruf kecil, alfanumerik + strip sisanya. */
+function normalizeForEmail(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Saran email admin: admin.{kode}@bba.id */
+function suggestAdminEmail(branchCode: string): string {
+  const code = normalizeForEmail(branchCode);
+  return code ? `admin.${code}@bba.id` : "";
+}
+
+/** Saran email crew: {namadepan}.{kode}@bba.id */
+function suggestCrewEmail(fullName: string, branchCode: string): string {
+  const firstName = fullName.trim().split(/\s+/)[0] ?? "";
+  const name = normalizeForEmail(firstName);
+  const code = normalizeForEmail(branchCode);
+  return name && code ? `${name}.${code}@bba.id` : "";
+}
 
 const DEFAULT_SHIFTS: ShiftRow[] = [
   { _key: "s1", shift_name: "PAGI", start_time: "07:00", end_time: "15:00" },
@@ -251,17 +284,31 @@ function Step1({
   shifts,
   owners,
   onNext,
+  preselectedOwnerId,
 }: {
   data: BranchInfo;
   shifts: ShiftRow[];
   owners: Owner[];
   onNext: (d: BranchInfo, s: ShiftRow[]) => void;
+  preselectedOwnerId?: string;
 }) {
   const [form, setForm] = useState(data);
+  const isOwnerLocked = Boolean(preselectedOwnerId);
   const [localShifts, setLocalShifts] = useState<ShiftRow[]>(shifts);
+  // Track apakah kode sudah diedit manual — jika belum, update otomatis dari nama
+  const [codeManuallyEdited, setCodeManuallyEdited] = useState(!!data.code);
 
   const set = (k: keyof BranchInfo) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const name = e.target.value;
+    setForm((f) => ({
+      ...f,
+      name,
+      code: codeManuallyEdited ? f.code : generateBranchCode(name),
+    }));
+  };
 
   const handleNext = () => {
     if (!form.name.trim() || !form.code.trim() || !form.ownerId) return;
@@ -279,17 +326,27 @@ function Step1({
       </div>
 
       <Field label="Nama Apotek" required>
-        <input className={inputCls} value={form.name} onChange={set("name")} placeholder="Apotek Sehat Medika" />
+        <input className={inputCls} value={form.name} onChange={handleNameChange} placeholder="Apotek Sehat Medika" />
       </Field>
 
       <Field label="Kode Cabang" required hint="Maks. 10 karakter, digunakan sebagai identifikasi internal.">
-        <input
-          className={`${inputCls} uppercase font-bold`}
-          value={form.code}
-          onChange={set("code")}
-          placeholder="ASM-01"
-          maxLength={10}
-        />
+        <div className="flex items-center gap-2">
+          <input
+            className={`${inputCls} uppercase font-bold flex-1`}
+            value={form.code}
+            onChange={(e) => {
+              setCodeManuallyEdited(true);
+              setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }));
+            }}
+            placeholder="ASM-01"
+            maxLength={10}
+          />
+          {!codeManuallyEdited && form.code && (
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-1.5 rounded-lg shrink-0">
+              Otomatis
+            </span>
+          )}
+        </div>
       </Field>
 
       <Field label="Alamat" icon={<MapPin size={11} className="text-slate-400" />}>
@@ -307,14 +364,27 @@ function Step1({
       </Field>
 
       <Field label="Assign ke Owner" required>
-        <select className={inputCls} value={form.ownerId} onChange={set("ownerId")}>
-          <option value="">-- Pilih Owner Apotek --</option>
-          {owners.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.full_name}
-            </option>
-          ))}
-        </select>
+        {isOwnerLocked ? (
+          <div className="flex items-center gap-2">
+            <input
+              className={`${inputCls} bg-sky-50 border-sky-200 text-sky-800 font-bold cursor-not-allowed flex-1`}
+              value={owners.find((o) => o.id === form.ownerId)?.full_name ?? form.ownerId}
+              readOnly
+            />
+            <span className="text-[10px] font-black uppercase text-sky-600 bg-sky-50 border border-sky-200 rounded-lg px-2 py-2 shrink-0 whitespace-nowrap">
+              Terpilih
+            </span>
+          </div>
+        ) : (
+          <select className={inputCls} value={form.ownerId} onChange={set("ownerId")}>
+            <option value="">-- Pilih Owner Apotek --</option>
+            {owners.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.full_name}
+              </option>
+            ))}
+          </select>
+        )}
       </Field>
 
       <ShiftEditor shifts={localShifts} onChange={setLocalShifts} />
@@ -338,24 +408,20 @@ function Step1({
 
 function Step2({
   data,
+  branchCode,
   onNext,
   onBack,
 }: {
   data: AdminInfo;
+  branchCode: string;
   onNext: (d: AdminInfo) => void;
   onBack: () => void;
 }) {
-  const [form, setForm] = useState(data);
+  const suggested = suggestAdminEmail(branchCode);
+  const [email, setEmail] = useState(data.email || suggested);
+  const isAuto = email === suggested;
 
-  const set = (k: keyof AdminInfo) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  const handleNext = () => {
-    if (!form.skip && (!form.fullName.trim() || !form.email.trim())) return;
-    onNext(form);
-  };
-
-  const canNext = form.skip || (form.fullName.trim() && form.email.trim());
+  const canNext = email.trim().length > 0 && email.includes("@");
 
   return (
     <div className="space-y-5">
@@ -364,47 +430,39 @@ function Step2({
         <div>
           <p className="text-sm font-bold text-amber-900">Akun Admin Apotek (Shared)</p>
           <p className="text-xs text-amber-700/80 mt-0.5">
-            Satu akun bersama yang dipakai oleh siapapun yang bertugas sebagai admin. Bisa dilanjutkan nanti dari halaman detail apotek.
+            Satu akun bersama — siapapun yang bertugas sebagai admin login dengan akun ini. Admin perlu mengaktifkan akun via link aktivasi untuk membuat password.
           </p>
         </div>
       </div>
 
-      <label className="flex items-center gap-3 p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors">
-        <input
-          type="checkbox"
-          checked={form.skip}
-          onChange={(e) => setForm((f) => ({ ...f, skip: e.target.checked }))}
-          className="w-4 h-4 rounded accent-sky-600"
-        />
-        <span className="text-sm font-semibold text-slate-700">Lewati — saya akan buat akun admin nanti</span>
-      </label>
+      <Field
+        label="Email Admin"
+        required
+        icon={<Mail size={11} className="text-slate-400" />}
+        hint="Email ini sebagai login. Bisa diganti ke email personal — pastikan belum terdaftar di sistem."
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="email"
+            className={`${inputCls} flex-1`}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="admin.asm01@bba.id"
+          />
+          {isAuto && (
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-1.5 rounded-lg shrink-0">
+              Saran
+            </span>
+          )}
+        </div>
+      </Field>
 
-      {!form.skip && (
-        <>
-          <Field label="Nama Akun Admin" required hint="Contoh: Admin Apotek Sehati">
-            <input
-              className={inputCls}
-              value={form.fullName}
-              onChange={set("fullName")}
-              placeholder="Admin Apotek Sehati"
-            />
-          </Field>
-
-          <Field label="Email Admin" required icon={<Mail size={11} className="text-slate-400" />}>
-            <input
-              type="email"
-              className={inputCls}
-              value={form.email}
-              onChange={set("email")}
-              placeholder="admin.sehati@gmail.com"
-            />
-          </Field>
-
-          <Field label="No HP Admin" icon={<Phone size={11} className="text-slate-400" />}>
-            <input className={inputCls} value={form.phone} onChange={set("phone")} placeholder="0812xxxxxxxx" />
-          </Field>
-        </>
-      )}
+      <div className="flex items-start gap-2.5 p-3 bg-sky-50 border border-sky-100 rounded-xl">
+        <AlertCircle size={14} className="text-sky-500 shrink-0 mt-0.5" />
+        <p className="text-xs text-sky-700 leading-relaxed">
+          Setelah apotek didaftarkan, <strong>link aktivasi</strong> akan tampil di halaman hasil untuk disalin dan dikirim ke admin. Admin buka link → buat password → langsung bisa login. Link berlaku <strong>7 hari</strong>.
+        </p>
+      </div>
 
       <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
         <button
@@ -414,7 +472,7 @@ function Step2({
           <ChevronLeft size={16} /> Kembali
         </button>
         <button
-          onClick={handleNext}
+          onClick={() => canNext && onNext({ email })}
           disabled={!canNext}
           className="flex items-center gap-2 px-6 py-2.5 bg-sky-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-sky-600/20 hover:bg-sky-700 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -431,20 +489,33 @@ function Step2({
 
 function Step3({
   data,
+  branchCode,
   onNext,
   onBack,
 }: {
   data: StaffRow[];
+  branchCode: string;
   onNext: (d: StaffRow[]) => void;
   onBack: () => void;
 }) {
-  const [rows, setRows] = useState<StaffRow[]>(data.length > 0 ? data : [{ _key: crypto.randomUUID(), fullName: "", email: "", phone: "" }]);
+  const emptyRow = (): StaffRow => ({ _key: crypto.randomUUID(), fullName: "", email: "", phone: "", emailTouched: false });
+  const [rows, setRows] = useState<StaffRow[]>(data.length > 0 ? data : [emptyRow()]);
 
-  const updateRow = (key: string, field: keyof Omit<StaffRow, "_key">, value: string) =>
-    setRows((rs) => rs.map((r) => (r._key === key ? { ...r, [field]: value } : r)));
+  const updateRow = (key: string, field: keyof Omit<StaffRow, "_key" | "emailTouched">, value: string) =>
+    setRows((rs) => rs.map((r) => {
+      if (r._key !== key) return r;
+      // Ketika nama berubah dan email belum diedit manual → auto-suggest
+      if (field === "fullName" && !r.emailTouched) {
+        return { ...r, fullName: value, email: suggestCrewEmail(value, branchCode) };
+      }
+      return { ...r, [field]: value };
+    }));
+
+  const updateEmail = (key: string, value: string) =>
+    setRows((rs) => rs.map((r) => r._key === key ? { ...r, email: value, emailTouched: true } : r));
 
   const addRow = () =>
-    setRows((rs) => [...rs, { _key: crypto.randomUUID(), fullName: "", email: "", phone: "" }]);
+    setRows((rs) => [...rs, emptyRow()]);
 
   const removeRow = (key: string) =>
     setRows((rs) => (rs.length > 1 ? rs.filter((r) => r._key !== key) : rs));
@@ -488,13 +559,20 @@ function Step3({
                 value={row.fullName}
                 onChange={(e) => updateRow(row._key, "fullName", e.target.value)}
               />
-              <input
-                type="email"
-                className={inputCls}
-                placeholder="Email *"
-                value={row.email}
-                onChange={(e) => updateRow(row._key, "email", e.target.value)}
-              />
+              <div className="relative">
+                <input
+                  type="email"
+                  className={inputCls}
+                  placeholder="Email *"
+                  value={row.email}
+                  onChange={(e) => updateEmail(row._key, e.target.value)}
+                />
+                {!row.emailTouched && row.email && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded pointer-events-none">
+                    Saran
+                  </span>
+                )}
+              </div>
             </div>
             <input
               className={inputCls}
@@ -601,16 +679,12 @@ function Step4({
 
       <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl space-y-2">
         <p className="text-xs font-black text-amber-600 uppercase tracking-wider">Akun Admin Apotek</p>
-        {admin.skip ? (
-          <p className="text-sm text-slate-500 italic">Dilewati — dibuat nanti dari halaman detail apotek.</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <span className="text-slate-500">Nama</span>
-            <span className="font-bold text-slate-800">{admin.fullName}</span>
-            <span className="text-slate-500">Email</span>
-            <span className="font-medium text-slate-700">{admin.email}</span>
-          </div>
-        )}
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <span className="text-slate-500">Email</span>
+          <span className="font-bold text-slate-800">{admin.email || "—"}</span>
+          <span className="text-slate-500">Aktivasi</span>
+          <span className="text-xs text-amber-700 font-semibold">Link aktivasi · berlaku 7 hari</span>
+        </div>
       </div>
 
       <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl space-y-2">
@@ -679,14 +753,16 @@ function ResultView({ result }: { result: Extract<OnboardingResult, { success: t
     const adminResult = result.staffResults.find((r) => r.role === "admin_apotek");
     if (adminResult) {
       lines.push("[AKUN ADMIN APOTEK]");
-      lines.push(`Nama   : ${adminResult.fullName}`);
-      lines.push(`Email  : ${adminResult.email}`);
-      lines.push(`Akses  : Portal Admin Apotek`);
-      if (adminResult.inviteLink) {
-        lines.push(`Link   : ${adminResult.inviteLink}`);
-        lines.push(`         (berlaku 48 jam)`);
-      } else {
+      lines.push(`Nama  : ${adminResult.fullName}`);
+      lines.push(`Email : ${adminResult.email}`);
+      if (adminResult.skipped) {
         lines.push(`Catatan: ${adminResult.skipReason || "Gagal membuat undangan"}`);
+      } else if (adminResult.inviteLink) {
+        lines.push(`Link Aktivasi : ${adminResult.inviteLink}`);
+        lines.push(`                (berlaku 7 hari, 1x pakai)`);
+        lines.push(`Cara          : Buka link → buat password → langsung bisa login`);
+      } else {
+        lines.push(`Catatan: ${adminResult.skipReason || "Gagal"}`);
       }
       lines.push("");
     }
@@ -709,8 +785,9 @@ function ResultView({ result }: { result: Extract<OnboardingResult, { success: t
     }
 
     lines.push("[CARA AKTIVASI]");
-    lines.push("Klik link masing-masing → buat password → login.");
-    lines.push("Link hanya berlaku 1x dan kadaluwarsa dalam 48 jam.");
+    lines.push("Admin & Staf: Klik link masing-masing → buat password → login.");
+    lines.push("Link admin berlaku 7 hari. Link staf berlaku 48 jam.");
+    lines.push("Setiap link hanya bisa digunakan 1x.");
     lines.push("");
     lines.push("[LINK LOGIN]");
     lines.push(`Portal Crew & Admin: ${loginUrl}`);
@@ -754,15 +831,22 @@ function ResultView({ result }: { result: Extract<OnboardingResult, { success: t
           <div className="text-sm space-y-1">
             <p className="font-semibold text-slate-800">{adminResult.fullName}</p>
             <p className="text-slate-500">{adminResult.email}</p>
-            {adminResult.inviteLink ? (
-              <a
-                href={adminResult.inviteLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-sky-600 font-medium hover:underline text-xs mt-1"
-              >
-                <ExternalLink size={11} /> Link aktivasi admin
-              </a>
+            {adminResult.skipped ? (
+              <p className="text-xs text-rose-600 flex items-center gap-1">
+                <AlertCircle size={11} /> {adminResult.skipReason}
+              </p>
+            ) : adminResult.inviteLink ? (
+              <div className="space-y-1 mt-1">
+                <a
+                  href={adminResult.inviteLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-sky-600 font-medium hover:underline text-xs"
+                >
+                  <ExternalLink size={11} /> Link aktivasi admin
+                </a>
+                <p className="text-[10px] text-amber-600 font-semibold">Berlaku 7 hari · link 1x pakai</p>
+              </div>
             ) : (
               <p className="text-xs text-rose-600 flex items-center gap-1">
                 <AlertCircle size={11} /> {adminResult.skipReason}
@@ -852,11 +936,11 @@ function ResultView({ result }: { result: Extract<OnboardingResult, { success: t
 // Main wizard orchestrator
 // ---------------------------------------------------------------------------
 
-export function BranchOnboardingWizard({ owners }: { owners: Owner[] }) {
+export function BranchOnboardingWizard({ owners, preselectedOwnerId }: { owners: Owner[]; preselectedOwnerId?: string }) {
   const [step, setStep] = useState<WizardStep>(1);
-  const [branch, setBranch] = useState<BranchInfo>({ name: "", code: "", address: "", phone: "", ownerId: "" });
+  const [branch, setBranch] = useState<BranchInfo>({ name: "", code: "", address: "", phone: "", ownerId: preselectedOwnerId ?? "" });
   const [shifts, setShifts] = useState<ShiftRow[]>(DEFAULT_SHIFTS);
-  const [admin, setAdmin] = useState<AdminInfo>({ skip: false, fullName: "", email: "", phone: "" });
+  const [admin, setAdmin] = useState<AdminInfo>({ email: "" });
   const [staff, setStaff] = useState<StaffRow[]>([]);
 
   const formRef = useRef<HTMLFormElement>(null);
@@ -880,10 +964,8 @@ export function BranchOnboardingWizard({ owners }: { owners: Owner[] }) {
         .map(({ shift_name, start_time, end_time }) => ({ shift_name, start_time, end_time }))
     ));
 
-    if (!admin.skip) {
-      fd.set("adminFullName", admin.fullName);
+    if (admin.email) {
       fd.set("adminEmail", admin.email);
-      fd.set("adminPhone", admin.phone);
     }
 
     fd.set("staffJson", JSON.stringify(staff.map(({ fullName, email, phone }) => ({ fullName, email, phone }))));
@@ -923,6 +1005,7 @@ export function BranchOnboardingWizard({ owners }: { owners: Owner[] }) {
             data={branch}
             shifts={shifts}
             owners={owners}
+            preselectedOwnerId={preselectedOwnerId}
             onNext={(d, s) => {
               setBranch(d);
               setShifts(s);
@@ -933,6 +1016,7 @@ export function BranchOnboardingWizard({ owners }: { owners: Owner[] }) {
         {step === 2 && (
           <Step2
             data={admin}
+            branchCode={branch.code}
             onNext={(d) => {
               setAdmin(d);
               setStep(3);
@@ -943,6 +1027,7 @@ export function BranchOnboardingWizard({ owners }: { owners: Owner[] }) {
         {step === 3 && (
           <Step3
             data={staff}
+            branchCode={branch.code}
             onNext={(d) => {
               setStaff(d);
               setStep(4);

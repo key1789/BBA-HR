@@ -4,10 +4,8 @@ import {
 } from "@/actions/operational";
 import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
-import { InlineAlert } from "@/components/shared/inline-alert";
 import { FlashMessage } from "@/components/shared/flash-message";
 import { Input } from "@/components/shared/input";
-import { PageHeader } from "@/components/shared/page-header";
 import { PendingSubmitButton } from "./submit-buttons";
 import { MobileFilterSheet } from "./mobile-filter-sheet";
 import { DirectEditModal } from "./direct-edit-modal";
@@ -24,7 +22,9 @@ import { recordReminderDispatch } from "@/lib/reminder-dispatch-log";
 import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { readFlashMessage } from "@/lib/flash-message";
 import { createClient } from "@/lib/supabase/server";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { ClipboardCheck, CheckCircle2, AlertTriangle, History } from "lucide-react";
 
 type VerificationQueueRow = {
   id: string;
@@ -81,19 +81,18 @@ export default async function AdminVerifikasiPage({
     status?: string;
     from?: string;
     to?: string;
+    view?: string;
   }>;
 }) {
   const params = await searchParams;
+  const activeView = params.view === "log" ? "log" : "antrian";
   const flash = await readFlashMessage();
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "admin_apotek") {
     return (
-      <section className="space-y-4">
-        <PageHeader
-          title="Admin - Verifikasi Data"
-          subtitle="Halaman ini hanya untuk admin apotek."
-        />
+      <section className="flex items-center justify-center py-20">
+        <p className="text-sm text-slate-500 font-bold">Halaman ini hanya untuk admin apotek.</p>
       </section>
     );
   }
@@ -123,7 +122,6 @@ export default async function AdminVerifikasiPage({
   if (selectedStatus !== "all") {
     query = query.eq("status", selectedStatus);
   }
-  // "all" = tidak filter status — tampilkan semua submission.
   if (from) {
     query = query.gte("submission_date", from);
   }
@@ -210,10 +208,11 @@ export default async function AdminVerifikasiPage({
     const priorityA = STATUS_PRIORITY[a.status] ?? 9;
     const priorityB = STATUS_PRIORITY[b.status] ?? 9;
     if (priorityA !== priorityB) return priorityA - priorityB;
-    // Dalam grup yang sama: tanggal terlama dulu (mendekati SLA terlewat)
     return a.submission_date.localeCompare(b.submission_date);
   });
-  const rowsByDate = rows.reduce<Record<string, VerificationQueueRow[]>>((acc, row) => {
+  const actionableRows = rows.filter((r) => r.status !== "approved");
+  const approvedRows   = rows.filter((r) => r.status === "approved");
+  const rowsByDate = actionableRows.reduce<Record<string, VerificationQueueRow[]>>((acc, row) => {
     if (!acc[row.submission_date]) acc[row.submission_date] = [];
     acc[row.submission_date].push(row);
     return acc;
@@ -223,31 +222,21 @@ export default async function AdminVerifikasiPage({
   const hasPrev = page > 1;
   const hasNext = page < totalPages;
   const reminderTone =
-    reminderWindow.phase === "post_cutoff" && (overdueQueueCount ?? 0) > 0
-      ? "rose"
-      : reminderWindow.phase === "near_cutoff" || (overdueQueueCount ?? 0) > 0
-        ? "amber"
-        : "emerald";
+    (overdueQueueCount ?? 0) > 0
+      ? "amber"
+      : "emerald";
   const reminderText =
-    reminderTone === "rose"
-      ? `Ada ${numberFormatter.format(
-          overdueQueueCount ?? 0,
-        )} queue lintas hari setelah cut-off. Prioritaskan verifikasi untuk menekan backlog.`
-      : reminderTone === "amber"
-        ? `Reminder operasional: ${
-            reminderWindow.phase === "near_cutoff"
-              ? `mendekati cut-off ${String(reminderWindow.cutoffHour).padStart(2, "0")}.00 ${reminderWindow.timezoneLabel}`
-              : `${numberFormatter.format(overdueQueueCount ?? 0)} queue lintas hari belum tuntas`
-          }.`
-        : "Queue verifikasi berada dalam kondisi aman.";
-  if (reminderTone === "amber" || reminderTone === "rose") {
+    reminderTone === "amber"
+      ? `Ada ${numberFormatter.format(overdueQueueCount ?? 0)} queue lintas hari yang belum dituntaskan. Prioritaskan verifikasi untuk menekan backlog.`
+      : "Queue verifikasi berada dalam kondisi aman.";
+  if (reminderTone === "amber") {
     await recordReminderDispatch(supabase, {
       tenantApotekId: active.tenantId,
       actorUserId: user?.id ?? null,
       reminderDate: reminderWindow.dateKey,
       phase: reminderWindow.phase,
       scope: "admin_verifikasi",
-      reasonCode: reminderTone === "rose" ? "overdue_verification" : "verification_backlog",
+      reasonCode: "verification_backlog",
       payload: {
         queueCount: count ?? 0,
         overdueCount: overdueQueueCount ?? 0,
@@ -256,427 +245,633 @@ export default async function AdminVerifikasiPage({
     });
   }
 
+  // ── Tab URL helpers ─────────────────────────────────────────────────────
+  const antrianTabUrl = (() => {
+    const p = new URLSearchParams();
+    if (selectedStatus !== "all") p.set("status", selectedStatus);
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    const q = p.toString();
+    return `/admin/verifikasi${q ? `?${q}` : ""}`;
+  })();
+  const logTabUrl = (() => {
+    const p = new URLSearchParams();
+    p.set("view", "log");
+    if (selectedStatus !== "all") p.set("status", selectedStatus);
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    return `/admin/verifikasi?${p.toString()}`;
+  })();
+
   return (
     <section className="space-y-4">
-      <PageHeader title="Verifikasi Data" />
-      <InlineAlert
-        tone={reminderTone === "rose" ? "error" : reminderTone === "amber" ? "warning" : "success"}
-        message={reminderText}
-      />
-      <MobileFilterSheet
-        queueCount={count ?? 0}
-        selectedStatus={selectedStatus}
-        from={from}
-        to={to}
-      />
-      <section className="space-y-4 md:hidden">
-        {rows.length === 0 ? (
-          <Card className="rounded-2xl p-4 text-sm text-slate-500">Tidak ada queue verifikasi.</Card>
+      <FlashMessage flash={flash} />
+
+      {/* ── Hero card ── */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-sky-600 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+            <ClipboardCheck size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Verifikasi Data</h1>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              {active.tenantName} · {reminderWindow.dateKey}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Status banner ── */}
+      <div
+        className={cn(
+          "rounded-3xl border px-5 py-4 flex items-center gap-3",
+          reminderTone === "amber"
+            ? "border-amber-200 bg-amber-50"
+            : "border-emerald-200 bg-emerald-50",
+        )}
+      >
+        {reminderTone === "amber" ? (
+          <AlertTriangle size={18} className="text-amber-600 shrink-0" />
         ) : (
-          Object.entries(rowsByDate).map(([dateKey, dateRows]) => (
-            <div key={`date-group-${dateKey}`} className="space-y-2.5">
-              {/* Date separator */}
-              <div className="flex items-center gap-2 px-1">
-                <span className="flex-shrink-0 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-600">
-                  {dateKey}
-                </span>
-                <div className="h-px flex-1 bg-slate-200" />
+          <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+        )}
+        <p
+          className={cn(
+            "text-sm font-bold",
+            reminderTone === "amber" ? "text-amber-800" : "text-emerald-800",
+          )}
+        >
+          {reminderText}
+        </p>
+      </div>
+
+      {/* ── Tab switcher ── */}
+      <div className="flex bg-white border border-slate-100 p-1 rounded-2xl shadow-sm gap-1">
+        <Link
+          href={antrianTabUrl}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+            activeView === "antrian"
+              ? "bg-sky-600 text-white shadow-sm"
+              : "text-slate-400 hover:text-slate-600",
+          )}
+        >
+          <ClipboardCheck size={13} />
+          Antrian
+          {actionableRows.length > 0 && (
+            <span className={cn(
+              "inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none",
+              activeView === "antrian" ? "bg-white/20 text-white" : "bg-sky-100 text-sky-700",
+            )}>
+              {actionableRows.length}
+            </span>
+          )}
+        </Link>
+        <Link
+          href={logTabUrl}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+            activeView === "log"
+              ? "bg-sky-600 text-white shadow-sm"
+              : "text-slate-400 hover:text-slate-600",
+          )}
+        >
+          <History size={13} />
+          Log Disetujui
+          {approvedRows.length > 0 && (
+            <span className={cn(
+              "inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none",
+              activeView === "log" ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-700",
+            )}>
+              {approvedRows.length}
+            </span>
+          )}
+        </Link>
+      </div>
+
+      {/* ══════════════════════════════════════════════════
+          ANTRIAN VIEW
+      ══════════════════════════════════════════════════ */}
+      {activeView === "antrian" && (
+        <>
+          <MobileFilterSheet
+            queueCount={count ?? 0}
+            selectedStatus={selectedStatus}
+            from={from}
+            to={to}
+          />
+
+          {/* Mobile cards */}
+          <section className="space-y-4 md:hidden">
+            {actionableRows.length === 0 ? (
+              <div className="rounded-3xl border border-slate-100 bg-white p-8 text-center text-sm text-slate-400 font-medium shadow-sm">
+                Tidak ada queue verifikasi.
               </div>
+            ) : (
+              Object.entries(rowsByDate).map(([dateKey, dateRows]) => (
+                <div key={`date-group-${dateKey}`} className="space-y-2.5">
+                  {/* Date separator */}
+                  <div className="flex items-center gap-2 px-1">
+                    <span className="flex-shrink-0 rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-sky-600">
+                      {dateKey}
+                    </span>
+                    <div className="h-px flex-1 bg-slate-200" />
+                  </div>
 
-              {dateRows.map((row) => {
-                const userName = Array.isArray(row.user)
-                  ? row.user[0]?.full_name ?? "Tanpa Nama"
-                  : row.user?.full_name ?? "Tanpa Nama";
-                const sla = getSlaBadge(row.submission_date, reminderWindow.dateKey);
-                const focusItems = productsBySubmission.get(row.id) ?? [];
-                const verifs = verificationsBySubmission.get(row.id) ?? [];
+                  {dateRows.map((row) => {
+                    const userName = Array.isArray(row.user)
+                      ? row.user[0]?.full_name ?? "Tanpa Nama"
+                      : row.user?.full_name ?? "Tanpa Nama";
+                    const sla = getSlaBadge(row.submission_date, reminderWindow.dateKey);
+                    const focusItems = productsBySubmission.get(row.id) ?? [];
+                    const verifs = verificationsBySubmission.get(row.id) ?? [];
 
-                return (
-                  <div key={`card-${row.id}`} className="rounded-2xl border border-slate-100 bg-white shadow-sm">
+                    return (
+                      <div key={`card-${row.id}`} className="rounded-3xl border border-slate-100 bg-white shadow-sm">
 
-                    {/* ── Body ─────────────────────────────────────── */}
-                    <div className="px-4 pb-3 pt-3.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-slate-800">{userName}</p>
-                          <p className="mt-0.5 text-[11px] text-slate-400">{row.shift_label}</p>
+                        {/* ── Body ─────────────────────────────────────── */}
+                        <div className="px-4 pb-3 pt-3.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-slate-800">{userName}</p>
+                              <p className="mt-0.5 text-[11px] text-slate-400">{row.shift_label}</p>
+                            </div>
+                            <span className={`inline-flex flex-shrink-0 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getSubmissionStatusBadgeClass(row.status)}`}>
+                              {getSubmissionStatusLabel(row.status)}
+                            </span>
+                          </div>
+
+                          <p className="mt-3 text-xl font-black tracking-tight text-slate-900 tabular-nums">
+                            Rp {numberFormatter.format(Number(row.omzet_total))}
+                          </p>
+
+                          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                            <span className="text-[11px] text-slate-500">
+                              Trx:{" "}
+                              <span className="font-semibold text-slate-700">
+                                {numberFormatter.format(Number(row.transaction_total))}
+                              </span>
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              Produk:{" "}
+                              <span className="font-semibold text-slate-700">
+                                {numberFormatter.format(Number(row.product_total))}
+                              </span>
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              DT:{" "}
+                              <span className="font-semibold text-slate-700">
+                                {numberFormatter.format(Number(row.rejected_customer_total))}
+                              </span>
+                            </span>
+                          </div>
+
+                          <div className="mt-2.5">
+                            <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[9px] font-black ${sla.className}`}>
+                              {sla.text}
+                            </span>
+                          </div>
                         </div>
-                        <span className={`inline-flex flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${getSubmissionStatusBadgeClass(row.status)}`}>
+
+                        {/* ── Action bar ───────────────────────────────── */}
+                        <MobileActionBar
+                          submissionId={row.id}
+                          page={page}
+                          selectedStatus={selectedStatus}
+                          from={from}
+                          to={to}
+                          defaultValues={{
+                            omzetTotal: Number(row.omzet_total),
+                            transactionTotal: Number(row.transaction_total),
+                            productTotal: Number(row.product_total),
+                            rejectedCustomerTotal: Number(row.rejected_customer_total),
+                            lateReason: row.late_reason,
+                          }}
+                        />
+
+                        {/* ── Expandable detail ────────────────────────── */}
+                        <details className="group overflow-hidden rounded-b-3xl border-t border-slate-100">
+                          <summary className="flex cursor-pointer list-none select-none items-center justify-between px-4 py-2.5">
+                            <span className="text-xs font-semibold text-sky-600 group-open:hidden">Lihat detail</span>
+                            <span className="hidden text-xs font-semibold text-sky-600 group-open:inline">Sembunyikan</span>
+                            <svg
+                              className="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-180"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </summary>
+
+                          <div className="space-y-3 bg-slate-50/50 px-4 pb-4 pt-2">
+                            {row.late_reason?.trim() ? (
+                              <div>
+                                <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                  Alasan Terlambat
+                                </p>
+                                <p className="text-xs text-slate-700">{row.late_reason}</p>
+                              </div>
+                            ) : null}
+
+                            <div>
+                              <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                Produk Fokus
+                              </p>
+                              {focusItems.length === 0 ? (
+                                <p className="text-xs text-slate-400">Tidak ada data produk fokus.</p>
+                              ) : (
+                                <div className="space-y-1">
+                                  {focusItems.map((item, idx) => (
+                                    <div key={`fi-${row.id}-${idx}`} className="flex justify-between text-xs">
+                                      <span className="text-slate-600">{item.product_name}</span>
+                                      <span className="font-semibold text-slate-800">
+                                        {numberFormatter.format(item.quantity_sold)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                Riwayat Verifikasi
+                              </p>
+                              {verifs.length === 0 ? (
+                                <p className="text-xs text-slate-400">Belum ada riwayat verifikasi.</p>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {verifs.slice(0, 5).map((v, idx) => (
+                                    <div key={`vr-${row.id}-${idx}`} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
+                                      <p className="text-xs font-semibold text-slate-700">
+                                        {getVerificationActionLabel(v.action)}{" "}
+                                        <span className="font-normal text-slate-500">oleh {v.actor_name}</span>
+                                      </p>
+                                      <p className="mt-0.5 text-[11px] text-slate-400">
+                                        {new Date(v.acted_at).toLocaleString("id-ID")}
+                                        {v.error_code ? ` · kode: ${v.error_code}` : ""}
+                                        {v.note ? ` · ${v.note}` : ""}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </details>
+
+                      </div>
+                    );
+                  })}
+                </div>
+              ))
+            )}
+          </section>
+
+          {/* Desktop filter form */}
+          <form action="/admin/verifikasi" className="hidden items-end gap-2 overflow-x-auto bg-white rounded-3xl border border-slate-100 p-3 shadow-sm md:grid md:gap-3 md:overflow-visible md:p-4 md:grid-cols-4">
+            <input type="hidden" name="view" value="" />
+            <label className="min-w-[130px] text-sm text-slate-700 md:min-w-0">
+              Status
+              <select
+                name="status"
+                defaultValue={selectedStatus}
+                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+              >
+                <option value="all">Semua (prioritas aksi)</option>
+                <option value="submitted">Menunggu Verifikasi</option>
+                <option value="edited_by_admin">Diedit Admin</option>
+                <option value="reject">Ditolak</option>
+                <option value="approved">Disetujui</option>
+              </select>
+            </label>
+            <label className="min-w-[140px] text-sm text-slate-700 md:min-w-0">
+              Dari Tanggal
+              <Input
+                type="date"
+                name="from"
+                defaultValue={from}
+              />
+            </label>
+            <label className="min-w-[140px] text-sm text-slate-700 md:min-w-0">
+              Sampai Tanggal
+              <Input
+                type="date"
+                name="to"
+                defaultValue={to}
+              />
+            </label>
+            <div className="flex min-w-[180px] items-end gap-2 md:min-w-0">
+              <Button type="submit">Terapkan Filter</Button>
+              <Link
+                href="/admin/verifikasi"
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Reset
+              </Link>
+            </div>
+          </form>
+
+          {/* Desktop bulk action + table */}
+          <form className="hidden bg-white rounded-3xl border border-slate-100 p-4 shadow-sm md:block">
+            <input type="hidden" name="page" value={String(page)} />
+            <input type="hidden" name="status" value={selectedStatus} />
+            <input type="hidden" name="from" value={from} />
+            <input type="hidden" name="to" value={to} />
+            <div className="flex flex-wrap gap-2">
+              {actionableRows.length === 0 ? (
+                <>
+                  <button
+                    type="button"
+                    disabled
+                    className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
+                  >
+                    Setujui massal (halaman ini)
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
+                  >
+                    Tolak massal (halaman ini)
+                  </button>
+                </>
+              ) : (
+                <>
+                  <PendingSubmitButton
+                    formAction={bulkVerifySubmissionsAction}
+                    buttonName="bulkAction"
+                    buttonValue="approve"
+                    idleLabel="Setujui massal (halaman ini)"
+                    pendingLabel="Memproses..."
+                    className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
+                  />
+                  <PendingSubmitButton
+                    formAction={bulkVerifySubmissionsAction}
+                    buttonName="bulkAction"
+                    buttonValue="reject"
+                    idleLabel="Tolak massal (halaman ini)"
+                    pendingLabel="Memproses..."
+                    className="rounded-md border border-rose-300 bg-white px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                  />
+                </>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Pilih baris yang ingin diproses. Default semua baris halaman ini terpilih.
+            </p>
+            <Card className="mt-3 overflow-x-auto rounded-2xl shadow-none">
+              <table className="min-w-[820px] text-left text-sm">
+                <thead className="bg-slate-100 text-slate-700">
+                  <tr>
+                    <th className="px-3 py-2">Pilih</th>
+                    <th className="px-3 py-2">Tanggal</th>
+                    <th className="px-3 py-2">Crew</th>
+                    <th className="px-3 py-2">Omzet</th>
+                    <th className="px-3 py-2">SLA</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Detail</th>
+                    <th className="px-3 py-2">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {actionableRows.length === 0 ? (
+                    <tr>
+                      <td className="px-3 py-4 text-slate-500" colSpan={8}>
+                        Tidak ada queue verifikasi.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {actionableRows.map((row) => (
+                    <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50 has-[:checked]:bg-sky-50/50">
+                      <td className="px-3 py-2">
+                        <input type="checkbox" name="submissionIds" value={row.id} defaultChecked />
+                      </td>
+                      <td className="px-3 py-2 text-sm">{row.submission_date}</td>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-slate-800">
+                          {Array.isArray(row.user) ? row.user[0]?.full_name : row.user?.full_name}
+                        </p>
+                        <p className="text-xs text-slate-400">{row.shift_label}</p>
+                      </td>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-slate-800">{numberFormatter.format(Number(row.omzet_total))}</p>
+                        <p className="text-xs text-slate-400">
+                          Trx: {numberFormatter.format(Number(row.transaction_total))} &middot; Produk: {numberFormatter.format(Number(row.product_total))} &middot; DT: {numberFormatter.format(Number(row.rejected_customer_total))}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2">
+                        {(() => {
+                          const sla = getSlaBadge(row.submission_date, reminderWindow.dateKey);
+                          return (
+                            <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[9px] font-black ${sla.className}`}>
+                              {sla.text}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getSubmissionStatusBadgeClass(row.status)}`}>
                           {getSubmissionStatusLabel(row.status)}
                         </span>
-                      </div>
-
-                      <p className="mt-3 text-xl font-black tracking-tight text-slate-900 tabular-nums">
-                        Rp {numberFormatter.format(Number(row.omzet_total))}
-                      </p>
-
-                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-                        <span className="text-[11px] text-slate-500">
-                          Trx:{" "}
-                          <span className="font-semibold text-slate-700">
-                            {numberFormatter.format(Number(row.transaction_total))}
-                          </span>
-                        </span>
-                        <span className="text-[11px] text-slate-500">
-                          Produk:{" "}
-                          <span className="font-semibold text-slate-700">
-                            {numberFormatter.format(Number(row.product_total))}
-                          </span>
-                        </span>
-                        <span className="text-[11px] text-slate-500">
-                          DT:{" "}
-                          <span className="font-semibold text-slate-700">
-                            {numberFormatter.format(Number(row.rejected_customer_total))}
-                          </span>
-                        </span>
-                      </div>
-
-                      <div className="mt-2.5">
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${sla.className}`}>
-                          {sla.text}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* ── Action bar ───────────────────────────────── */}
-                    <MobileActionBar
-                      submissionId={row.id}
-                      page={page}
-                      selectedStatus={selectedStatus}
-                      from={from}
-                      to={to}
-                      defaultValues={{
-                        omzetTotal: Number(row.omzet_total),
-                        transactionTotal: Number(row.transaction_total),
-                        productTotal: Number(row.product_total),
-                        rejectedCustomerTotal: Number(row.rejected_customer_total),
-                        lateReason: row.late_reason,
-                      }}
-                    />
-
-                    {/* ── Expandable detail ────────────────────────── */}
-                    <details className="group overflow-hidden rounded-b-2xl border-t border-slate-100">
-                      <summary className="flex cursor-pointer list-none select-none items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-semibold text-indigo-600 group-open:hidden">Lihat detail</span>
-                        <span className="hidden text-xs font-semibold text-indigo-600 group-open:inline">Sembunyikan</span>
-                        <svg
-                          className="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-180"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </summary>
-
-                      <div className="space-y-3 bg-slate-50/50 px-4 pb-4 pt-2">
-                        {row.late_reason?.trim() ? (
-                          <div>
-                            <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                              Alasan Terlambat
+                      </td>
+                      <td className="px-3 py-2">
+                        <details className="group">
+                          <summary className="cursor-pointer text-xs font-semibold text-sky-600 hover:text-sky-700 select-none list-none">
+                            <span className="group-open:hidden">Lihat detail</span>
+                            <span className="hidden group-open:inline">Sembunyikan</span>
+                          </summary>
+                          <div className="mt-2 w-[380px] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-md">
+                            <p className="font-semibold text-slate-800">Input Crew</p>
+                            <div className="mt-1 grid grid-cols-2 gap-1">
+                              <p>Omzet: <span className="font-medium">{numberFormatter.format(Number(row.omzet_total))}</span></p>
+                              <p>Transaksi: <span className="font-medium">{numberFormatter.format(Number(row.transaction_total))}</span></p>
+                              <p>Produk: <span className="font-medium">{numberFormatter.format(Number(row.product_total))}</span></p>
+                              <p>Pelanggan ditolak: <span className="font-medium">{numberFormatter.format(Number(row.rejected_customer_total))}</span></p>
+                            </div>
+                            <p className="mt-2">
+                              Alasan terlambat:{" "}
+                              <span className="font-medium">{row.late_reason?.trim() ? row.late_reason : "-"}</span>
                             </p>
-                            <p className="text-xs text-slate-700">{row.late_reason}</p>
+                            <div className="mt-2">
+                              <p className="font-semibold text-slate-800">Produk Fokus</p>
+                              {(productsBySubmission.get(row.id) ?? []).length === 0 ? (
+                                <p className="text-slate-500">Tidak ada detail produk fokus.</p>
+                              ) : (
+                                <ul className="mt-1 space-y-1">
+                                  {(productsBySubmission.get(row.id) ?? []).map((item, idx) => (
+                                    <li key={`${row.id}-fp-${idx}`}>
+                                      {item.product_name}: <span className="font-medium">{numberFormatter.format(item.quantity_sold)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="mt-2">
+                              <p className="font-semibold text-slate-800">Riwayat Verifikasi</p>
+                              {(verificationsBySubmission.get(row.id) ?? []).length === 0 ? (
+                                <p className="text-slate-500">Belum ada riwayat verifikasi.</p>
+                              ) : (
+                                <ul className="mt-1 space-y-1">
+                                  {(verificationsBySubmission.get(row.id) ?? []).map((v, idx) => (
+                                    <li key={`${row.id}-ver-${idx}`} className="rounded-md bg-slate-50 px-2 py-1">
+                                      <p>
+                                        <span className="font-semibold">{getVerificationActionLabel(v.action)}</span>{" "}
+                                        oleh <span className="font-medium">{v.actor_name}</span>
+                                      </p>
+                                      <p className="text-slate-500">
+                                        {new Date(v.acted_at).toLocaleString("id-ID")}
+                                        {v.error_code ? ` · kode: ${v.error_code}` : ""}
+                                        {v.note ? ` · ${v.note}` : ""}
+                                      </p>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
                           </div>
-                        ) : null}
-
-                        <div>
-                          <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                            Produk Fokus
-                          </p>
-                          {focusItems.length === 0 ? (
-                            <p className="text-xs text-slate-400">Tidak ada data produk fokus.</p>
-                          ) : (
-                            <div className="space-y-1">
-                              {focusItems.map((item, idx) => (
-                                <div key={`fi-${row.id}-${idx}`} className="flex justify-between text-xs">
-                                  <span className="text-slate-600">{item.product_name}</span>
-                                  <span className="font-semibold text-slate-800">
-                                    {numberFormatter.format(item.quantity_sold)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                        </details>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-2">
+                          {(["approve", "reject"] as const).map((action) => (
+                            <PendingSubmitButton
+                              key={`${row.id}-${action}`}
+                              formAction={verifySubmissionAction}
+                              buttonName="verification"
+                              buttonValue={`${row.id}:${action}`}
+                              idleLabel={getVerificationActionLabel(action)}
+                              pendingLabel="Memproses..."
+                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                            />
+                          ))}
+                          <DirectEditModal
+                            submissionId={row.id}
+                            page={page}
+                            selectedStatus={selectedStatus}
+                            from={from}
+                            to={to}
+                            defaultValues={{
+                              omzetTotal: Number(row.omzet_total),
+                              transactionTotal: Number(row.transaction_total),
+                              productTotal: Number(row.product_total),
+                              rejectedCustomerTotal: Number(row.rejected_customer_total),
+                              lateReason: row.late_reason,
+                            }}
+                          />
                         </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          </form>
+        </>
+      )}
 
-                        <div>
-                          <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                            Riwayat Verifikasi
-                          </p>
-                          {verifs.length === 0 ? (
-                            <p className="text-xs text-slate-400">Belum ada riwayat verifikasi.</p>
-                          ) : (
-                            <div className="space-y-1.5">
-                              {verifs.slice(0, 5).map((v, idx) => (
-                                <div key={`vr-${row.id}-${idx}`} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
-                                  <p className="text-xs font-semibold text-slate-700">
-                                    {getVerificationActionLabel(v.action)}{" "}
-                                    <span className="font-normal text-slate-500">oleh {v.actor_name}</span>
-                                  </p>
-                                  <p className="mt-0.5 text-[11px] text-slate-400">
-                                    {new Date(v.acted_at).toLocaleString("id-ID")}
-                                    {v.error_code ? ` · kode: ${v.error_code}` : ""}
-                                    {v.note ? ` · ${v.note}` : ""}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </details>
-
-                  </div>
-                );
-              })}
+      {/* ══════════════════════════════════════════════════
+          LOG VIEW
+      ══════════════════════════════════════════════════ */}
+      {activeView === "log" && (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+          {approvedRows.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-400 font-medium">
+              Belum ada data yang disetujui pada halaman ini.
             </div>
-          ))
-        )}
-      </section>
-      <form className="hidden items-end gap-2 overflow-x-auto bg-white rounded-3xl border border-slate-100 p-3 shadow-sm md:grid md:gap-3 md:overflow-visible md:p-4 md:grid-cols-4">
-        <label className="min-w-[130px] text-sm text-slate-700 md:min-w-0">
-          Status
-          <select
-            name="status"
-            defaultValue={selectedStatus}
-            className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-          >
-            <option value="all">Semua (prioritas aksi)</option>
-            <option value="submitted">Menunggu Verifikasi</option>
-            <option value="edited_by_admin">Diedit Admin</option>
-            <option value="reject">Ditolak</option>
-            <option value="approved">Disetujui</option>
-          </select>
-        </label>
-        <label className="min-w-[140px] text-sm text-slate-700 md:min-w-0">
-          Dari Tanggal
-          <Input
-            type="date"
-            name="from"
-            defaultValue={from}
-          />
-        </label>
-        <label className="min-w-[140px] text-sm text-slate-700 md:min-w-0">
-          Sampai Tanggal
-          <Input
-            type="date"
-            name="to"
-            defaultValue={to}
-          />
-        </label>
-        <div className="flex min-w-[180px] items-end gap-2 md:min-w-0">
-          <Button
-            type="submit"
-          >
-            Terapkan Filter
-          </Button>
-          <Link
-            href="/admin/verifikasi"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700"
-          >
-            Reset
-          </Link>
-        </div>
-      </form>
-      <FlashMessage flash={flash} />
-      <form className="hidden bg-white rounded-3xl border border-slate-100 p-4 shadow-sm md:block">
-        <input type="hidden" name="page" value={String(page)} />
-        <input type="hidden" name="status" value={selectedStatus} />
-        <input type="hidden" name="from" value={from} />
-        <input type="hidden" name="to" value={to} />
-        <div className="flex flex-wrap gap-2">
-          {rows.length === 0 ? (
-            <>
-              <button
-                type="button"
-                disabled
-                className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
-              >
-                Setujui massal (halaman ini)
-              </button>
-              <button
-                type="button"
-                disabled
-                className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
-              >
-                Tolak massal (halaman ini)
-              </button>
-            </>
           ) : (
             <>
-              <PendingSubmitButton
-                formAction={bulkVerifySubmissionsAction}
-                hiddenFields={{ bulkAction: "approve" }}
-                idleLabel="Setujui massal (halaman ini)"
-                pendingLabel="Memproses..."
-                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-              />
-              <PendingSubmitButton
-                formAction={bulkVerifySubmissionsAction}
-                hiddenFields={{ bulkAction: "reject" }}
-                idleLabel="Tolak massal (halaman ini)"
-                pendingLabel="Memproses..."
-                className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700"
-              />
+              {/* Mobile list */}
+              <div className="divide-y divide-slate-50 md:hidden">
+                {approvedRows.map((row) => {
+                  const userName = Array.isArray(row.user)
+                    ? row.user[0]?.full_name ?? "Tanpa Nama"
+                    : row.user?.full_name ?? "Tanpa Nama";
+                  const lastVerif = (verificationsBySubmission.get(row.id) ?? [])[0];
+                  return (
+                    <div key={`alog-m-${row.id}`} className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-bold text-slate-700 truncate">{userName}</p>
+                          <span className="text-[10px] text-slate-400">{row.submission_date}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {numberFormatter.format(Number(row.omzet_total))}
+                          {lastVerif ? ` · oleh ${lastVerif.actor_name}` : ""}
+                        </p>
+                      </div>
+                      <span className={`inline-flex flex-shrink-0 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getSubmissionStatusBadgeClass("approved")}`}>
+                        {getSubmissionStatusLabel("approved")}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="min-w-[640px] w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Tanggal</th>
+                      <th className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Crew</th>
+                      <th className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Omzet</th>
+                      <th className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Disetujui Oleh</th>
+                      <th className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approvedRows.map((row) => {
+                      const userName = Array.isArray(row.user)
+                        ? row.user[0]?.full_name ?? "Tanpa Nama"
+                        : row.user?.full_name ?? "Tanpa Nama";
+                      const lastVerif = (verificationsBySubmission.get(row.id) ?? [])[0];
+                      return (
+                        <tr key={`alog-d-${row.id}`} className="border-t border-slate-50 hover:bg-slate-50/60">
+                          <td className="px-4 py-2.5 text-sm text-slate-600">{row.submission_date}</td>
+                          <td className="px-4 py-2.5">
+                            <p className="text-sm font-medium text-slate-700">{userName}</p>
+                            <p className="text-xs text-slate-400">{row.shift_label}</p>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <p className="text-sm font-medium text-slate-700">{numberFormatter.format(Number(row.omzet_total))}</p>
+                            <p className="text-xs text-slate-400">
+                              Trx: {numberFormatter.format(Number(row.transaction_total))} &middot; Produk: {numberFormatter.format(Number(row.product_total))}
+                            </p>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            {lastVerif ? (
+                              <>
+                                <p className="text-sm font-medium text-slate-600">{lastVerif.actor_name}</p>
+                                <p className="text-xs text-slate-400">{new Date(lastVerif.acted_at).toLocaleString("id-ID")}</p>
+                              </>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getSubmissionStatusBadgeClass("approved")}`}>
+                              {getSubmissionStatusLabel("approved")}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </div>
-        <p className="mt-2 text-xs text-slate-500">
-          Pilih baris yang ingin diproses. Default semua baris halaman ini terpilih.
-        </p>
-        <Card className="mt-3 overflow-x-auto rounded-2xl shadow-none">
-        <table className="min-w-[820px] text-left text-sm">
-          <thead className="bg-slate-100 text-slate-700">
-            <tr>
-              <th className="px-3 py-2">Pilih</th>
-              <th className="px-3 py-2">Tanggal</th>
-              <th className="px-3 py-2">Crew</th>
-              <th className="px-3 py-2">Omzet</th>
-              <th className="px-3 py-2">SLA</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Detail</th>
-              <th className="px-3 py-2">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td className="px-3 py-4 text-slate-500" colSpan={8}>
-                  Tidak ada queue verifikasi.
-                </td>
-              </tr>
-            ) : null}
-            {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50 has-[:checked]:bg-indigo-50/50">
-                <td className="px-3 py-2">
-                  <input type="checkbox" name="submissionIds" value={row.id} defaultChecked />
-                </td>
-                <td className="px-3 py-2 text-sm">{row.submission_date}</td>
-                <td className="px-3 py-2">
-                  <p className="font-medium text-slate-800">
-                    {Array.isArray(row.user) ? row.user[0]?.full_name : row.user?.full_name}
-                  </p>
-                  <p className="text-xs text-slate-400">{row.shift_label}</p>
-                </td>
-                <td className="px-3 py-2">
-                  <p className="font-medium text-slate-800">{numberFormatter.format(Number(row.omzet_total))}</p>
-                  <p className="text-xs text-slate-400">
-                    Trx: {numberFormatter.format(Number(row.transaction_total))} &middot; Produk: {numberFormatter.format(Number(row.product_total))} &middot; DT: {numberFormatter.format(Number(row.rejected_customer_total))}
-                  </p>
-                </td>
-                <td className="px-3 py-2">
-                  {(() => {
-                    const sla = getSlaBadge(row.submission_date, reminderWindow.dateKey);
-                    return (
-                      <span
-                        className={`inline-flex rounded-full border px-2 py-1 text-xs font-medium ${sla.className}`}
-                      >
-                        {sla.text}
-                      </span>
-                    );
-                  })()}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getSubmissionStatusBadgeClass(row.status)}`}
-                  >
-                    {getSubmissionStatusLabel(row.status)}
-                  </span>
-                </td>
-                <td className="px-3 py-2">
-                  <details className="group">
-                    <summary className="cursor-pointer text-xs font-semibold text-indigo-700 hover:text-indigo-800 select-none list-none">
-                      <span className="group-open:hidden">Lihat detail</span>
-                      <span className="hidden group-open:inline">Sembunyikan</span>
-                    </summary>
-                    <div className="mt-2 w-[380px] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-md">
-                      <p className="font-semibold text-slate-800">Input Crew</p>
-                      <div className="mt-1 grid grid-cols-2 gap-1">
-                        <p>Omzet: <span className="font-medium">{numberFormatter.format(Number(row.omzet_total))}</span></p>
-                        <p>Transaksi: <span className="font-medium">{numberFormatter.format(Number(row.transaction_total))}</span></p>
-                        <p>Produk: <span className="font-medium">{numberFormatter.format(Number(row.product_total))}</span></p>
-                        <p>Pelanggan ditolak: <span className="font-medium">{numberFormatter.format(Number(row.rejected_customer_total))}</span></p>
-                      </div>
-                      <p className="mt-2">
-                        Alasan terlambat:{" "}
-                        <span className="font-medium">{row.late_reason?.trim() ? row.late_reason : "-"}</span>
-                      </p>
-                      <div className="mt-2">
-                        <p className="font-semibold text-slate-800">Produk Fokus</p>
-                        {(productsBySubmission.get(row.id) ?? []).length === 0 ? (
-                          <p className="text-slate-500">Tidak ada detail produk fokus.</p>
-                        ) : (
-                          <ul className="mt-1 space-y-1">
-                            {(productsBySubmission.get(row.id) ?? []).map((item, idx) => (
-                              <li key={`${row.id}-fp-${idx}`}>
-                                {item.product_name}: <span className="font-medium">{numberFormatter.format(item.quantity_sold)}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                      <div className="mt-2">
-                        <p className="font-semibold text-slate-800">Riwayat Verifikasi</p>
-                        {(verificationsBySubmission.get(row.id) ?? []).length === 0 ? (
-                          <p className="text-slate-500">Belum ada riwayat verifikasi.</p>
-                        ) : (
-                          <ul className="mt-1 space-y-1">
-                            {(verificationsBySubmission.get(row.id) ?? []).map((v, idx) => (
-                              <li key={`${row.id}-ver-${idx}`} className="rounded-md bg-slate-50 px-2 py-1">
-                                <p>
-                                  <span className="font-semibold">{getVerificationActionLabel(v.action)}</span>{" "}
-                                  oleh <span className="font-medium">{v.actor_name}</span>
-                                </p>
-                                <p className="text-slate-500">
-                                  {new Date(v.acted_at).toLocaleString("id-ID")}
-                                  {v.error_code ? ` · kode: ${v.error_code}` : ""}
-                                  {v.note ? ` · ${v.note}` : ""}
-                                </p>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
-                  </details>
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex flex-wrap gap-2">
-                    {(["approve", "reject"] as const).map((action) => (
-                      <PendingSubmitButton
-                        key={`${row.id}-${action}`}
-                        formAction={verifySubmissionAction}
-                        hiddenFields={{ verification: `${row.id}:${action}` }}
-                        idleLabel={getVerificationActionLabel(action)}
-                        pendingLabel="Memproses..."
-                        className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700"
-                      />
-                    ))}
-                    <DirectEditModal
-                      submissionId={row.id}
-                      page={page}
-                      selectedStatus={selectedStatus}
-                      from={from}
-                      to={to}
-                      defaultValues={{
-                        omzetTotal: Number(row.omzet_total),
-                        transactionTotal: Number(row.transaction_total),
-                        productTotal: Number(row.product_total),
-                        rejectedCustomerTotal: Number(row.rejected_customer_total),
-                        lateReason: row.late_reason,
-                      }}
-                    />
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </Card>
-      </form>
+      )}
+
+      {/* ── Pagination ── */}
       {(() => {
         const pageParams = new URLSearchParams();
+        if (activeView === "log") pageParams.set("view", "log");
         if (selectedStatus !== "all") pageParams.set("status", selectedStatus);
         if (from) pageParams.set("from", from);
         if (to) pageParams.set("to", to);
@@ -685,37 +880,37 @@ export default async function AdminVerifikasiPage({
         const nextParams = new URLSearchParams(pageParams);
         nextParams.set("page", String(page + 1));
         return (
-      <div className="flex items-center justify-between text-sm text-slate-600">
-        <p>
-          Halaman {page} dari {totalPages}
-        </p>
-        <div className="flex gap-2">
-          {hasPrev ? (
-            <Link
-              href={`/admin/verifikasi?${prevParams.toString()}`}
-              className="rounded-md border border-slate-300 px-3 py-1 font-medium text-slate-700"
-            >
-              Sebelumnya
-            </Link>
-          ) : (
-            <span className="rounded-md border border-slate-200 px-3 py-1 text-slate-400">
-              Sebelumnya
-            </span>
-          )}
-          {hasNext ? (
-            <Link
-              href={`/admin/verifikasi?${nextParams.toString()}`}
-              className="rounded-md border border-slate-300 px-3 py-1 font-medium text-slate-700"
-            >
-              Berikutnya
-            </Link>
-          ) : (
-            <span className="rounded-md border border-slate-200 px-3 py-1 text-slate-400">
-              Berikutnya
-            </span>
-          )}
-        </div>
-      </div>
+          <div className="flex items-center justify-between text-sm text-slate-600">
+            <p>
+              Halaman {page} dari {totalPages}
+            </p>
+            <div className="flex gap-2">
+              {hasPrev ? (
+                <Link
+                  href={`/admin/verifikasi?${prevParams.toString()}`}
+                  className="rounded-xl border border-slate-300 px-3 py-1 font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Sebelumnya
+                </Link>
+              ) : (
+                <span className="rounded-xl border border-slate-200 px-3 py-1 text-slate-400">
+                  Sebelumnya
+                </span>
+              )}
+              {hasNext ? (
+                <Link
+                  href={`/admin/verifikasi?${nextParams.toString()}`}
+                  className="rounded-xl border border-slate-300 px-3 py-1 font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Berikutnya
+                </Link>
+              ) : (
+                <span className="rounded-xl border border-slate-200 px-3 py-1 text-slate-400">
+                  Berikutnya
+                </span>
+              )}
+            </div>
+          </div>
         );
       })()}
 

@@ -77,9 +77,7 @@ export default async function CrewAnnouncementPage() {
     })) as AnnouncementInboxItem[];
 
   const unseenIds = items.filter((item) => !item.viewed_at).map((item) => item.id);
-  for (const id of unseenIds) {
-    await markAnnouncementViewedAction(id);
-  }
+  await Promise.all(unseenIds.map((id) => markAnnouncementViewedAction(id)));
 
   return (
     <AnimatedPage className="space-y-4 pb-10">

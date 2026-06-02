@@ -66,14 +66,14 @@ export async function getReportMetricsForTenant(
         "submission_date, omzet_total, transaction_total, product_total, rejected_customer_total",
       )
       .eq("tenant_apotek_id", tenantId)
-      .eq("status", "approved")
+      .in("status", ["approved", "edited_by_admin"])
       .gte("submission_date", from)
       .lte("submission_date", to),
     supabase
       .from("daily_submissions")
       .select("submission_date, omzet_total")
       .eq("tenant_apotek_id", tenantId)
-      .eq("status", "approved")
+      .in("status", ["approved", "edited_by_admin"])
       .gte("submission_date", monthStart)
       .lte("submission_date", to),
     supabase
@@ -96,6 +96,9 @@ export async function getReportMetricsForTenant(
   const accumulatedOmzet = sumBy(monthRows, (r) => Number(r.omzet_total));
   const targetOmzet = Number(kpiConfig?.target_omzet ?? 0);
   const daysInMonth = monthEnd.getDate();
+  // elapsedDays = hari ke-N dalam bulan dari `to` (bukan panjang filter range).
+  // projectedOmzetEom menggunakan monthToDateOmzet (akumulasi dari awal bulan),
+  // sehingga "elapsed" yang relevan adalah posisi hari dalam bulan, bukan selisih from→to.
   const elapsedDays = Math.max(rangeEnd.getDate(), 1);
   const {
     atv,

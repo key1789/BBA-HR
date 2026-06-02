@@ -5,18 +5,17 @@ import { useState, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/shared/glass-card";
 import {
-  Clock, CalendarDays, Wallet, Banknote,
+  Clock, CalendarDays, Wallet,
   CalendarClock, Wand2, Loader2, AlertCircle, CheckCircle2,
 } from "lucide-react";
 import { TabShift } from "./tab-shift";
 import { TabPayroll } from "./tab-payroll";
-import { TabPayrollRun } from "./tab-payroll-run";
 import { PolaMingguanSection } from "@/components/branch/tab-jadwal/PolaMingguanSection";
 import { RosterSection } from "@/components/branch/tab-addon";
 import { generateRosterFromDefaultsAction } from "./actions";
 import { toast } from "sonner";
 
-type TopSeg = "shift" | "jadwal" | "gaji" | "run";
+type TopSeg = "shift" | "jadwal" | "gaji";
 type JadwalSub = "pola" | "jadwal";
 
 export function TabOperasional({
@@ -30,6 +29,8 @@ export function TabOperasional({
   currentYear,
   isAbsensiEnabled,
   isPayrollEnabled,
+  allowOwnerInput,
+  allowAdminInput,
 }: {
   branchId: string;
   shifts: any[];
@@ -41,14 +42,13 @@ export function TabOperasional({
   currentYear: number;
   isAbsensiEnabled: boolean;
   isPayrollEnabled: boolean;
+  allowOwnerInput: boolean;
+  allowAdminInput: boolean;
 }) {
   const segments: { id: TopSeg; label: string; Icon: React.ElementType }[] = [
-    { id: "shift",  label: "Master Shift",  Icon: Clock },
+    { id: "shift", label: "Master Shift", Icon: Clock },
     ...(isAbsensiEnabled ? [{ id: "jadwal" as TopSeg, label: "Pola & Jadwal", Icon: CalendarDays }] : []),
-    ...(isPayrollEnabled ? [
-      { id: "gaji" as TopSeg, label: "Setup Gaji",   Icon: Wallet },
-      { id: "run"  as TopSeg, label: "Payroll Run",  Icon: Banknote },
-    ] : []),
+    ...(isPayrollEnabled ? [{ id: "gaji" as TopSeg, label: "Setup Gaji", Icon: Wallet }] : []),
   ];
 
   const [activeTop, setActiveTop] = useState<TopSeg>("shift");
@@ -113,15 +113,12 @@ export function TabOperasional({
             />
           )}
           {resolvedTop === "gaji" && (
-            <TabPayroll branchId={branchId} users={users} payrollConfigs={payrollConfigs} />
-          )}
-          {resolvedTop === "run" && (
-            <TabPayrollRun
+            <TabPayroll
               branchId={branchId}
               users={users}
               payrollConfigs={payrollConfigs}
-              currentMonth={currentMonth}
-              currentYear={currentYear}
+              allowOwnerInput={allowOwnerInput}
+              allowAdminInput={allowAdminInput}
             />
           )}
         </motion.div>
@@ -133,7 +130,7 @@ export function TabOperasional({
 // ─────────────────────────────────────────────────────────
 // Jadwal Section
 // Extracted from TabJadwalAbsensi — Pola + Jadwal only, no Rekap Kehadiran.
-// Rekap Kehadiran lives in /owner/data-karyawan (modal Absensi & Roster per karyawan).
+// Rekap Kehadiran lives in /owner/data-karyawan (modal Jadwal & Absensi per karyawan).
 // ─────────────────────────────────────────────────────────
 
 const MONTH_NAMES = [
@@ -159,6 +156,13 @@ function JadwalSection({
   const hasDefaults = shiftDefaults.length > 0;
 
   const handleGenerate = () => {
+    if (hasRoster) {
+      const ok = window.confirm(
+        `Jadwal bulan ini (${MONTH_NAMES[currentMonth - 1]} ${currentYear}) sudah ada (${roster.length} entri). ` +
+        `Membuat ulang otomatis akan MENIMPA semua jadwal yang ada. Lanjutkan?`
+      );
+      if (!ok) return;
+    }
     startGenerate(async () => {
       const fd = new FormData();
       fd.append("tenantId", branchId);

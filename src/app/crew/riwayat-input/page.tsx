@@ -6,6 +6,8 @@ import {
 } from "@/lib/labels";
 import { createClient } from "@/lib/supabase/server";
 import { AnimatedPage } from "@/components/shared/animated-page";
+import { HelpDrawer } from "@/components/shared/help-drawer";
+import { RIWAYAT_INPUT_HELP } from "./help-content";
 import { ClipboardList, PenLine } from "lucide-react";
 import Link from "next/link";
 
@@ -14,8 +16,7 @@ type SubmissionStatus =
   | "submitted"
   | "approved"
   | "reject"
-  | "edited_by_admin"
-  | "missing_submission";
+  | "edited_by_admin";
 
 type SubmissionRow = {
   id: string;
@@ -44,12 +45,13 @@ const ALLOWED_STATUS: SubmissionStatus[] = [
 ];
 const PAGE_SIZE = 20;
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  draft:          { label: "Draft",        color: "text-slate-600" },
-  submitted:      { label: "Submitted",    color: "text-amber-600" },
-  approved:       { label: "Approved",     color: "text-sky-600"   },
-  edited_by_admin:{ label: "Diedit Admin", color: "text-indigo-600" },
-  reject:         { label: "Reject",       color: "text-rose-600"  },
+// Warna chip per status (label diambil dari getSubmissionStatusLabel agar konsisten)
+const STATUS_CHIP_COLOR: Record<string, string> = {
+  draft:           "text-slate-600",
+  submitted:       "text-amber-600",
+  approved:        "text-sky-600",
+  edited_by_admin: "text-indigo-600",
+  reject:          "text-rose-600",
 };
 
 export default async function CrewRiwayatInputPage({
@@ -147,10 +149,11 @@ export default async function CrewRiwayatInputPage({
         </div>
       </div>
 
+      <HelpDrawer content={RIWAYAT_INPUT_HELP} />
+
       {/* Status summary chips */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
         {(["draft", "submitted", "approved", "edited_by_admin", "reject"] as const).map((s) => {
-          const cfg = STATUS_CONFIG[s]!;
           const isActive = selectedStatus === s;
           const filterParams = new URLSearchParams();
           filterParams.set("status", s);
@@ -164,8 +167,8 @@ export default async function CrewRiwayatInputPage({
                 isActive ? "border-sky-400 ring-1 ring-sky-300" : "border-slate-200 hover:border-slate-300"
               }`}
             >
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{cfg.label}</p>
-              <p className={`mt-1 text-2xl font-black ${cfg.color}`}>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{getSubmissionStatusLabel(s)}</p>
+              <p className={`mt-1 text-2xl font-black ${STATUS_CHIP_COLOR[s]}`}>
                 {fmt.format(statusMap.get(s) ?? 0)}
               </p>
             </Link>
@@ -178,16 +181,23 @@ export default async function CrewRiwayatInputPage({
         <div className="grid gap-4 md:grid-cols-4">
           <label className="block">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Status</span>
-            <select
-              name="status"
-              defaultValue={selectedStatus}
-              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-300 transition-all"
-            >
-              <option value="all">Semua Status</option>
-              {ALLOWED_STATUS.map((s) => (
-                <option key={s} value={s}>{getSubmissionStatusLabel(s)}</option>
-              ))}
-            </select>
+            <div className="relative mt-2">
+              <select
+                name="status"
+                defaultValue={selectedStatus}
+                className="w-full appearance-none rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20 transition-all"
+              >
+                <option value="all">Semua Status</option>
+                {ALLOWED_STATUS.map((s) => (
+                  <option key={s} value={s}>{getSubmissionStatusLabel(s)}</option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
           </label>
           <label className="block">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Dari</span>
@@ -195,7 +205,7 @@ export default async function CrewRiwayatInputPage({
               type="date"
               name="from"
               defaultValue={from}
-              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-300 transition-all"
+              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20 transition-all"
             />
           </label>
           <label className="block">
@@ -204,7 +214,7 @@ export default async function CrewRiwayatInputPage({
               type="date"
               name="to"
               defaultValue={to}
-              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-300 transition-all"
+              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20 transition-all"
             />
           </label>
           <div className="flex items-end gap-2 pt-2">
@@ -265,7 +275,7 @@ export default async function CrewRiwayatInputPage({
                 <td className="px-5 py-3 text-right font-medium text-slate-700">{fmt.format(Number(row.product_total))}</td>
                 <td className="px-5 py-3 text-right font-medium text-slate-700">{fmt.format(Number(row.rejected_customer_total))}</td>
                 <td className="px-5 py-3">
-                  <span className={`inline-flex rounded-xl px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${getSubmissionStatusBadgeClass(row.status)}`}>
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getSubmissionStatusBadgeClass(row.status)}`}>
                     {getSubmissionStatusLabel(row.status)}
                   </span>
                 </td>
@@ -288,7 +298,7 @@ export default async function CrewRiwayatInputPage({
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{row.submission_date}</p>
                 <p className="font-black text-slate-800 uppercase text-sm mt-0.5">{row.shift_label}</p>
               </div>
-              <span className={`inline-flex rounded-xl px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${getSubmissionStatusBadgeClass(row.status)}`}>
+              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getSubmissionStatusBadgeClass(row.status)}`}>
                 {getSubmissionStatusLabel(row.status)}
               </span>
             </div>

@@ -5,6 +5,7 @@ import { Calendar, DollarSign, AlertCircle, CheckCircle2 } from "lucide-react";
 import { SchemeCard } from "../shared/SchemeCard";
 import { BonusTypeSelector } from "../shared/BonusTypeSelector";
 import { CurrencyInput } from "@/components/shared/currency-input";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 import type { IndividualSchemeConfig, IndividualUserConfig, KpiGlobalConfig } from "@/lib/types/kpi-v2";
 import { calculateDailyTargetPerUser } from "@/lib/kpi-v2/utils";
 
@@ -188,8 +189,9 @@ export function IndividualDailyScheme({
     >
       <div className="space-y-6">
         <div className="space-y-3">
-          <label className="text-[10px] font-black text-violet-700 uppercase tracking-widest">
+          <label className="text-[10px] font-black text-violet-700 uppercase tracking-widest flex items-center gap-1">
             Distribusi target individu
+            <InfoTooltip content="Bagi Rata Otomatis: target harian per orang dihitung otomatis dari target global ÷ jumlah crew ÷ hari kerja default. Kustomisasi Manual: atur porsi omzet bulanan dan hari kerja per orang, target harian dihitung dari porsi tersebut." />
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label
@@ -375,8 +377,9 @@ export function IndividualDailyScheme({
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-violet-700 uppercase tracking-widest">
+                      <label className="text-[9px] font-black text-violet-700 uppercase tracking-widest flex items-center gap-1">
                         Override target harian (Rp, opsional)
+                        <InfoTooltip content="Jika diisi, nilai ini menggantikan hasil perhitungan otomatis (porsi omzet bulanan ÷ hari kerja). Gunakan jika target harian pegawai ini berbeda dari pembagian normal. Isi 0 untuk memakai perhitungan otomatis." />
                       </label>
                       <CurrencyInput
                         value={typeof uc.target_omzet_daily === "number" ? uc.target_omzet_daily : 0}

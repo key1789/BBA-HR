@@ -2,6 +2,7 @@
 
 import { Target, TrendingUp, DollarSign } from "lucide-react";
 import { CurrencyInput } from "@/components/shared/currency-input";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 import type { KpiGlobalConfig } from "@/lib/types/kpi-v2";
 
 interface GlobalTargetSectionProps {
@@ -33,7 +34,10 @@ export function GlobalTargetSection({ config, onChange }: GlobalTargetSectionPro
             </div>
             <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-black uppercase">Wajib</span>
           </div>
-          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Target Omzet Bulanan</label>
+          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+            Target Omzet Bulanan
+            <InfoTooltip content="Target total penjualan apotek untuk bulan ini. Digunakan sebagai dasar perhitungan semua skema bonus dan distribusi target individu." />
+          </label>
           <div className="flex items-baseline gap-1 border-b-2 border-slate-50 group-hover:border-emerald-500/30 transition-colors pb-1">
             <span className="text-sm font-black text-emerald-500">Rp</span>
             <CurrencyInput
@@ -74,7 +78,10 @@ export function GlobalTargetSection({ config, onChange }: GlobalTargetSectionPro
               />
             </div>
           </div>
-          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Target ATV (Rata-rata)</label>
+          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+            Target ATV (Rata-rata)
+            <InfoTooltip content="Average Transaction Value — rata-rata nilai penjualan per struk transaksi. Aktifkan untuk memasukkan ATV sebagai komponen penilaian KPI selain omzet." />
+          </label>
           <div className="flex items-baseline gap-1 border-b-2 border-slate-50 group-hover:border-sky-500/30 transition-colors pb-1">
             <span className={`text-sm font-black ${config.is_atv_enabled ? "text-sky-500" : "text-slate-300"}`}>Rp</span>
             <CurrencyInput
@@ -115,7 +122,10 @@ export function GlobalTargetSection({ config, onChange }: GlobalTargetSectionPro
               />
             </div>
           </div>
-          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Target ATU (Qty/Tx)</label>
+          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+            Target ATU (Qty/Tx)
+            <InfoTooltip content="Average Transaction Unit — rata-rata jumlah item yang dibeli per transaksi. Aktifkan untuk memasukkan ATU sebagai komponen penilaian KPI." />
+          </label>
           <div className="flex items-baseline gap-1 border-b-2 border-slate-50 group-hover:border-indigo-500/30 transition-colors pb-1">
             <input
               type="number"
@@ -133,8 +143,9 @@ export function GlobalTargetSection({ config, onChange }: GlobalTargetSectionPro
 
       {/* Default Working Days */}
       <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
-        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
+        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
           Default Hari Kerja (untuk perhitungan harian)
+          <InfoTooltip content="Jumlah hari kerja asumsi dalam sebulan untuk menghitung target harian. Umumnya 26 hari (asumsi ~4 hari libur). Bisa di-override per pegawai di skema Individu Harian." />
         </label>
         <input
           type="number"

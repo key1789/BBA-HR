@@ -8,6 +8,7 @@ import {
   ChevronDown, X, Plus, RefreshCw, Trash2, Package, Settings,
   FileText, Search, SlidersHorizontal,
 } from "lucide-react";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 import { motion, AnimatePresence } from "framer-motion";
 
 // ─── Action config ────────────────────────────────────────────────────────────
@@ -257,6 +258,7 @@ export function TabActivity({ logs, users }: { logs: any[]; users: any[] }) {
         <div>
           <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
             <History size={20} className="text-slate-500" /> Log Aktivitas
+            <InfoTooltip content="Menampilkan 100 aktivitas terbaru. Setiap perubahan data dicatat secara otomatis." side="right" width="w-64" />
           </h2>
           <p className="text-xs text-slate-400 font-bold mt-0.5">
             Rekaman setiap perubahan konfigurasi di cabang ini
@@ -311,7 +313,10 @@ export function TabActivity({ logs, users }: { logs: any[]; users: any[] }) {
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col sm:flex-row flex-wrap gap-3">
               {/* Action filter */}
               <div className="flex flex-col gap-1">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Jenis Perubahan</span>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  Jenis Perubahan
+                  <InfoTooltip content="INSERT = data baru ditambahkan. UPDATE = data diubah. DELETE = data dihapus." side="right" width="w-60" />
+                </span>
                 <div className="flex gap-1.5">
                   {["ALL", "CREATE", "UPDATE", "DELETE"].map((act) => (
                     <button
@@ -348,7 +353,10 @@ export function TabActivity({ logs, users }: { logs: any[]; users: any[] }) {
 
               {/* Date range */}
               <div className="flex flex-col gap-1">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Rentang Tanggal</span>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  Rentang Tanggal
+                  <InfoTooltip content="Filter berdasarkan tanggal kejadian aktivitas. Timezone: WIB (Asia/Jakarta)." side="right" width="w-60" />
+                </span>
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2">
                     <Calendar size={11} className="text-slate-400 shrink-0" />

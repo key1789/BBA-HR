@@ -55,7 +55,7 @@ export function CrewBottomNav({ branchConfig }: { branchConfig: Record<string, b
               />
               <span
                 className={cn(
-                  "text-[9px] font-black uppercase tracking-wide leading-none transition-colors duration-200 truncate max-w-full text-center",
+                  "text-[9px] font-black uppercase tracking-widest leading-none transition-colors duration-200 truncate max-w-full text-center",
                   isActive ? "text-sky-600" : "text-slate-400",
                 )}
               >

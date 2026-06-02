@@ -12,7 +12,7 @@ export function GlassCard({ children, className, variant = "light", interactive 
   return (
     <div
       className={cn(
-        "relative rounded-[1.5rem] p-6 overflow-hidden",
+        "relative rounded-2xl p-6 overflow-hidden",
         "border shadow-sm",
         // Variants - Now Solid Corporate Style
         variant === "light" && "bg-white border-slate-200",

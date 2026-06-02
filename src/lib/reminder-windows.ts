@@ -1,8 +1,7 @@
 const WIB_TIMEZONE = "Asia/Jakarta";
-const REMINDER_CUTOFF_HOUR = 19;
-const NEAR_CUTOFF_START_HOUR = 16;
 
-export type ReminderPhase = "normal" | "near_cutoff" | "post_cutoff";
+/** Phase selalu "normal" — periode cut-off sudah tidak digunakan. */
+export type ReminderPhase = "normal";
 
 type WibClock = {
   dateKey: string;
@@ -24,10 +23,10 @@ function getWibClock(date = new Date()): WibClock {
   const read = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? "";
 
-  const year = read("year");
-  const month = read("month");
-  const day = read("day");
-  const hour = Number(read("hour") || "0");
+  const year   = read("year");
+  const month  = read("month");
+  const day    = read("day");
+  const hour   = Number(read("hour")   || "0");
   const minute = Number(read("minute") || "0");
 
   return {
@@ -39,21 +38,9 @@ function getWibClock(date = new Date()): WibClock {
 
 export function getOperationalReminderWindow(date = new Date()) {
   const clock = getWibClock(date);
-  const nowInMinutes = clock.hour * 60 + clock.minute;
-  const nearCutoffMinutes = NEAR_CUTOFF_START_HOUR * 60;
-  const cutoffMinutes = REMINDER_CUTOFF_HOUR * 60;
-
-  let phase: ReminderPhase = "normal";
-  if (nowInMinutes >= cutoffMinutes) {
-    phase = "post_cutoff";
-  } else if (nowInMinutes >= nearCutoffMinutes) {
-    phase = "near_cutoff";
-  }
-
   return {
     ...clock,
-    phase,
-    cutoffHour: REMINDER_CUTOFF_HOUR,
+    phase: "normal" as ReminderPhase,
     timezoneLabel: "WIB",
   };
 }

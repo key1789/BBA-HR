@@ -6,7 +6,6 @@ import { GlassCard } from "@/components/shared/glass-card";
 import {
   UserCircle2,
   Plus,
-  ShieldAlert,
   Clock,
   Copy,
   CheckCircle2,
@@ -207,7 +206,7 @@ export function TabPegawai({ branch, users }: { branch: any; users: any[] }) {
         <div>
           <h2 className="text-lg font-black text-slate-800">Manajemen Crew</h2>
           <p className="text-sm text-slate-500 mt-1">
-            Daftar crew dan admin apotek (orang) di {branch.name}. Login admin cabang (meja): tab «Akun admin cabang».
+            Daftar crew operasional di {branch.name}. Akun login admin cabang: tab «Akun admin cabang».
           </p>
         </div>
         <button
@@ -304,21 +303,9 @@ export function TabPegawai({ branch, users }: { branch: any; users: any[] }) {
                           </div>
                         </td>
                         <td className="py-5 px-6">
-                          <span
-                            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 w-fit shadow-sm border ${
-                              item.role === "crew"
-                                ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                                : item.role === "admin_apotek"
-                                  ? "bg-sky-600 text-white border-sky-700"
-                                  : "bg-slate-100 text-slate-600 border-slate-200"
-                            }`}
-                          >
-                            {item.role === "admin_apotek" ? (
-                              <ShieldAlert size={12} />
-                            ) : (
-                              <UserCircle2 size={12} />
-                            )}
-                            {item.role.replace("_", " ")}
+                          <span className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 w-fit shadow-sm border bg-emerald-50 text-emerald-600 border-emerald-100">
+                            <UserCircle2 size={12} />
+                            Crew
                           </span>
                         </td>
                         <td className="py-5 px-6">
@@ -407,17 +394,8 @@ export function TabPegawai({ branch, users }: { branch: any; users: any[] }) {
                       />
                     </div>
                     <div className="flex items-center justify-between mt-2 pl-16">
-                      <span
-                        className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 w-fit border ${
-                          item.role === "crew"
-                            ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                            : item.role === "admin_apotek"
-                              ? "bg-sky-600 text-white border-sky-700"
-                              : "bg-slate-100 text-slate-600 border-slate-200"
-                        }`}
-                      >
-                        {item.role === "admin_apotek" && <ShieldAlert size={10} />}
-                        {item.role.replace("_", " ")}
+                      <span className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 w-fit border bg-emerald-50 text-emerald-600 border-emerald-100">
+                        Crew
                       </span>
                       <div
                         className={`flex items-center gap-1.5 ${isUserActive ? "text-emerald-600" : "text-rose-600"}`}
@@ -443,6 +421,7 @@ export function TabPegawai({ branch, users }: { branch: any; users: any[] }) {
         onClose={() => setIsModalOpen(false)}
         branchId={branch.id}
         branchName={branch.name}
+        branchCode={branch.code}
       />
 
       <EditCrewModal

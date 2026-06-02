@@ -5,6 +5,7 @@ import { AnimatedPage } from "@/components/shared/animated-page";
 import { GlassCard } from "@/components/shared/glass-card";
 import { AddOwnerButton } from "./add-owner-button";
 import { OwnerListClient } from "./owner-list-client";
+import { ShieldCheck, Users, Clock } from "lucide-react";
 
 async function fetchAuthMetadataOwnerIds(admin: ReturnType<typeof createAdminClient>): Promise<string[]> {
   const ids: string[] = [];
@@ -55,7 +56,7 @@ export default async function OwnersPage({
       ? await supabaseAdmin
           .from("app_users")
           .select(`
-      id, full_name, email, phone, is_active, last_login_at,
+      id, full_name, email, phone, is_active, is_demo, last_login_at,
       tenant_memberships(
         role,
         tenant_apotek(name)
@@ -85,9 +86,10 @@ export default async function OwnersPage({
       email: user.email,
       phone: user.phone,
       is_active: user.is_active,
+      is_demo: user.is_demo ?? false,
       last_login_at: user.last_login_at,
       apoteks: apoteks,
-      status: "active"
+      status: "active",
     };
   }) || [];
 
@@ -110,18 +112,74 @@ export default async function OwnersPage({
     ? displayData.filter((owner: any) => owner.id === ownerId)
     : displayData;
 
+  // Quick stats (dari data penuh, bukan filteredDisplayData)
+  const nonDemoOwners = ownersData.filter((o: any) => !o.is_demo);
+  const statTotal   = nonDemoOwners.length;
+  const statActive  = nonDemoOwners.filter((o: any) => o.is_active).length;
+  const statPending = inviteData.filter((i: any) => i.status !== "accepted").length;
+
   return (
     <AnimatedPage className="space-y-6">
       {/* HEADER PAGE */}
-      <GlassCard className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6" variant="light">
-        <div>
-          <h1 className="text-xl font-black text-slate-800">Kelola Data Owner</h1>
-          <p className="text-sm text-slate-500 mt-1">Halaman untuk mendaftarkan dan mengelola akun Pemilik (Owner) Apotek.</p>
+      <GlassCard className="p-4 sm:p-5" variant="light">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-sky-600/25">
+              <ShieldCheck size={20} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase leading-tight">
+                Kelola Data Owner
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">Daftarkan dan kelola akun Pemilik (Owner) Apotek.</p>
+            </div>
+          </div>
+          <div className="shrink-0">
+            <AddOwnerButton />
+          </div>
         </div>
-        <AddOwnerButton />
       </GlassCard>
 
-      {/* CLIENT COMPONENT (SEARCH & TABLE) */}
+      {/* QUICK STATS */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <GlassCard className="p-3.5 border-l-4 border-l-sky-500" variant="light">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+              <Users size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total Owner</p>
+              <p className="text-2xl font-black text-slate-900 leading-none">{statTotal}</p>
+            </div>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-l-4 border-l-emerald-500" variant="light">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <ShieldCheck size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Owner Aktif</p>
+              <p className="text-2xl font-black text-slate-900 leading-none">{statActive}</p>
+            </div>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-3.5 border-l-4 border-l-amber-400" variant="light">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+              <Clock size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Menunggu Verifikasi</p>
+              <p className="text-2xl font-black text-slate-900 leading-none">{statPending}</p>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
+
+      {/* CLIENT COMPONENT */}
       <OwnerListClient initialData={filteredDisplayData} />
     </AnimatedPage>
   );

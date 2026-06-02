@@ -6,6 +6,7 @@ import { SchemeCard } from "../shared/SchemeCard";
 import { WeightInputs } from "../shared/WeightInputs";
 import { BonusTypeSelector } from "../shared/BonusTypeSelector";
 import { CurrencyInput } from "@/components/shared/currency-input";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 import type {
   BonusType,
   IndividualSchemeConfig,
@@ -152,6 +153,18 @@ export function IndividualMonthlyScheme({
     return sum;
   }, [allUserIds, config.user_configs]);
 
+  // Total hari kerja seluruh crew untuk hitung saran proporsional di manual mode
+  const sumAllWorkingDays = useMemo(() => {
+    return allUserIds.reduce((sum, uid) => {
+      const raw = config.user_configs[uid]?.working_days;
+      const days =
+        typeof raw === "number" && Number.isFinite(raw) && raw > 0
+          ? raw
+          : globalConfig.default_working_days;
+      return sum + days;
+    }, 0);
+  }, [allUserIds, config.user_configs, globalConfig.default_working_days]);
+
   const omzetValid = totalDistributedOmzet === globalConfig.target_omzet;
 
   const displayName = (userId: string) => {
@@ -174,8 +187,9 @@ export function IndividualMonthlyScheme({
       <div className="space-y-6">
         {/* Target distribution */}
         <div className="space-y-3">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
             Distribusi target individu
+            <InfoTooltip content="Bagi Rata Otomatis: target global dibagi sama rata ke semua crew dengan bobot dan skema bonus yang seragam. Kustomisasi Manual: atur target omzet, hari kerja, bobot metrik, dan nominal bonus secara individual per orang." />
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label
@@ -213,7 +227,7 @@ export function IndividualMonthlyScheme({
               />
               <div>
                 <p className="text-sm font-black text-slate-800 uppercase tracking-tight">Kustomisasi Manual</p>
-                <p className="text-[10px] text-slate-500 font-medium">Atur target, bobot, dan bonus per orang</p>
+                <p className="text-[10px] text-slate-500 font-medium">Atur target, hari kerja, bobot, dan bonus per orang</p>
               </div>
             </label>
           </div>
@@ -221,11 +235,21 @@ export function IndividualMonthlyScheme({
 
         {config.target_distribution === "rata" ? (
           <div className="space-y-6">
-            <div className="rounded-3xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-sm">
-              <p className="text-[10px] font-black text-indigo-800 uppercase tracking-widest">Info</p>
-              <p className="text-sm text-slate-700 font-medium mt-1 leading-relaxed">
-                Semua personil aktif memakai <span className="font-black text-indigo-700">target global</span> yang sama
-                dan skema bobot bonus berikut untuk perhitungan bulanan.
+            {/* ── Rata mode — fixed formula description ── */}
+            <div className="rounded-3xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-sm space-y-2">
+              <p className="text-[10px] font-black text-indigo-800 uppercase tracking-widest">Perhitungan target (rata)</p>
+              <p className="text-sm text-slate-700 font-medium leading-relaxed">
+                Target masing-masing ={" "}
+                <span className="font-black text-indigo-700">target global ÷ jumlah crew aktif</span>.
+                Hanya yang mencapai target individunya yang mendapatkan bonus.
+              </p>
+              <p className="text-xs text-slate-600 font-medium">
+                Saat ini: Rp {globalConfig.target_omzet.toLocaleString("id-ID")} ÷{" "}
+                {Math.max(activeUsers.length, 1)} crew ={" "}
+                <span className="font-black text-indigo-700">
+                  Rp {Math.round(globalConfig.target_omzet / Math.max(activeUsers.length, 1)).toLocaleString("id-ID")}
+                </span>{" "}
+                / orang / bulan
               </p>
             </div>
             <WeightInputs
@@ -251,6 +275,7 @@ export function IndividualMonthlyScheme({
           </div>
         ) : (
           <div className="space-y-6">
+            {/* Validasi total omzet terdistribusi */}
             <div
               className={`rounded-3xl p-5 border-2 flex gap-4 items-center shadow-sm transition-colors ${
                 omzetValid ? "bg-emerald-50/50 border-emerald-100" : "bg-amber-50/50 border-amber-200"
@@ -292,6 +317,12 @@ export function IndividualMonthlyScheme({
                 const colorClass = "bg-indigo-100 text-indigo-700";
                 const uc = config.user_configs[userId] ?? {};
 
+                const wdDisplay = getUserConfig(userId, "working_days", globalConfig.default_working_days);
+                const suggestedTarget =
+                  sumAllWorkingDays > 0
+                    ? Math.round(globalConfig.target_omzet * (wdDisplay / sumAllWorkingDays))
+                    : Math.round(globalConfig.target_omzet / Math.max(allUserIds.length, 1));
+
                 return (
                   <div
                     key={userId}
@@ -299,6 +330,7 @@ export function IndividualMonthlyScheme({
                       isActive ? "" : "opacity-70 grayscale"
                     }`}
                   >
+                    {/* Nama crew */}
                     <div className="flex items-center gap-4 mb-2">
                       <div
                         className={`w-12 h-12 rounded-2xl ${colorClass} flex items-center justify-center font-black text-sm border-2 border-white shadow-sm`}
@@ -315,6 +347,54 @@ export function IndividualMonthlyScheme({
                       </div>
                     </div>
 
+                    {/* Hari kerja + saran proporsional */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                          Hari Kerja / Bulan
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          value={wdDisplay}
+                          onChange={(e) =>
+                            updateUserConfig(
+                              userId,
+                              "working_days",
+                              parseInt(e.target.value, 10) || globalConfig.default_working_days,
+                            )
+                          }
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black text-slate-800"
+                        />
+                        <p className="text-[10px] text-slate-500 font-medium">
+                          Default cabang: {globalConfig.default_working_days} hari
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                          Saran target proporsional
+                          <InfoTooltip content="Target yang disarankan berdasarkan proporsi hari kerja pegawai ini terhadap total hari kerja semua crew. Pegawai yang lebih banyak bekerja mendapat porsi target yang lebih besar." />
+                        </p>
+                        <div className="px-4 py-3 bg-indigo-50/60 border border-indigo-100 rounded-2xl">
+                          <p className="text-sm font-black text-indigo-700">
+                            Rp {suggestedTarget.toLocaleString("id-ID")}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-medium">
+                            {wdDisplay} hr ÷ {sumAllWorkingDays} hr total × target global
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateUserConfig(userId, "target_omzet", suggestedTarget)}
+                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                        >
+                          ↑ Terapkan ke target omzet
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Target omzet, ATV, ATU */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-1">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
@@ -356,6 +436,7 @@ export function IndividualMonthlyScheme({
                       )}
                     </div>
 
+                    {/* Bobot per metrik */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="space-y-1">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Bobot omzet %</label>

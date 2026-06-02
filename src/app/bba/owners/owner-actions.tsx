@@ -90,7 +90,7 @@ export function OwnerActions({ owner }: Props) {
 
   const handleBuatApotek = () => {
     setIsOpen(false);
-    router.push("/bba/branches");
+    router.push(`/bba/branches/new?ownerId=${owner.id}`);
   };
 
   const handleCopyInvite = () => {

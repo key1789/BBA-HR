@@ -5,6 +5,7 @@ import { Target, Users, User } from "lucide-react";
 import { SchemeCard } from "../shared/SchemeCard";
 import { WeightInputs } from "../shared/WeightInputs";
 import { BonusTypeSelector } from "../shared/BonusTypeSelector";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 import type { TeamSchemeConfig, KpiGlobalConfig } from "@/lib/types/kpi-v2";
 
 interface TeamMonthlySchemeProps {
@@ -32,8 +33,9 @@ export function TeamMonthlyScheme({ config, globalConfig, onChange }: TeamMonthl
       <div className="space-y-6">
         {/* Min Achievement */}
         <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
-          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
+          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
             Minimum Pencapaian untuk Dapat Bonus
+            <InfoTooltip content="Persentase skor minimum agar bonus team bulan ini cair. Jika skor team di bawah batas ini, tidak ada bonus yang dibagikan. Contoh: 80% berarti team harus mencapai minimal 80% dari target untuk mendapatkan bonus." />
           </label>
           <div className="flex items-center gap-3">
             <input
@@ -75,8 +77,9 @@ export function TeamMonthlyScheme({ config, globalConfig, onChange }: TeamMonthl
 
         {/* Distribution Method */}
         <div className="space-y-3">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
             Cara Distribusi Bonus ke Anggota Team
+            <InfoTooltip content="Bagi Rata: total pool bonus dibagi sama rata ke semua crew. Proporsional: bonus dibagi sesuai omzet yang dikontribusikan masing-masing crew di bulan itu." />
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label

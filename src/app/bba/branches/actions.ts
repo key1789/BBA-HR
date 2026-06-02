@@ -40,14 +40,16 @@ export async function createBranchAction(prevState: any, formData: FormData) {
   const actorUserId = actor?.id ?? ownerId;
 
   const emptyToNull = (s: string) => (s.length > 0 ? s : null);
+  const isTrial = formData.get("is_trial") === "true";
 
-  // 1. Insert tenant_apotek (add-on lewat addon_settings; alamat/WA kolom dari migrasi 0021)
+  // 1. Insert tenant_apotek
   const { data: newBranch, error: branchError } = await supabaseAdmin
     .from("tenant_apotek")
     .insert({
       name,
       code,
       status: "active",
+      is_trial: isTrial,
       address: emptyToNull(addressRaw),
       phone: emptyToNull(phoneRaw),
     })
@@ -127,6 +129,7 @@ export async function createBranchAction(prevState: any, formData: FormData) {
   if (shiftError) {
     console.error("master_shifts bootstrap failed:", shiftError);
     revalidatePath("/bba/branches");
+    revalidatePath("/bba/audit");
     return {
       success: true,
       message:
@@ -135,6 +138,7 @@ export async function createBranchAction(prevState: any, formData: FormData) {
   }
 
   revalidatePath("/bba/branches");
+  revalidatePath("/bba/audit");
   return {
     success: true,
     message:
@@ -164,5 +168,98 @@ export async function toggleBranchStatusAction(formData: FormData) {
   }
 
   revalidatePath("/bba/branches");
+  revalidatePath("/bba/audit");
   return { success: true, message: `Cabang berhasil di-${newStatus === "active" ? 'aktifkan' : 'nonaktifkan'}!` };
+}
+
+/**
+ * Hard-reset semua data operasional milik sebuah apotek trial.
+ * Konfigurasi (memberships, addon_settings, master_shifts, payroll_configs, dll.) tetap utuh.
+ * Hanya bisa dipanggil pada apotek yang is_trial = true.
+ */
+export async function resetTrialBranchAction(branchId: string) {
+  const gate = await assertGlobalBbaPortalManager();
+  if (!gate.ok) return { error: gate.error };
+
+  if (!branchId) return { error: "ID cabang tidak valid." };
+
+  const supabaseAdmin = createAdminClient();
+
+  // Safety check: pastikan ini benar-benar apotek trial
+  const { data: branch } = await supabaseAdmin
+    .from("tenant_apotek")
+    .select("id, name, is_trial")
+    .eq("id", branchId)
+    .maybeSingle();
+
+  if (!branch) return { error: "Cabang tidak ditemukan." };
+  if (!branch.is_trial) return { error: "Reset hanya bisa dilakukan pada apotek trial." };
+
+  // Tabel operasional yang dihapus (urutan: parent dulu, CASCADE handle child-nya)
+  // KEEP: tenant_apotek, tenant_memberships, addon_settings, master_shifts,
+  //       master_products, payroll_configs, tenant_kpi_policies, employee_profiles,
+  //       crew_shift_defaults, staff_invitations
+  const operationalTables = [
+    "daily_submissions",        // CASCADE: daily_submission_products, submission_verifications, submission_assignments
+    "monthly_audits",           // CASCADE: monthly_crew_audits, monthly_audit_state_events
+    "monthly_appraisals",       // CASCADE: monthly_appraisal_publish_events, monthly_addon_appraisals
+    "announcements",            // CASCADE: announcement_receipts, announcement_targets, announcement_audit_logs
+    "tasks",                    // CASCADE: task_approvals
+    "payroll_periods",          // CASCADE: payroll_unlock_events
+    "payroll_items",
+    "attendance_logs",
+    "leave_requests",
+    "shift_swap_requests",
+    "peer_reviews",
+    "minus_points",
+    "leaderboard_snapshots",
+    "candidates",
+    "workforce_requests",
+    "export_jobs",
+    "activity_logs",
+    "kpi_configs",
+  ] as const;
+
+  const errors: string[] = [];
+
+  for (const table of operationalTables) {
+    const { error } = await supabaseAdmin
+      .from(table)
+      .delete()
+      .eq("tenant_apotek_id", branchId);
+
+    if (error) {
+      // Log tapi jangan hentikan proses — mungkin kolom FK-nya berbeda
+      console.error(`reset [${table}] failed:`, error.message);
+      errors.push(table);
+    }
+  }
+
+  // Re-seed KPI bulan berjalan dengan nilai 0 (supaya dashboard tidak error)
+  const now = new Date();
+  const supabase = await createClient();
+  const { data: { user: actor } } = await supabase.auth.getUser();
+  await supabaseAdmin.from("kpi_configs").insert({
+    tenant_apotek_id: branchId,
+    period_month: now.getMonth() + 1,
+    period_year: now.getFullYear(),
+    target_omzet: 0,
+    target_atv: 0,
+    target_atu: 0,
+    created_by_user_id: actor?.id ?? null,
+  }).then(r => {
+    if (r.error) console.error("kpi_configs re-seed failed:", r.error.message);
+  });
+
+  revalidatePath("/bba/branches");
+  revalidatePath("/bba/audit");
+
+  if (errors.length > 0) {
+    return {
+      success: true,
+      message: `Data berhasil direset. Beberapa tabel tidak dapat dibersihkan: ${errors.join(", ")}`,
+    };
+  }
+
+  return { success: true, message: `Data operasional ${branch.name} berhasil direset.` };
 }

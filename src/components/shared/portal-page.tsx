@@ -12,7 +12,7 @@ export function PortalPage({ title, subtitle, items }: PortalPageProps) {
         <p className="text-sm text-slate-600">{subtitle}</p>
       </div>
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <h2 className="text-sm font-black uppercase tracking-widest text-slate-500">
           Checklist Modul
         </h2>
         <ul className="mt-3 space-y-2 text-sm text-slate-700">

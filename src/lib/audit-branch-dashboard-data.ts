@@ -23,6 +23,8 @@ export function resolveAuditDashboardSubmissionStatuses(options?: {
   return verifiedOnly ? [...AUDIT_COUNTED_SUBMISSION_STATUSES] : [...OWNER_PORTAL_SUBMISSION_STATUSES];
 }
 
+export type BranchOmzetHistoriItem = { month: number; year: number; omzet: number };
+
 export type AuditBranchDashboardPayload = {
   branch: any;
   kpi: any;
@@ -43,6 +45,12 @@ export type AuditBranchDashboardPayload = {
   activeCrewCount: number;
   /** true bila semua baris monthly_appraisals periode ini is_published */
   raportPeriodPublished: boolean;
+  /** 12-month branch omzet trend, aggregated from leaderboard_snapshots, oldest-first */
+  branchOmzetHistori: BranchOmzetHistoriItem[];
+  /** payroll_periods row untuk bulan ini (null jika belum ada draft) */
+  payrollPeriod: any | null;
+  /** payroll_items rows untuk periode ini, tiap baris includes employee_profiles */
+  payrollItems: any[];
 };
 
 const UUID_RE =
@@ -288,11 +296,16 @@ export async function fetchAuditBranchDashboardData(
 
   const attendanceFrom = `${startDate}T00:00:00.000Z`;
   const attendanceTo = `${endDate}T23:59:59.999Z`;
+  // 12-month start year for branch trend
+  const histStartYear = new Date(year, month - 1 - 11, 1).getFullYear();
+
   const [
     { data: attendanceLogs },
     { data: leaveRequestsApproved },
     { data: monthlyAddonAppraisals },
     { data: monthlyAppraisalPublishRows },
+    { data: snapshotRows },
+    { data: payrollPeriodData },
   ] = await Promise.all([
       supabase
         .from("attendance_logs")
@@ -324,11 +337,50 @@ export async function fetchAuditBranchDashboardData(
         .eq("tenant_apotek_id", branchId)
         .eq("period_month", month)
         .eq("period_year", year),
+      supabase
+        .from("leaderboard_snapshots")
+        .select("period_month, period_year, omzet_value")
+        .eq("tenant_apotek_id", branchId)
+        .gte("period_year", histStartYear)
+        .lte("period_year", year),
+      supabase
+        .from("payroll_periods")
+        .select("*")
+        .eq("tenant_apotek_id", branchId)
+        .eq("period_start", startDate)
+        .eq("period_end", endDate)
+        .maybeSingle(),
     ]);
+
+  // Aggregate snapshots → branch omzet by (month, year)
+  const omzetByPeriod = new Map<string, number>();
+  for (const s of snapshotRows ?? []) {
+    const key = `${s.period_year}-${s.period_month}`;
+    omzetByPeriod.set(key, (omzetByPeriod.get(key) ?? 0) + Number(s.omzet_value ?? 0));
+  }
+  // Build exactly 12 months ending at current period, oldest-first
+  const branchOmzetHistori: BranchOmzetHistoriItem[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(year, month - 1 - i, 1);
+    const m = d.getMonth() + 1;
+    const y = d.getFullYear();
+    branchOmzetHistori.push({ month: m, year: y, omzet: omzetByPeriod.get(`${y}-${m}`) ?? 0 });
+  }
 
   const raportPeriodPublished =
     (monthlyAppraisalPublishRows?.length ?? 0) > 0 &&
     (monthlyAppraisalPublishRows ?? []).every((r) => Boolean(r.is_published));
+
+  // Fetch payroll_items setelah kita tahu payroll_period-nya (sequential — items depends on period id)
+  const payrollPeriod = payrollPeriodData ?? null;
+  const { data: payrollItemsData } = payrollPeriod
+    ? await supabase
+        .from("payroll_items")
+        .select("*, employee_profiles(*)")
+        .eq("payroll_period_id", payrollPeriod.id)
+        .order("created_at", { ascending: true })
+    : { data: [] as any[] };
+  const payrollItems = payrollItemsData ?? [];
 
   return {
     branch,
@@ -349,5 +401,8 @@ export async function fetchAuditBranchDashboardData(
     monthlyAddonAppraisals: monthlyAddonAppraisals ?? [],
     activeCrewCount: Number(activeCrewCount ?? 0),
     raportPeriodPublished,
+    branchOmzetHistori,
+    payrollPeriod,
+    payrollItems,
   };
 }

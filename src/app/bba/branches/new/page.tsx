@@ -4,7 +4,12 @@ import { BranchOnboardingWizard } from "./wizard";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
-export default async function NewBranchPage() {
+export default async function NewBranchPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ownerId?: string }>;
+}) {
+  const { ownerId: preselectedOwnerId } = await searchParams;
   const supabaseAdmin = createAdminClient();
 
   // Owners: memberships with role "owner" + app_users not yet assigned (from auth metadata)
@@ -25,6 +30,7 @@ export default async function NewBranchPage() {
     .select("id, full_name")
     .in("id", allOwnerIds)
     .eq("is_active", true)
+    .eq("is_demo", false)
     .order("full_name");
 
   const owners = ownerProfiles || [];
@@ -47,7 +53,7 @@ export default async function NewBranchPage() {
         </p>
       </div>
 
-      <BranchOnboardingWizard owners={owners} />
+      <BranchOnboardingWizard owners={owners} preselectedOwnerId={preselectedOwnerId} />
     </AnimatedPage>
   );
 }

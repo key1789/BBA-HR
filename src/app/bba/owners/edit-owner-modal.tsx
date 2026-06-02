@@ -1,11 +1,40 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { AnimatedModal } from "@/components/shared/animated-modal";
 import { editOwnerAction } from "./actions";
 import { toast } from "sonner";
-import { Loader2, Save, UserCircle2 } from "lucide-react";
+import { Loader2, Save, UserCircle2, FlaskConical } from "lucide-react";
+
+// Toggle "Akun Demo" — pakai useState agar value-nya ikut ke hidden input
+function DemoToggle({ defaultValue }: { defaultValue: boolean }) {
+  const [isDemo, setIsDemo] = useState(defaultValue);
+  return (
+    <div className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-colors ${isDemo ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-200"}`}>
+      <div className="flex items-center gap-2.5">
+        <FlaskConical size={15} className={isDemo ? "text-amber-600" : "text-slate-400"} />
+        <div>
+          <p className={`text-xs font-black uppercase tracking-wider ${isDemo ? "text-amber-800" : "text-slate-500"}`}>
+            Akun Demo / Trial
+          </p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            Tandai jika akun ini dipakai untuk keperluan demo prospek
+          </p>
+        </div>
+      </div>
+      {/* Hidden field yang dikirim ke server */}
+      <input type="hidden" name="is_demo" value={isDemo ? "true" : "false"} />
+      <button
+        type="button"
+        onClick={() => setIsDemo(v => !v)}
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${isDemo ? "bg-amber-500" : "bg-slate-200"}`}
+      >
+        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${isDemo ? "translate-x-5" : "translate-x-0"}`} />
+      </button>
+    </div>
+  );
+}
 
 interface Props {
   isOpen: boolean;
@@ -59,14 +88,17 @@ export function EditOwnerModal({ isOpen, onClose, owner }: Props) {
 
           <div className="space-y-1.5">
             <label className="text-xs font-black text-slate-500 uppercase tracking-wider">No. WhatsApp</label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               name="phone"
               defaultValue={owner.phone || ""}
               className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium"
               placeholder="0812..."
             />
           </div>
+
+          {/* Toggle Demo */}
+          <DemoToggle defaultValue={!!owner.is_demo} />
         </div>
 
         {/* KREDENSIAL LOGIN */}
@@ -78,23 +110,14 @@ export function EditOwnerModal({ isOpen, onClose, owner }: Props) {
 
           <div className="space-y-1.5">
             <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Email (Untuk Login)</label>
-            <input 
-              type="email" 
+            <input
+              type="email"
               name="email"
               required
               defaultValue={owner.email}
               className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium"
             />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-black text-slate-500 uppercase tracking-wider">Password Baru (Opsional)</label>
-            <input 
-              type="text" 
-              name="password"
-              placeholder="Biarkan kosong jika tidak diubah"
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white transition-colors text-sm font-medium"
-            />
+            <p className="text-[10px] text-slate-400">Untuk reset password gunakan menu <strong>Reset Password</strong> di halaman ini.</p>
           </div>
         </div>
 

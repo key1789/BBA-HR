@@ -1,5 +1,7 @@
 "use client";
 
+import { InfoTooltip } from "@/components/shared/info-tooltip";
+
 interface WeightInputsProps {
   weightOmzet: number;
   weightAtv: number;
@@ -27,12 +29,13 @@ export function WeightInputs({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
           Bobot Komponen Target
+          <InfoTooltip content="Proporsi masing-masing metrik dalam skor pencapaian KPI. Contoh: Omzet 70% + ATV 30% = skor akhir dari 70% pencapaian omzet + 30% pencapaian ATV. Jika total tidak 100%, sistem menormalisasi otomatis." />
         </label>
         {!isValid && (
           <span className="text-[9px] font-black text-amber-600 uppercase px-2 py-1 bg-amber-50 rounded">
-            Total: {total}% (Rekomendasi 100%)
+            Total: {total}% — akan dinormalisasi
           </span>
         )}
       </div>
