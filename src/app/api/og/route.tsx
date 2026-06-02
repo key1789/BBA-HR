@@ -1,8 +1,11 @@
 import { ImageResponse } from "next/og";
-
-export const runtime = "edge";
+import fs from "fs";
+import path from "path";
 
 export async function GET() {
+  const logoBuffer = fs.readFileSync(path.join(process.cwd(), "public", "bba-logo.png"));
+  const logoSrc = `data:image/png;base64,${logoBuffer.toString("base64")}`;
+
   return new ImageResponse(
     (
       <div
@@ -44,45 +47,29 @@ export async function GET() {
           }}
         />
 
-        {/* Logo circle */}
+        {/* Logo */}
         <div
           style={{
-            width: 96,
-            height: 96,
-            borderRadius: 24,
-            background: "rgba(14,165,233,0.15)",
-            border: "2px solid rgba(14,165,233,0.4)",
+            width: 120,
+            height: 120,
+            borderRadius: 28,
+            overflow: "hidden",
+            marginBottom: 32,
+            border: "3px solid rgba(14,165,233,0.4)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            marginBottom: 32,
+            background: "white",
           }}
         >
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              background: "#0ea5e9",
-              borderRadius: 10,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <svg
-              width="28"
-              height="28"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logoSrc}
+            width={120}
+            height={120}
+            alt="BBA Logo"
+            style={{ objectFit: "cover" }}
+          />
         </div>
 
         {/* Title */}
