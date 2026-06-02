@@ -17,6 +17,27 @@ export const metadata: Metadata = {
     icon: "/bba-logo.png",
     apple: "/bba-logo.png",
   },
+  openGraph: {
+    title: "BBA HR Platform",
+    description: "Platform HR untuk operasional dan monitoring apotek",
+    url: "https://bba-system.vercel.app",
+    siteName: "BBA HR Platform",
+    images: [
+      {
+        url: "https://bba-system.vercel.app/api/og",
+        width: 1200,
+        height: 630,
+        alt: "BBA HR Platform",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "BBA HR Platform",
+    description: "Platform HR untuk operasional dan monitoring apotek",
+    images: ["https://bba-system.vercel.app/api/og"],
+  },
 };
 
 import { Toaster } from "sonner";
