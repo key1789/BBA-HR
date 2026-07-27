@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, Activity } from "lucide-react";
 import { toast } from "sonner";
-import { saveAddonSettingsAction } from "@/app/bba/branches/[id]/actions";
+import { saveAddonSettingsAction } from "@/app/sa/branches/[id]/actions";
 
 export interface AppraisalAddonsSectionProps {
   branchId: string;

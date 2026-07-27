@@ -11,7 +11,7 @@ export function NavigationProgress() {
   const [active, setActive] = useState(false);
 
   useEffect(() => {
-    setActive(false);
+    queueMicrotask(() => setActive(false));
   }, [pathname, search]);
 
   useEffect(() => {

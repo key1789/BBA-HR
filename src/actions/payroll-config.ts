@@ -1,8 +1,9 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionContext } from "@/lib/auth-context";
+import { validatePayrollConfigInput } from "@/lib/payroll-validation";
+import { writeAuditLog } from "@/lib/audit-log";
 import { revalidatePath } from "next/cache";
 
 type PayrollConfigInput = {
@@ -13,7 +14,7 @@ type PayrollConfigInput = {
   mealAllowance: number;
   transportAllowance: number;
   bpjsDeduction: number;
-  customAdjustments: { name: string; amount: number; type: "addition" | "deduction" }[];
+  customAdjustments: { name: string; amount: number; type: string; basis?: "monthly" | "daily" }[];
 };
 
 /** Verify payroll addon is enabled and the given flag is set for this tenant. */
@@ -68,8 +69,11 @@ export async function savePayrollConfigByAdminAction(prevState: unknown, formDat
 
   const allowed = await checkPayrollAccess(active.tenantId, "allow_admin_input");
   if (!allowed) {
-    return { error: "Fitur ini belum diaktifkan oleh BBA untuk apotek ini." };
+    return { error: "Fitur ini belum diaktifkan oleh Apotrik untuk apotek ini." };
   }
+
+  const validationError = validatePayrollConfigInput(input);
+  if (validationError) return { error: validationError };
 
   const supabaseAdmin = createAdminClient();
 
@@ -87,27 +91,43 @@ export async function savePayrollConfigByAdminAction(prevState: unknown, formDat
     return { error: "Karyawan tidak ditemukan di apotek ini." };
   }
 
+  const { data: oldConfig } = await supabaseAdmin
+    .from("payroll_configs")
+    .select("*")
+    .eq("tenant_apotek_id", active.tenantId)
+    .eq("user_id", input.userId)
+    .maybeSingle();
+
+  const configPayload = {
+    tenant_apotek_id:    active.tenantId,
+    user_id:             input.userId,
+    base_salary:         input.baseSalary,
+    position_allowance:  input.positionAllowance,
+    meal_allowance:      input.mealAllowance,
+    transport_allowance: input.transportAllowance,
+    bpjs_deduction:      input.bpjsDeduction,
+    custom_adjustments:  input.customAdjustments,
+    updated_at:          new Date().toISOString(),
+  };
+
   const { error } = await supabaseAdmin
     .from("payroll_configs")
-    .upsert(
-      {
-        tenant_apotek_id:    active.tenantId,
-        user_id:             input.userId,
-        base_salary:         input.baseSalary,
-        position_allowance:  input.positionAllowance,
-        meal_allowance:      input.mealAllowance,
-        transport_allowance: input.transportAllowance,
-        bpjs_deduction:      input.bpjsDeduction,
-        custom_adjustments:  input.customAdjustments,
-        updated_at:          new Date().toISOString(),
-      },
-      { onConflict: "tenant_apotek_id,user_id" },
-    );
+    .upsert(configPayload, { onConflict: "tenant_apotek_id,user_id" });
 
   if (error) {
     console.error("savePayrollConfigByAdminAction:", error);
     return { error: "Gagal menyimpan konfigurasi gaji." };
   }
+
+  await writeAuditLog(supabaseAdmin, {
+    tenantApotekId: active.tenantId,
+    actorUserId:    session!.userId,
+    entityType:     "payroll_configs",
+    entityId:       input.userId,
+    action:         oldConfig ? "UPDATE" : "CREATE",
+    oldValue:       oldConfig ?? null,
+    newValue:       configPayload,
+  });
 
   revalidatePath("/admin/konfigurasi-gaji");
   return { success: true, message: "Konfigurasi gaji berhasil disimpan." };
@@ -136,8 +156,11 @@ export async function savePayrollConfigByOwnerAction(prevState: unknown, formDat
 
   const allowed = await checkPayrollAccess(input.tenantId, "allow_owner_input");
   if (!allowed) {
-    return { error: "Fitur ini belum diaktifkan oleh BBA untuk apotek ini." };
+    return { error: "Fitur ini belum diaktifkan oleh Apotrik untuk apotek ini." };
   }
+
+  const validationError = validatePayrollConfigInput(input);
+  if (validationError) return { error: validationError };
 
   const supabaseAdmin = createAdminClient();
 
@@ -155,27 +178,43 @@ export async function savePayrollConfigByOwnerAction(prevState: unknown, formDat
     return { error: "Karyawan tidak ditemukan di apotek ini." };
   }
 
+  const { data: oldConfig } = await supabaseAdmin
+    .from("payroll_configs")
+    .select("*")
+    .eq("tenant_apotek_id", input.tenantId)
+    .eq("user_id", input.userId)
+    .maybeSingle();
+
+  const configPayload = {
+    tenant_apotek_id:    input.tenantId,
+    user_id:             input.userId,
+    base_salary:         input.baseSalary,
+    position_allowance:  input.positionAllowance,
+    meal_allowance:      input.mealAllowance,
+    transport_allowance: input.transportAllowance,
+    bpjs_deduction:      input.bpjsDeduction,
+    custom_adjustments:  input.customAdjustments,
+    updated_at:          new Date().toISOString(),
+  };
+
   const { error } = await supabaseAdmin
     .from("payroll_configs")
-    .upsert(
-      {
-        tenant_apotek_id:    input.tenantId,
-        user_id:             input.userId,
-        base_salary:         input.baseSalary,
-        position_allowance:  input.positionAllowance,
-        meal_allowance:      input.mealAllowance,
-        transport_allowance: input.transportAllowance,
-        bpjs_deduction:      input.bpjsDeduction,
-        custom_adjustments:  input.customAdjustments,
-        updated_at:          new Date().toISOString(),
-      },
-      { onConflict: "tenant_apotek_id,user_id" },
-    );
+    .upsert(configPayload, { onConflict: "tenant_apotek_id,user_id" });
 
   if (error) {
     console.error("savePayrollConfigByOwnerAction:", error);
     return { error: "Gagal menyimpan konfigurasi gaji." };
   }
+
+  await writeAuditLog(supabaseAdmin, {
+    tenantApotekId: input.tenantId,
+    actorUserId:    session!.userId,
+    entityType:     "payroll_configs",
+    entityId:       input.userId,
+    action:         oldConfig ? "UPDATE" : "CREATE",
+    oldValue:       oldConfig ?? null,
+    newValue:       configPayload,
+  });
 
   revalidatePath("/owner/karyawan");
   return { success: true, message: "Konfigurasi gaji berhasil disimpan." };

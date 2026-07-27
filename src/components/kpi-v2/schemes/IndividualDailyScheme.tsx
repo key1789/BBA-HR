@@ -7,7 +7,7 @@ import { BonusTypeSelector } from "../shared/BonusTypeSelector";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { InfoTooltip } from "@/components/shared/info-tooltip";
 import type { IndividualSchemeConfig, IndividualUserConfig, KpiGlobalConfig } from "@/lib/types/kpi-v2";
-import { calculateDailyTargetPerUser } from "@/lib/kpi-v2/utils";
+import { calculateDailyTargetPerUser, effectiveDailyTargetForUser } from "@/lib/kpi-v2/utils";
 
 export interface IndividualDailySchemeProps {
   config: IndividualSchemeConfig;
@@ -162,18 +162,9 @@ export function IndividualDailyScheme({
     return row?.app_users?.full_name?.trim() || "Pegawai nonaktif";
   };
 
-  const effectiveDailyForUser = (userId: string) => {
-    const wdRaw = config.user_configs[userId]?.working_days;
-    const wd =
-      typeof wdRaw === "number" && Number.isFinite(wdRaw) && wdRaw > 0
-        ? wdRaw
-        : globalConfig.default_working_days;
-    const monthly = getUserConfig(userId, "target_omzet", 0);
-    const override = config.user_configs[userId]?.target_omzet_daily;
-    if (typeof override === "number" && Number.isFinite(override) && override > 0) return override;
-    if (wd <= 0) return 0;
-    return monthly / wd;
-  };
+  // Sumber tunggal — helper yang SAMA dipakai calculator produksi (tak akan beda).
+  const effectiveDailyForUser = (userId: string) =>
+    effectiveDailyTargetForUser(config, globalConfig, userId, crewCount);
 
   return (
     <SchemeCard
@@ -188,6 +179,26 @@ export function IndividualDailyScheme({
       iconTextColor="text-purple-600"
     >
       <div className="space-y-6">
+        {/* Min Achievement (scheme-wide, per hari) */}
+        <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
+          <label className="text-[9px] font-black text-violet-700 uppercase tracking-widest mb-2 flex items-center gap-1">
+            Minimum Pencapaian Harian untuk Dapat Bonus
+            <InfoTooltip content="Persentase pencapaian minimum PER HARI agar bonus hari itu cair. Contoh: 100% = omzet hari itu harus capai target harian penuh." />
+          </label>
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              min={0}
+              max={200}
+              value={config.min_achievement_percent}
+              onChange={(e) => onChange({ ...config, min_achievement_percent: parseInt(e.target.value, 10) || 0 })}
+              className="w-24 px-4 py-2 bg-white border border-slate-200 rounded-xl text-lg font-black text-slate-800 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all outline-none"
+            />
+            <span className="text-lg font-black text-violet-600">%</span>
+            <span className="text-[10px] text-slate-500 font-medium">dari target harian</span>
+          </div>
+        </div>
+
         <div className="space-y-3">
           <label className="text-[10px] font-black text-violet-700 uppercase tracking-widest flex items-center gap-1">
             Distribusi target individu

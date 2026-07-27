@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useActionState, useEffect } from "react";
-import { completeBbaPortalStaffInvitationAction } from "@/app/bba/admins/actions";
+import { completeBbaPortalStaffInvitationAction } from "@/app/sa/admins/actions";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Loader2, User, Lock, BadgeCheck } from "lucide-react";
@@ -32,9 +32,9 @@ export function AcceptBbaPortalInvitationClient({ invitation, token }: Props) {
           <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-md">
             <BadgeCheck size={32} />
           </div>
-          <h1 className="text-2xl font-black tracking-tight">Aktivasi Analyst BBA</h1>
+          <h1 className="text-2xl font-black tracking-tight">Aktivasi Analyst Apotrik</h1>
           <p className="text-indigo-100 mt-2 text-sm opacity-90">
-            Set password untuk menyelesaikan undangan akun portal BBA (akses terbatas).
+            Set password untuk menyelesaikan undangan akun portal Apotrik (akses terbatas).
           </p>
         </div>
 

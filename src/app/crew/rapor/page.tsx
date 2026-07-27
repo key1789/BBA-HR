@@ -9,6 +9,8 @@ import { CrewRaporClient } from "./crew-rapor-client";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { calculateMonthlyBonusFromInputs } from "@/lib/kpi-v2/calculator";
 import type { DailyAchievementRow, CrewAchievementRow } from "@/lib/kpi-v2/calculator";
+import { productFokusEarnedForConfig } from "@/lib/produk-fokus-core";
+import { customAdjMultiplier } from "@/lib/payroll-adjustments";
 
 export const dynamic = "force-dynamic";
 
@@ -130,7 +132,7 @@ export default async function CrewRaporPage({
     // Semua submission bulan ini (running data + leaderboard berjalan)
     supabase
       .from("daily_submissions")
-      .select("user_id, omzet_total, transaction_total, product_total, rejected_customer_total, submission_date")
+      .select("user_id, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, submission_date")
       .eq("tenant_apotek_id", tenantId)
       .in("status", ["approved", "edited_by_admin"])
       .gte("submission_date", startDate)
@@ -211,7 +213,7 @@ export default async function CrewRaporPage({
   if (addonProdukFokus) {
     const { data: fokusConfigs } = await supabase
       .from("product_fokus_configs")
-      .select("id, product_id, target_value, target_type, bonus_type, bonus_value, bonus_step, master_products(product_name)")
+      .select("id, product_id, target_value, target_type, bonus_type, bonus_value, bonus_step, has_min_target, count_base, master_products(product_name)")
       .eq("tenant_apotek_id", tenantId)
       .eq("period_month", month)
       .eq("period_year", year);
@@ -227,7 +229,7 @@ export default async function CrewRaporPage({
         .lte("submission_date", endDate);
 
       const subIds = (userSubs ?? []).map((s: any) => s.id as string);
-      let salesByProduct = new Map<string, number>();
+      const salesByProduct = new Map<string, number>();
 
       if (subIds.length > 0) {
         const { data: salesData } = await supabase
@@ -248,13 +250,7 @@ export default async function CrewRaporPage({
         const sold   = salesByProduct.get(cfg.product_id) ?? 0;
         const target = Number(cfg.target_value ?? 0);
         const progressPct = target > 0 ? Math.min(100, (sold / target) * 100) : 0;
-        let bonusEarned = 0;
-        if (cfg.bonus_type === "flat") {
-          bonusEarned = sold >= target ? Number(cfg.bonus_value ?? 0) : 0;
-        } else if (cfg.bonus_type === "kelipatan") {
-          const step = Number(cfg.bonus_step ?? 1);
-          bonusEarned = step > 0 ? Math.floor(sold / step) * Number(cfg.bonus_value ?? 0) : 0;
-        }
+        const bonusEarned = productFokusEarnedForConfig(cfg, sold);
         const productName = (Array.isArray(cfg.master_products)
           ? cfg.master_products[0]?.product_name
           : (cfg.master_products as any)?.product_name) ?? "Produk";
@@ -304,6 +300,8 @@ export default async function CrewRaporPage({
   // ── Derived: pelanggan tertolak ──
   const pelangganTertolak     = personalRows.reduce((s: number, r: any) => s + Number(r.rejected_customer_total ?? 0), 0);
   const perkiraanOmzetTertolak = runningTrx > 0 ? (runningOmzet / runningTrx) * pelangganTertolak : 0;
+  const obatTertolak           = personalRows.reduce((s: number, r: any) => s + Number(r.rejected_medicine_total ?? 0), 0);
+  const perkiraanOmzetObat     = runningProd > 0 ? (runningOmzet / runningProd) * obatTertolak : 0;
 
   // ── Derived: kontribusi omzet % terhadap seluruh tim bulan ini ──
   const teamTotalOmzet = allSubmissions.reduce((s: number, r: any) => s + Number(r.omzet_total ?? 0), 0);
@@ -417,7 +415,9 @@ export default async function CrewRaporPage({
     }));
 
     try {
-      const results = calculateMonthlyBonusFromInputs(kpiV2, liveDailyRows, liveCrewRows);
+      const results = calculateMonthlyBonusFromInputs(kpiV2, liveDailyRows, liveCrewRows, {
+        activeCrewCount: crewUserIds.size,
+      });
       const mine = results.find(r => r.user_id === userId);
       if (mine) {
         liveKpiBonus = mine.total_bonus;
@@ -482,11 +482,14 @@ export default async function CrewRaporPage({
         ? Number(snap.totals.net_salary) - bonusTotal          // config_snapshot.totals.net_salary sudah termasuk bonus
         : Number(payrollItem.base_salary) + Number(payrollItem.allowance) - Number(payrollItem.deduction);
 
-    // BPJS = total deduction - custom deductions (non-BPJS)
+    // BPJS = total deduction - custom deductions (non-BPJS).
+    // Potongan kustom basis "daily" dikali hari masuk (pengali dari satu sumber),
+    // agar cocok dengan payrollItem.deduction yang server simpan (sudah × hari).
     const customAdjs: any[] = snap?.custom_adjustments ?? [];
+    const dwCrew = Number((payrollItem as any).days_worked ?? 0);
     const customDedTotal = customAdjs
       .filter((a: any) => a.type === "deduction")
-      .reduce((s: number, a: any) => s + Math.abs(Number(a.amount ?? 0)), 0);
+      .reduce((s: number, a: any) => s + Math.abs(Number(a.amount ?? 0)) * customAdjMultiplier(a, dwCrew), 0);
     const bpjsDeduction = Math.max(0, Number(payrollItem.deduction) - customDedTotal);
 
     thpData = {
@@ -589,6 +592,8 @@ export default async function CrewRaporPage({
         // Operasional tambahan
         pelangganTertolak={pelangganTertolak}
         perkiraanOmzetTertolak={perkiraanOmzetTertolak}
+        obatTertolak={obatTertolak}
+        perkiraanOmzetObat={perkiraanOmzetObat}
         kontribusiPct={kontribusiPct}
         absensi={absensiData}
         // THP

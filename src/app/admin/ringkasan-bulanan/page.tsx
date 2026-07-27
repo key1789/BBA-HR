@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { AnimatedPage } from "@/components/shared/animated-page";
 import { fetchAuditBranchDashboardData } from "@/lib/audit-branch-dashboard-data";
-import { AuditDetailClient } from "@/app/bba/audit/[id]/audit-detail-client";
+import { AuditDetailClient } from "@/app/sa/audit/[id]/audit-detail-client";
 import { FileBarChart2 } from "lucide-react";
 
 export default async function AdminRingkasanBulananPage({
@@ -48,11 +48,11 @@ export default async function AdminRingkasanBulananPage({
         <div>
           <h2 className="text-lg font-black text-slate-800">Laporan Belum Tersedia</h2>
           <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto">
-            BBA belum memulai proses audit untuk periode{" "}
+            Apotrik belum memulai proses audit untuk periode{" "}
             <strong>
               {month}/{year}
             </strong>
-            . Data akan muncul setelah BBA membuka periode audit.
+            . Data akan muncul setelah Apotrik membuka periode audit.
           </p>
         </div>
       </AnimatedPage>

@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     session.bbaPortalStaffRole === "analyst";
 
   if (!isAllowed) {
-    return new Response("Forbidden: akses laporan hanya untuk admin BBA.", { status: 403 });
+    return new Response("Forbidden: akses laporan hanya untuk admin Apotrik.", { status: 403 });
   }
 
   // Parse query params

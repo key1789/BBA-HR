@@ -1,7 +1,7 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useTransition, useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { GlassCard } from "@/components/shared/glass-card";
 import {
@@ -14,34 +14,25 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
-  Save,
   Banknote,
   ArrowRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { saveAddonAction } from "@/app/bba/branches/[id]/actions";
+import { saveAddonAction } from "@/app/sa/branches/[id]/actions";
 import { toast } from "sonner";
 import { AppraisalAddonsSection } from "./AppraisalAddonsSection";
 import { PayrollAccessSection } from "./PayrollAccessSection";
+import { isAddonConfigured } from "@/lib/addon-config";
 
 export function TabAddon({
   branchId,
   addons,
-  products,
-  productFokus,
-  currentMonth,
-  currentYear,
   onNavigateToTab,
 }: {
   branchId: string;
   addons: any[];
-  products: any[];
-  productFokus: any[];
-  currentMonth: number;
-  currentYear: number;
   onNavigateToTab?: (tabId: string) => void;
 }) {
-  const [isPending, startTransition] = useTransition();
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [configModal, setConfigModal] = useState<string | null>(null);
   const [confirmDisableKey, setConfirmDisableKey] = useState<string | null>(null);
@@ -106,8 +97,10 @@ export function TabAddon({
     addons.forEach((a) => {
       next[a.addon_key] = a.is_enabled;
     });
-    setActiveAddons(next);
-    setSavedAddons(next);
+    queueMicrotask(() => {
+      setActiveAddons(next);
+      setSavedAddons(next);
+    });
   }, [branchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reviewInternalFrequency = useMemo(() => {
@@ -122,19 +115,7 @@ export function TabAddon({
 
   const isDirty = Object.keys(activeAddons).some((k) => (activeAddons[k] ?? false) !== (savedAddons[k] ?? false));
 
-  function isConfiguredForAddon(key: string): boolean {
-    const settings = getSettings(key);
-    switch (key) {
-      case "produk_fokus":
-        return productFokus.length > 0;
-      case "review_internal":
-        return typeof settings.frequency_per_month === "number";
-      case "payroll":
-        return Boolean(settings.allow_admin_input) || Boolean(settings.allow_owner_input);
-      default:
-        return false;
-    }
-  }
+  const isConfiguredForAddon = (key: string): boolean => isAddonConfigured(key, getSettings(key));
 
   const handleToggle = (key: string) => {
     if (activeAddons[key]) {
@@ -158,33 +139,9 @@ export function TabAddon({
     setConfirmEnableKey(null);
   };
 
-  const doSaveRules = (snapshot: Record<string, boolean>) => {
-    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-    setIsAutoSaving(false);
-    startTransition(async () => {
-      const formData = new FormData();
-      formData.append("tenantId", branchId);
-      for (const k of ["produk_fokus", "absensi_shift", "review_pelanggan", "review_internal", "payroll"]) {
-        if (snapshot[k]) formData.append(k, "on");
-      }
-      const result = await saveAddonAction(null, formData);
-      if (result.error) {
-        toast.error(result.error);
-      } else if (result.success) {
-        setSavedAddons(snapshot);
-        toast.success(result.message);
-      }
-    });
-  };
-
   const handleCloseModal = useCallback(() => {
     setConfigModal(null);
   }, []);
-
-  const handleSaveAddon = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    doSaveRules(activeAddons);
-  };
 
   useEffect(() => {
     if (!isDirty) return;
@@ -220,10 +177,9 @@ export function TabAddon({
     {
       key: "produk_fokus",
       title: "Produk Fokus",
-      desc: "Insentif otomatis untuk penjualan produk tertentu (item/nominal).",
+      desc: "Insentif otomatis untuk penjualan produk tertentu (per item terjual).",
       icon: Target,
       color: "emerald",
-      isAccountability: true,
     },
     {
       key: "absensi_shift",
@@ -231,7 +187,6 @@ export function TabAddon({
       desc: "Selfie absensi, pengajuan izin, dan penjadwalan shift crew.",
       icon: Clock,
       color: "cyan",
-      isAccountability: false,
     },
     {
       key: "review_pelanggan",
@@ -239,7 +194,6 @@ export function TabAddon({
       desc: "Input ulasan pelanggan mengikuti aturan default; pengaturan akses dikelola admin.",
       icon: Star,
       color: "amber",
-      isAccountability: false,
     },
     {
       key: "review_internal",
@@ -247,7 +201,6 @@ export function TabAddon({
       desc: "Penilaian antar karyawan secara berkala (peer review).",
       icon: ClipboardCheck,
       color: "rose",
-      isAccountability: false,
     },
     {
       key: "payroll",
@@ -255,7 +208,6 @@ export function TabAddon({
       desc: "Pengelolaan gaji pokok dan generate slip gaji otomatis.",
       icon: Banknote,
       color: "sky",
-      isAccountability: false,
     },
   ];
 
@@ -269,9 +221,7 @@ export function TabAddon({
 
   return (
     <div className="space-y-6 pb-20">
-      <form onSubmit={handleSaveAddon} className="space-y-8">
-        <input type="hidden" name="tenantId" value={branchId} />
-
+      <div className="space-y-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h2 className="text-lg font-black text-slate-800">Add-on & Konfigurasi</h2>
@@ -293,19 +243,8 @@ export function TabAddon({
                 </span>
               )}
             </div>
+            <p className="text-[11px] text-slate-400 mt-1">Perubahan tersimpan otomatis.</p>
           </div>
-          <button
-            type="submit"
-            disabled={isPending || !isDirty}
-            className="w-full sm:w-auto px-6 py-3 rounded-2xl font-black text-sm text-white bg-slate-900 hover:bg-black shadow-xl transition-all hover:-translate-y-0.5 active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2 border border-slate-700"
-          >
-            {isPending ? (
-              <Loader2 size={18} className="animate-spin text-sky-400" />
-            ) : (
-              <Save size={18} className="text-sky-400" />
-            )}
-            Simpan Perubahan Aturan
-          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -342,14 +281,7 @@ export function TabAddon({
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-black text-slate-800 uppercase tracking-tight text-sm">{card.title}</h3>
-                      {card.isAccountability && (
-                        <div className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[8px] font-black uppercase">
-                          <CheckCircle2 size={8} /> Auto
-                        </div>
-                      )}
-                    </div>
+                    <h3 className="font-black text-slate-800 uppercase tracking-tight text-sm">{card.title}</h3>
                     <p className="text-[11px] font-medium text-slate-500 leading-relaxed min-h-[40px]">{card.desc}</p>
                   </div>
                 </div>
@@ -389,15 +321,13 @@ export function TabAddon({
 
                 {active && !hasConfig && (
                   <div className="px-5 py-4 border-t border-sky-50 bg-sky-50/40 flex items-center justify-between">
-                    {(card.key === "payroll" || card.key === "absensi_shift" || card.key === "produk_fokus") && onNavigateToTab ? (
+                    {(card.key === "absensi_shift" || card.key === "produk_fokus") && onNavigateToTab ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          onNavigateToTab(card.key === "produk_fokus" ? "kpi" : "operasional");
-                        }}
+                        onClick={() => onNavigateToTab(card.key === "produk_fokus" ? "kpi" : "operasional")}
                         className="flex items-center gap-1.5 text-[10px] font-black text-sky-600 hover:text-sky-800 uppercase tracking-widest transition-all group"
                       >
-                        {card.key === "absensi_shift" ? "Atur di Jadwal & Absensi" : card.key === "produk_fokus" ? "Atur di Target & KPI" : "Atur di Setup Gaji"}
+                        {card.key === "produk_fokus" ? "Atur di Target & KPI" : "Atur di Jadwal & Absensi"}
                         <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
                       </button>
                     ) : (
@@ -423,7 +353,7 @@ export function TabAddon({
             );
           })}
         </div>
-      </form>
+      </div>
 
       {/* ── CONFIRM DISABLE MODAL ── */}
       {typeof document !== "undefined" &&
@@ -616,11 +546,21 @@ export function TabAddon({
                     {configModal === "payroll" && (() => {
                       const payrollSettings = getSettings("payroll") as Record<string, unknown>;
                       return (
-                        <PayrollAccessSection
-                          branchId={branchId}
-                          allowAdminInput={Boolean(payrollSettings.allow_admin_input)}
-                          allowOwnerInput={Boolean(payrollSettings.allow_owner_input)}
-                        />
+                        <div className="space-y-4">
+                          <div className="flex gap-3 items-start p-4 bg-sky-50 border border-sky-100 rounded-2xl">
+                            <AlertCircle size={15} className="text-sky-500 shrink-0 mt-0.5" />
+                            <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
+                              Di sini hanya diatur <span className="font-black">siapa yang boleh mengisi gaji</span>. Komponen
+                              gaji tiap karyawan (pokok, tunjangan, dll) diatur di tab{" "}
+                              <span className="font-black">Shift, Absensi &amp; Payroll → Setup Gaji</span>.
+                            </p>
+                          </div>
+                          <PayrollAccessSection
+                            branchId={branchId}
+                            allowAdminInput={Boolean(payrollSettings.allow_admin_input)}
+                            allowOwnerInput={Boolean(payrollSettings.allow_owner_input)}
+                          />
+                        </div>
                       );
                     })()}
                   </div>

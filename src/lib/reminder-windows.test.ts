@@ -9,14 +9,15 @@ test("reminder window should be normal before 16:00 WIB", () => {
   assert.equal(result.timezoneLabel, "WIB");
 });
 
-test("reminder window should be near_cutoff from 16:00 WIB", () => {
+// Periode cut-off sudah dihapus — phase kini selalu "normal" sepanjang hari.
+test("reminder window stays normal at 16:00 WIB (no more cut-off)", () => {
   const date = new Date("2026-04-29T09:00:00.000Z"); // 16:00 WIB
   const result = getOperationalReminderWindow(date);
-  assert.equal(result.phase, "near_cutoff");
+  assert.equal(result.phase, "normal");
 });
 
-test("reminder window should be post_cutoff from 19:00 WIB", () => {
+test("reminder window stays normal at 19:00 WIB (no more cut-off)", () => {
   const date = new Date("2026-04-29T12:00:00.000Z"); // 19:00 WIB
   const result = getOperationalReminderWindow(date);
-  assert.equal(result.phase, "post_cutoff");
+  assert.equal(result.phase, "normal");
 });

@@ -29,7 +29,7 @@ function StatusBadge({ status }: { status: string | null }) {
     </span>
   );
   const map: Record<string, { label: string; cls: string; Icon: any }> = {
-    draft_bba:                  { label: "Draft BBA",          cls: "text-slate-600 bg-slate-100",  Icon: AlertTriangle },
+    draft_bba:                  { label: "Draft Apotrik",          cls: "text-slate-600 bg-slate-100",  Icon: AlertTriangle },
     sent_to_owner:              { label: "Menunggu Review",     cls: "text-sky-700 bg-sky-100",      Icon: Clock },
     revision_requested_by_owner:{ label: "Revisi Diminta",      cls: "text-rose-700 bg-rose-100",    Icon: MessageSquareWarning },
     locked:                     { label: "Terkunci",            cls: "text-emerald-700 bg-emerald-100", Icon: Lock },
@@ -146,7 +146,7 @@ export function OwnerPayrollClient({
             <Banknote size={40} className="mx-auto text-slate-200 mb-3" />
             <p className="font-black text-slate-500 uppercase tracking-tight text-sm">Belum ada data payroll</p>
             <p className="text-xs text-slate-400 mt-1 font-medium">
-              BBA Admin belum menyiapkan rekap gaji untuk bulan ini.
+              Apotrik Admin belum menyiapkan rekap gaji untuk bulan ini.
             </p>
           </GlassCard>
         ) : (
@@ -191,7 +191,7 @@ export function OwnerPayrollClient({
               {periodStatus === "draft_bba" && (
                 <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
                   <Send size={14} className="text-slate-400" />
-                  <span className="text-xs font-bold text-slate-500">Menunggu BBA mengirim</span>
+                  <span className="text-xs font-bold text-slate-500">Menunggu Apotrik mengirim</span>
                 </div>
               )}
             </GlassCard>
@@ -279,7 +279,7 @@ export function OwnerPayrollClient({
             </div>
             <div className="p-5 space-y-4">
               <p className="text-xs text-slate-600 leading-relaxed">
-                Tulis alasan revisi yang jelas agar BBA Admin bisa melakukan perbaikan yang tepat.
+                Tulis alasan revisi yang jelas agar Apotrik Admin bisa melakukan perbaikan yang tepat.
               </p>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Alasan Revisi</label>

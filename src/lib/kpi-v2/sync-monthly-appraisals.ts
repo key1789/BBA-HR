@@ -6,6 +6,7 @@ import {
   type DailyAchievementRow,
 } from "@/lib/kpi-v2/calculator";
 import { getKpiV2SchemesEnabledForPeriod, isKpiConfigV2 } from "@/lib/kpi-v2/utils";
+import { computeProductFokusBonusTotalForUser } from "@/lib/produk-fokus-core";
 import type { BonusResult } from "@/lib/kpi-v2/calculator";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 
@@ -228,7 +229,7 @@ export async function syncMonthlyAppraisalsForPeriod(
       .select("user_id, bba_adjustment")
       .eq("monthly_audit_id", resolvedAuditId);
     if (crewAuditErr) {
-      return { error: "Gagal membaca penyesuaian BBA dari audit.", upsertedCount: 0, affectedUserCount: 0, calcVersion: "kpi" };
+      return { error: "Gagal membaca penyesuaian Apotrik dari audit.", upsertedCount: 0, affectedUserCount: 0, calcVersion: "kpi" };
     }
     for (const row of crewAuditRows ?? []) {
       const uid = row.user_id as string;
@@ -291,7 +292,9 @@ export async function syncMonthlyAppraisalsForPeriod(
 
   const bonusByUser = new Map<string, BonusResult>();
   if (configV2) {
-    const results = calculateMonthlyBonusFromInputs(configV2, dailyRows, crewRows);
+    const results = calculateMonthlyBonusFromInputs(configV2, dailyRows, crewRows, {
+      activeCrewCount: crewUserIds.length,
+    });
     for (const br of results) {
       bonusByUser.set(br.user_id, br);
     }
@@ -311,6 +314,49 @@ export async function syncMonthlyAppraisalsForPeriod(
   const sharedCalcBreakdown = configV2
     ? bonusBreakdownForCalc(configV2, Array.from(bonusByUser.values()), dailyRows, crewRows, meta)
     : null;
+
+  // ── Bonus produk fokus (SUMBER KEBENARAN server, bukan hasil hitung browser) ──
+  // Dihitung dengan helper yang sama dgn tampilan audit, agar layar & payroll selalu selaras.
+  const productFokusByUser = new Map<string, number>();
+  {
+    const { data: focusConfigs } = await supabase
+      .from("product_fokus_configs")
+      .select("*")
+      .eq("tenant_apotek_id", input.tenantApotekId)
+      .eq("period_month", input.periodMonth)
+      .eq("period_year", input.periodYear);
+
+    if (focusConfigs && focusConfigs.length > 0) {
+      const { data: approvedSubs } = await supabase
+        .from("daily_submissions")
+        .select("id")
+        .eq("tenant_apotek_id", input.tenantApotekId)
+        .in("status", COUNTED_STATUSES)
+        .in("user_id", crewUserIds)
+        .gte("submission_date", periodStart)
+        .lte("submission_date", periodEnd);
+      const approvedIds = (approvedSubs ?? []).map((r) => r.id as string).filter(Boolean);
+
+      let approvedProductRows: unknown[] = [];
+      if (approvedIds.length > 0) {
+        const { data: prodRows } = await supabase
+          .from("daily_submission_products")
+          .select("product_id, quantity_sold, submission:daily_submissions!submission_id(user_id, submission_date)")
+          .in("submission_id", approvedIds);
+        approvedProductRows = prodRows ?? [];
+      }
+
+      for (const crewUserId of crewUserIds) {
+        productFokusByUser.set(
+          crewUserId,
+          computeProductFokusBonusTotalForUser(crewUserId, focusConfigs, approvedProductRows, {
+            monthStartKey: periodStart,
+            mtdThroughDateKey: periodEnd,
+          }),
+        );
+      }
+    }
+  }
 
   const upsertPayload = crewUserIds
     .filter((crewUserId) => !(input.excludePublishedUsers && publishedSet.has(crewUserId)))
@@ -357,6 +403,7 @@ export async function syncMonthlyAppraisalsForPeriod(
         approved_omzet_total: agg.omzet,
         minus_point_total: 0,
         auto_bonus_accountability: autoBonus,
+        product_fokus_bonus: productFokusByUser.get(crewUserId) ?? 0,
         addon_manual_total: addonManualTotal,
         bba_adjustment: bbaAdjustment,
         calc_version: calcVersion,

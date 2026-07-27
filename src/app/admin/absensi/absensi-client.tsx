@@ -110,7 +110,7 @@ function LeaveApprovalCard({ leave }: { leave: PendingLeave }) {
       {/* Alasan */}
       {leave.reason && (
         <p className="text-sm text-slate-600 leading-relaxed bg-slate-50 rounded-xl px-3 py-2">
-          "{leave.reason}"
+          &quot;{leave.reason}&quot;
         </p>
       )}
 
@@ -256,7 +256,7 @@ function SwapApprovalCard({ swap }: { swap: PendingSwap }) {
       {/* Alasan */}
       {swap.reason && (
         <p className="text-sm text-slate-600 leading-relaxed bg-slate-50 rounded-xl px-3 py-2">
-          "{swap.reason}"
+          &quot;{swap.reason}&quot;
         </p>
       )}
 

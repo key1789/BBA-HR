@@ -75,7 +75,7 @@ export default async function CrewDashboardPage() {
   ] = await Promise.all([
     supabase
       .from("daily_submissions")
-      .select("omzet_total, transaction_total, product_total, rejected_customer_total, status")
+      .select("omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, status")
       .eq("tenant_apotek_id", active.tenantId)
       .eq("user_id", userId)
       .eq("submission_date", today),
@@ -116,7 +116,7 @@ export default async function CrewDashboardPage() {
     // Personal omzet + metrics bulan ini (approved)
     supabase
       .from("daily_submissions")
-      .select("omzet_total, transaction_total, product_total, rejected_customer_total, submission_date")
+      .select("omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, submission_date")
       .eq("tenant_apotek_id", active.tenantId)
       .eq("user_id", userId)
       .in("status", ["approved", "edited_by_admin"])
@@ -158,6 +158,7 @@ export default async function CrewDashboardPage() {
   const todayTrx      = todayRows.reduce((s, r) => s + Number(r.transaction_total ?? 0), 0);
   const todayProd     = todayRows.reduce((s, r) => s + Number(r.product_total ?? 0), 0);
   const todayRejected = todayRows.reduce((s, r) => s + Number(r.rejected_customer_total ?? 0), 0);
+  const todayMedRejected = todayRows.reduce((s, r) => s + Number(r.rejected_medicine_total ?? 0), 0);
   const todayStatus   = todayRows[0]?.status ?? null;
 
   const pendingCount  = personalPending.count  ?? 0;
@@ -179,6 +180,7 @@ export default async function CrewDashboardPage() {
   const runTrx      = personalMonthly.reduce((s, r) => s + Number(r.transaction_total ?? 0), 0);
   const runProd     = personalMonthly.reduce((s, r) => s + Number(r.product_total ?? 0), 0);
   const runRejected = personalMonthly.reduce((s, r) => s + Number(r.rejected_customer_total ?? 0), 0);
+  const runMedRejected = personalMonthly.reduce((s, r) => s + Number(r.rejected_medicine_total ?? 0), 0);
 
   // ── Chart bars (personal daily omzet for current month up to today) ──
   const submissionByDate = new Map<string, number>();
@@ -408,11 +410,13 @@ export default async function CrewDashboardPage() {
         todayTrx={todayTrx}
         todayProd={todayProd}
         todayRejected={todayRejected}
+        todayMedRejected={todayMedRejected}
         dailyTarget={dailyTarget}
         runOmzet={runOmzet}
         runTrx={runTrx}
         runProd={runProd}
         runRejected={runRejected}
+        runMedRejected={runMedRejected}
         monthlyTarget={monthlyTarget}
         chartBars={chartBars}
         leaderboard={leaderboard}

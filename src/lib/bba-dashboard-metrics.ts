@@ -12,6 +12,7 @@ export type BbaDashboardKpiAgg = {
   transactions: number;
   products: number;
   lostCustomers: number;
+  lostMedicines: number;
   atv: number;
   atu: number;
 };
@@ -22,21 +23,24 @@ export function computeDashboardKpis(
     transaction_total?: number | null;
     product_total?: number | null;
     rejected_customer_total?: number | null;
+    rejected_medicine_total?: number | null;
   }[],
 ): BbaDashboardKpiAgg {
   let omzet = 0;
   let transactions = 0;
   let products = 0;
   let lostCustomers = 0;
+  let lostMedicines = 0;
   for (const r of rows) {
     omzet += Number(r.omzet_total ?? 0);
     transactions += Number(r.transaction_total ?? 0);
     products += Number(r.product_total ?? 0);
     lostCustomers += Number(r.rejected_customer_total ?? 0);
+    lostMedicines += Number(r.rejected_medicine_total ?? 0);
   }
   const atv = transactions > 0 ? omzet / transactions : 0;
   const atu = transactions > 0 ? products / transactions : 0;
-  return { omzet, transactions, products, lostCustomers, atv, atu };
+  return { omzet, transactions, products, lostCustomers, lostMedicines, atv, atu };
 }
 
 export function buildDailyOmzetSeries(

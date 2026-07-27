@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { AnnouncementInbox, type AnnouncementInboxItem } from "@/components/announcements/announcement-inbox";
 import { markAnnouncementViewedAction } from "@/actions/announcements";
 import { redirect } from "next/navigation";
-import { publishDueAnnouncementsAction } from "@/app/bba/broadcast/actions";
+import { publishDueAnnouncementsAction } from "@/app/sa/broadcast/actions";
 
 type ReceiptRow = {
   viewed_at: string | null;
@@ -81,7 +81,7 @@ export default async function AdminAnnouncementPage() {
 
   return (
     <section className="space-y-4">
-      <PageHeader title="Admin - Pengumuman" subtitle="Komunikasi operasional dari BBA untuk tim admin cabang." />
+      <PageHeader title="Admin - Pengumuman" subtitle="Komunikasi operasional dari Apotrik untuk tim admin cabang." />
       <AnnouncementInbox items={items} audienceLabel="Admin Apotek" />
     </section>
   );

@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, BarChart3, Wallet, TrendingUp,
+  LayoutDashboard, BarChart3, Wallet, TrendingUp, CalendarDays,
   ChevronLeft, ChevronRight, LogOut,
 } from "lucide-react";
 import { LinkPendingHint } from "@/components/shared/link-pending-hint";
@@ -24,6 +24,12 @@ const NAV_SALARY = {
   Icon: Wallet,
 } as const;
 
+const NAV_SCHEDULE = {
+  path: "/owner/jadwal",
+  label: "Jadwal",
+  Icon: CalendarDays,
+} as const;
+
 function isActive(pathname: string, path: string) {
   return pathname === path || pathname.startsWith(`${path}/`);
 }
@@ -32,17 +38,23 @@ export function OwnerSidebar({
   userEmail,
   handleLogout,
   showSalaryConfig,
+  showSchedule = false,
 }: {
   userEmail: string;
   handleLogout: () => Promise<void>;
   showSalaryConfig: boolean;
+  showSchedule?: boolean;
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname() ?? "";
 
-  const nav = showSalaryConfig
-    ? [NAV_BASE[0], NAV_BASE[1], NAV_SALARY, NAV_BASE[2]]
-    : [...NAV_BASE];
+  const nav = [
+    NAV_BASE[0],
+    NAV_BASE[1],
+    ...(showSchedule ? [NAV_SCHEDULE] : []),
+    ...(showSalaryConfig ? [NAV_SALARY] : []),
+    NAV_BASE[2],
+  ];
 
   return (
     <motion.aside
@@ -62,7 +74,7 @@ export function OwnerSidebar({
       <div className={cn("flex items-center gap-3 mb-10", isCollapsed ? "justify-center" : "px-2")}>
         <div className="w-10 h-10 min-w-[40px] rounded-xl overflow-hidden shrink-0 shadow-lg ring-1 ring-white/10">
           <Image
-            src="/bba-logo.png"
+            src="/apotrik-logo.png"
             width={40}
             height={40}
             alt="Owner Portal"

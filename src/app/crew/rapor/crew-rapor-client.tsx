@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { customAdjMultiplier } from "@/lib/payroll-adjustments";
 import {
   ClipboardCheck, Lock, AlertCircle,
   Star, Wallet, Award, BarChart2, Zap,
@@ -55,6 +56,8 @@ type Props = {
   // Operasional tambahan
   pelangganTertolak: number;
   perkiraanOmzetTertolak: number;
+  obatTertolak: number;
+  perkiraanOmzetObat: number;
   kontribusiPct: number | null;
   absensi: AbsensiData;
   // Evaluasi
@@ -156,7 +159,7 @@ function PenilaianTab(props: Props) {
     month, year, isPublished, publishedAt,
     mySnapshot, runningPersonal, personalTarget, teamTarget,
     approvedCount,
-    pelangganTertolak, perkiraanOmzetTertolak, kontribusiPct, absensi,
+    pelangganTertolak, perkiraanOmzetTertolak, obatTertolak, perkiraanOmzetObat, kontribusiPct, absensi,
     crewAudit, peerRatingAvg, peerReviewCount,
     addonReviewInternal, addonReviewPelanggan,
     totalBonus, autoBonus, addonManual, bbaAdj,
@@ -337,6 +340,14 @@ function PenilaianTab(props: Props) {
             </div>
           )}
 
+          {/* Obat Tertolak */}
+          {obatTertolak > 0 && (
+            <div className="mx-4 mb-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+              <StatChip label="Obat Tertolak" value={`${NUM.format(obatTertolak)} obat`} color="rose" />
+              <StatChip label="Est. Omzet (Obat)" value={IDR.format(perkiraanOmzetObat)} color="rose" />
+            </div>
+          )}
+
           {perfIsRunning && (
             <div className="mx-4 mb-4 flex items-start gap-2 rounded-2xl bg-amber-50 border border-amber-200 px-3 py-2.5">
               <AlertCircle size={12} className="shrink-0 text-amber-600 mt-0.5" />
@@ -463,7 +474,7 @@ function PenilaianTab(props: Props) {
                 color={(addonManual ?? 0) < 0 ? "rose" : undefined} />
             )}
             {(bbaAdj ?? 0) !== 0 && (
-              <LineItem label="Penyesuaian BBA" value={IDR.format(bbaAdj ?? 0)} indent
+              <LineItem label="Penyesuaian Apotrik" value={IDR.format(bbaAdj ?? 0)} indent
                 color={(bbaAdj ?? 0) < 0 ? "rose" : undefined} />
             )}
             <div className="px-5 py-3 flex items-center justify-between bg-amber-50">
@@ -590,7 +601,7 @@ function RaporPayrollTab(props: Props) {
               <LineItem label="Bonus Tambahan"  value={IDR.format(addonManual ?? 0)} bold color={(addonManual ?? 0) >= 0 ? "emerald" : "rose"} />
             )}
             {(bbaAdj ?? 0) !== 0 && (
-              <LineItem label="Penyesuaian BBA" value={IDR.format(bbaAdj ?? 0)}     bold color={(bbaAdj ?? 0) >= 0 ? "emerald" : "rose"} />
+              <LineItem label="Penyesuaian Apotrik" value={IDR.format(bbaAdj ?? 0)}     bold color={(bbaAdj ?? 0) >= 0 ? "emerald" : "rose"} />
             )}
             <div className="px-5 py-4 flex items-center justify-between bg-slate-950 rounded-b-3xl">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Bonus</p>
@@ -732,6 +743,14 @@ function SlipGajiCard({ thpData }: { thpData: any }) {
   const hasBreakdown = thpData.posAllowance > 0 || thpData.mealAllowanceTotal > 0 || thpData.transAllowanceTotal > 0;
   const customAdds: any[] = (thpData.customAdjustments ?? []).filter((a: any) => a.type === "addition");
   const customDeds: any[] = (thpData.customAdjustments ?? []).filter((a: any) => a.type === "deduction");
+  // Basis "daily" ditampilkan × hari masuk (pengali dari satu sumber), agar rincian slip
+  // konsisten dengan subtotal (yang sudah dikali hari di server).
+  const dwCrew = Number(thpData.daysWorked ?? 0);
+  const adjDisplayAmount = (a: any) => Math.abs(Number(a.amount ?? 0)) * customAdjMultiplier(a, dwCrew);
+  const adjLabel = (a: any, fallback: string) => {
+    const name = String(a.name ?? fallback);
+    return String(a.basis ?? "monthly").toLowerCase() === "daily" ? `${name} (× ${dwCrew} hari)` : name;
+  };
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
@@ -775,7 +794,7 @@ function SlipGajiCard({ thpData }: { thpData: any }) {
             {thpData.mealAllowanceTotal  > 0 && <LineItem label="Tunjangan Makan"             value={IDR.format(thpData.mealAllowanceTotal)}  indent />}
             {thpData.transAllowanceTotal > 0 && <LineItem label="Tunjangan Transport"         value={IDR.format(thpData.transAllowanceTotal)} indent />}
             {customAdds.map((a: any, i: number) => (
-              <LineItem key={i} label={String(a.name ?? "Tambahan")} value={IDR.format(Number(a.amount ?? 0))} indent />
+              <LineItem key={i} label={adjLabel(a, "Tambahan")} value={IDR.format(adjDisplayAmount(a))} indent />
             ))}
           </>
         ) : (
@@ -801,7 +820,7 @@ function SlipGajiCard({ thpData }: { thpData: any }) {
           <LineItem label="BPJS" value={`−${IDR.format(thpData.bpjsDeduction)}`} bold color="rose" />
         )}
         {customDeds.map((a: any, i: number) => (
-          <LineItem key={i} label={String(a.name ?? "Potongan")} value={`−${IDR.format(Number(a.amount ?? 0))}`} indent color="rose" />
+          <LineItem key={i} label={adjLabel(a, "Potongan")} value={`−${IDR.format(adjDisplayAmount(a))}`} indent color="rose" />
         ))}
         {thpData.deduction === 0 && (
           <div className="px-5 py-3">

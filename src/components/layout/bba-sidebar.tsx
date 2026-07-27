@@ -20,27 +20,27 @@ const MENU_GROUPS: {
 }[] = [
   {
     label: "Pusat Kontrol",
-    items: [{ name: "Dashboard", path: "/bba/dashboard", icon: LayoutDashboard, menuKey: "dashboard" }],
+    items: [{ name: "Dashboard", path: "/sa/dashboard", icon: LayoutDashboard, menuKey: "dashboard" }],
   },
   {
     label: "Master Data",
     items: [
-      { name: "Kelola Data Owner", path: "/bba/owners", icon: Building2, menuKey: "owners" },
-      { name: "Manajemen Apotek", path: "/bba/branches", icon: Store, menuKey: "branches" },
-      { name: "Master Produk Fokus", path: "/bba/products", icon: Package, menuKey: "products" },
+      { name: "Kelola Data Owner", path: "/sa/owners", icon: Building2, menuKey: "owners" },
+      { name: "Manajemen Apotek", path: "/sa/branches", icon: Store, menuKey: "branches" },
+      { name: "Master Produk Fokus", path: "/sa/products", icon: Package, menuKey: "products" },
     ],
   },
   {
     label: "Operasional & Audit",
     items: [
-      { name: "Approval & Audit", path: "/bba/audit", icon: ClipboardCheck, menuKey: "audit" },
-      { name: "Pusat Unduhan", path: "/bba/export", icon: Download, menuKey: "export" },
-      { name: "Pusat Pengumuman", path: "/bba/broadcast", icon: Megaphone, menuKey: "broadcast" },
+      { name: "Approval & Audit", path: "/sa/audit", icon: ClipboardCheck, menuKey: "audit" },
+      { name: "Pusat Unduhan", path: "/sa/export", icon: Download, menuKey: "export" },
+      { name: "Pusat Pengumuman", path: "/sa/broadcast", icon: Megaphone, menuKey: "broadcast" },
     ],
   },
   {
     label: "Manajemen Sistem",
-    items: [{ name: "Kelola Super Admin", path: "/bba/admins", icon: ShieldCheck, menuKey: "admins" }],
+    items: [{ name: "Kelola Super Admin", path: "/sa/admins", icon: ShieldCheck, menuKey: "admins" }],
   },
 ];
 
@@ -60,7 +60,7 @@ export function BbaSidebar({
   const allowed = bbaMenuFilter === null ? null : new Set(bbaMenuFilter);
 
   const portalLabel =
-    session?.isGlobalSuperAdmin ? "Super Admin Global" : session?.bbaPortalStaffRole === "analyst" ? "Analyst BBA" : "Super Admin BBA";
+    session?.isGlobalSuperAdmin ? "Super Admin Global" : session?.bbaPortalStaffRole === "analyst" ? "Analyst Apotrik" : "Super Admin Apotrik";
 
   return (
     <motion.aside 
@@ -80,10 +80,10 @@ export function BbaSidebar({
       <div className={cn("flex items-center gap-3 mb-10", isCollapsed ? "justify-center" : "px-2")}>
         <div className="w-10 h-10 min-w-[40px] rounded-xl overflow-hidden shrink-0 shadow-lg ring-1 ring-white/10">
           <Image
-            src="/bba-logo.png"
+            src="/apotrik-logo.png"
             width={40}
             height={40}
-            alt="BBA Logo"
+            alt="Apotrik Logo"
             className="w-full h-full object-cover"
             priority
           />
@@ -94,7 +94,7 @@ export function BbaSidebar({
             animate={{ opacity: 1, x: 0 }}
             className="flex flex-col overflow-hidden"
           >
-            <h1 className="font-bold text-lg leading-tight tracking-tight text-white whitespace-nowrap">BBA Portal</h1>
+            <Image src="/apotrik-wordmark-white.png" alt="Apotrik" width={3148} height={656} className="h-5 w-auto" />
             <p className="text-[10px] font-bold text-indigo-400 tracking-wider whitespace-nowrap">APOTEK SYSTEM</p>
           </motion.div>
         )}

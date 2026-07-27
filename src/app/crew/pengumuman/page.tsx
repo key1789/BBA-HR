@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { AnnouncementInbox, type AnnouncementInboxItem } from "@/components/announcements/announcement-inbox";
 import { markAnnouncementViewedAction } from "@/actions/announcements";
 import { redirect } from "next/navigation";
-import { publishDueAnnouncementsAction } from "@/app/bba/broadcast/actions";
+import { publishDueAnnouncementsAction } from "@/app/sa/broadcast/actions";
 import { AnimatedPage } from "@/components/shared/animated-page";
 import { Bell } from "lucide-react";
 
@@ -88,7 +88,7 @@ export default async function CrewAnnouncementPage() {
           </div>
           <div>
             <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Pengumuman</h1>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Info operasional dari BBA</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Info operasional dari Apotrik</p>
           </div>
         </div>
       </div>

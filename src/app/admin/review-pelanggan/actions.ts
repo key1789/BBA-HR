@@ -57,7 +57,8 @@ export async function submitCustomerReviewAction(formData: FormData) {
 
   const { error: dbError } = await supabase.from("customer_review_logs").insert({
     tenant_apotek_id: active.tenantId,
-    user_id: userId,
+    tagged_user_id: userId,
+    created_by_user_id: session!.userId,
     review_text: reviewText,
     customer_name: customerName,
     rating,

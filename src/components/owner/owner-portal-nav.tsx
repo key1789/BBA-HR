@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { LinkPendingHint } from "@/components/shared/link-pending-hint";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BarChart3, Wallet, TrendingUp } from "lucide-react";
+import { LayoutDashboard, BarChart3, Wallet, TrendingUp, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_BASE = [
@@ -13,6 +13,7 @@ const NAV_BASE = [
 ] as const;
 
 const NAV_SALARY = { path: "/owner/karyawan", label: "Setup Gaji", Icon: Wallet } as const;
+const NAV_SCHEDULE = { path: "/owner/jadwal", label: "Jadwal", Icon: CalendarDays } as const;
 
 function isActive(pathname: string, path: string) {
   return pathname === path || pathname.startsWith(`${path}/`);
@@ -23,15 +24,21 @@ type Variant = "sidebar" | "bottom";
 export function OwnerPortalNav({
   variant,
   showSalaryConfig = false,
+  showSchedule = false,
 }: {
   variant: Variant;
   showSalaryConfig?: boolean;
+  showSchedule?: boolean;
 }) {
   const pathname = usePathname() ?? "";
 
-  const nav = showSalaryConfig
-    ? [NAV_BASE[0], NAV_BASE[1], NAV_SALARY, NAV_BASE[2]]
-    : [...NAV_BASE];
+  const nav = [
+    NAV_BASE[0],
+    NAV_BASE[1],
+    ...(showSchedule ? [NAV_SCHEDULE] : []),
+    ...(showSalaryConfig ? [NAV_SALARY] : []),
+    NAV_BASE[2],
+  ];
 
   if (variant === "sidebar") {
     return (

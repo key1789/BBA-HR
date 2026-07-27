@@ -185,7 +185,7 @@ export function HelpDrawer({ content }: { content: HelpContent }) {
         {/* Footer */}
         <div className="px-5 py-3 border-t border-slate-100 flex-shrink-0">
           <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-            Butuh bantuan lebih lanjut? Hubungi tim BBA.
+            Butuh bantuan lebih lanjut? Hubungi tim Apotrik.
           </p>
         </div>
       </div>

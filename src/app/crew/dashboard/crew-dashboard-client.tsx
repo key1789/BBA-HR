@@ -183,11 +183,13 @@ export function CrewDashboardClient({
   todayTrx,
   todayProd,
   todayRejected,
+  todayMedRejected,
   dailyTarget,
   runOmzet,
   runTrx,
   runProd,
   runRejected,
+  runMedRejected,
   monthlyTarget,
   chartBars,
   leaderboard,
@@ -196,11 +198,13 @@ export function CrewDashboardClient({
   todayTrx: number;
   todayProd: number;
   todayRejected: number;
+  todayMedRejected: number;
   dailyTarget: number | null;
   runOmzet: number;
   runTrx: number;
   runProd: number;
   runRejected: number;
+  runMedRejected: number;
   monthlyTarget: number | null;
   chartBars: ChartBar[];
   leaderboard: LeaderboardRow[];
@@ -213,6 +217,7 @@ export function CrewDashboardClient({
   const activeTrx     = view === "harian" ? todayTrx     : runTrx;
   const activeProd    = view === "harian" ? todayProd    : runProd;
   const activeRejected = view === "harian" ? todayRejected : runRejected;
+  const activeMedRejected = view === "harian" ? todayMedRejected : runMedRejected;
   const activeTarget  = view === "harian" ? dailyTarget  : monthlyTarget;
   const capaianPct    = activeTarget && activeTarget > 0
     ? Math.min(100, (activeOmzet / activeTarget) * 100)
@@ -302,7 +307,7 @@ export function CrewDashboardClient({
         </div>
 
         {/* 3 metric chips */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <div className="bg-slate-50 rounded-2xl px-3 py-2">
             <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Nota</p>
             <p className="text-sm font-black text-slate-800 mt-0.5">{activeTrx}</p>
@@ -312,12 +317,21 @@ export function CrewDashboardClient({
             <p className="text-sm font-black text-slate-800 mt-0.5">{activeProd}</p>
           </div>
           <div className="bg-slate-50 rounded-2xl px-3 py-2">
-            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Ditolak</p>
+            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Plg. Ditolak</p>
             <p className={cn(
               "text-sm font-black mt-0.5",
               activeRejected > 0 ? "text-rose-600" : "text-slate-800",
             )}>
               {activeRejected}
+            </p>
+          </div>
+          <div className="bg-slate-50 rounded-2xl px-3 py-2">
+            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Obat Ditolak</p>
+            <p className={cn(
+              "text-sm font-black mt-0.5",
+              activeMedRejected > 0 ? "text-rose-600" : "text-slate-800",
+            )}>
+              {activeMedRejected}
             </p>
           </div>
         </div>

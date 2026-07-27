@@ -17,7 +17,7 @@ const NUM = new Intl.NumberFormat("id-ID");
 const AUDIT_STATUS_LABEL: Record<string, string> = {
   DRAFT:        "Draft",
   UNDER_REVIEW: "Under Review",
-  APPROVED:     "Disetujui BBA",
+  APPROVED:     "Disetujui Apotrik",
 };
 
 type CrewRow = {
@@ -30,6 +30,10 @@ type CrewRow = {
   atv: number;
   atu: number;
   projectedLost: number;
+  atvFallback: boolean;
+  medRejected: number;
+  projectedMedLost: number;
+  medFallback: boolean;
 };
 
 type DayRow = {
@@ -37,6 +41,10 @@ type DayRow = {
   rejected: number;
   atv: number;
   projectedLost: number;
+  atvFallback: boolean;
+  medRejected: number;
+  projectedMedLost: number;
+  medFallback: boolean;
 };
 
 function fmtShortDate(d: string) {
@@ -82,7 +90,7 @@ export default async function AdminLaporanPage({
     getReportMetricsForTenant(active.tenantId, { from: params.from, to: params.to }),
     supabase
       .from("daily_submissions")
-      .select("user_id, submission_date, omzet_total, transaction_total, product_total, rejected_customer_total, app_user:user_id(full_name)")
+      .select("user_id, submission_date, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, app_user:user_id(full_name)")
       .eq("tenant_apotek_id", active.tenantId)
       .in("status", ["approved", "edited_by_admin"])
       .gte("submission_date", effectiveFrom)
@@ -135,44 +143,78 @@ export default async function AdminLaporanPage({
   const projectedPct   = targetOmzet > 0 ? (projectedOmzet / targetOmzet) * 100 : 0;
 
   // ── Per-karyawan aggregation ──
-  const byUser = new Map<string, { name: string; omzet: number; trx: number; prod: number; rejected: number }>();
-  for (const row of (submissionsResult.data ?? []) as any[]) {
+  type LaporanRow = {
+    user_id: string;
+    app_user: { full_name: string | null } | { full_name: string | null }[] | null;
+    omzet_total: number | null;
+    transaction_total: number | null;
+    product_total: number | null;
+    rejected_customer_total: number | null;
+    rejected_medicine_total: number | null;
+    submission_date: string;
+  };
+  const byUser = new Map<string, { name: string; omzet: number; trx: number; prod: number; rejected: number; med: number }>();
+  for (const row of (submissionsResult.data ?? []) as LaporanRow[]) {
     const uid  = String(row.user_id);
     const name = (Array.isArray(row.app_user) ? row.app_user[0]?.full_name : row.app_user?.full_name) ?? "—";
-    const cur  = byUser.get(uid) ?? { name, omzet: 0, trx: 0, prod: 0, rejected: 0 };
+    const cur  = byUser.get(uid) ?? { name, omzet: 0, trx: 0, prod: 0, rejected: 0, med: 0 };
     cur.omzet    += Number(row.omzet_total            ?? 0);
     cur.trx      += Number(row.transaction_total      ?? 0);
     cur.prod     += Number(row.product_total          ?? 0);
     cur.rejected += Number(row.rejected_customer_total ?? 0);
+    cur.med      += Number(row.rejected_medicine_total ?? 0);
     byUser.set(uid, cur);
   }
+
+  // ATV cabang = total omzet ÷ total transaksi (rentang). Harga rata-rata per item obat
+  // cabang = total omzet ÷ total produk terjual. Keduanya jadi fallback saat pembagi baris
+  // = 0 agar potensi omzet hilang tidak ikut 0 padahal ada penolakan.
+  let branchOmzetSum = 0;
+  let branchTrxSum = 0;
+  let branchProdSum = 0;
+  for (const v of byUser.values()) { branchOmzetSum += v.omzet; branchTrxSum += v.trx; branchProdSum += v.prod; }
+  const branchAtv = branchTrxSum > 0 ? branchOmzetSum / branchTrxSum : 0;
+  const branchItemPrice = branchProdSum > 0 ? branchOmzetSum / branchProdSum : 0;
 
   const crewRows: CrewRow[] = Array.from(byUser.entries())
     .map(([userId, v]) => {
       const atv          = v.trx > 0 ? v.omzet / v.trx : 0;
       const atu          = v.trx > 0 ? v.prod  / v.trx : 0;
-      const projectedLost = v.rejected * atv;
-      return { userId, name: v.name, omzet: v.omzet, trx: v.trx, prod: v.prod, rejected: v.rejected, atv, atu, projectedLost };
+      const atvFallback  = v.trx === 0 && v.rejected > 0 && branchAtv > 0;
+      const effAtv       = atvFallback ? branchAtv : atv;
+      const projectedLost = v.rejected * effAtv;
+      // Obat tertolak × harga rata-rata per item (omzet/produk), fallback harga cabang saat produk 0.
+      const medFallback  = v.prod === 0 && v.med > 0 && branchItemPrice > 0;
+      const effItemPrice = medFallback ? branchItemPrice : (v.prod > 0 ? v.omzet / v.prod : 0);
+      const projectedMedLost = v.med * effItemPrice;
+      return { userId, name: v.name, omzet: v.omzet, trx: v.trx, prod: v.prod, rejected: v.rejected, atv, atu, projectedLost, atvFallback, medRejected: v.med, projectedMedLost, medFallback };
     })
     .sort((a, b) => b.omzet - a.omzet);
 
-  // ── Per-hari penolakan aggregation ──
-  const byDate = new Map<string, { omzet: number; trx: number; rejected: number }>();
-  for (const row of (submissionsResult.data ?? []) as any[]) {
+  // ── Per-hari penolakan aggregation (pelanggan + obat) ──
+  const byDate = new Map<string, { omzet: number; trx: number; prod: number; rejected: number; med: number }>();
+  for (const row of (submissionsResult.data ?? []) as LaporanRow[]) {
     const d   = String(row.submission_date).slice(0, 10);
-    const cur = byDate.get(d) ?? { omzet: 0, trx: 0, rejected: 0 };
+    const cur = byDate.get(d) ?? { omzet: 0, trx: 0, prod: 0, rejected: 0, med: 0 };
     cur.omzet    += Number(row.omzet_total            ?? 0);
     cur.trx      += Number(row.transaction_total      ?? 0);
+    cur.prod     += Number(row.product_total          ?? 0);
     cur.rejected += Number(row.rejected_customer_total ?? 0);
+    cur.med      += Number(row.rejected_medicine_total ?? 0);
     byDate.set(d, cur);
   }
 
   const dayRows: DayRow[] = Array.from(byDate.entries())
-    .filter(([, v]) => v.rejected > 0)
+    .filter(([, v]) => v.rejected > 0 || v.med > 0)
     .map(([date, v]) => {
       const atv           = v.trx > 0 ? v.omzet / v.trx : 0;
-      const projectedLost = v.rejected * atv;
-      return { date, rejected: v.rejected, atv, projectedLost };
+      const atvFallback   = v.trx === 0 && branchAtv > 0;
+      const effAtv        = atvFallback ? branchAtv : atv;
+      const projectedLost = v.rejected * effAtv;
+      const medFallback   = v.prod === 0 && v.med > 0 && branchItemPrice > 0;
+      const effItemPrice  = medFallback ? branchItemPrice : (v.prod > 0 ? v.omzet / v.prod : 0);
+      const projectedMedLost = v.med * effItemPrice;
+      return { date, rejected: v.rejected, atv, projectedLost, atvFallback, medRejected: v.med, projectedMedLost, medFallback };
     })
     .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -189,8 +231,12 @@ export default async function AdminLaporanPage({
   const totalProd         = crewRows.reduce((s, r) => s + r.prod, 0);
   const totalRejected     = crewRows.reduce((s, r) => s + r.rejected, 0);
   const totalProjectedLost = crewRows.reduce((s, r) => s + r.projectedLost, 0);
+  const totalMedRejected  = crewRows.reduce((s, r) => s + r.medRejected, 0);
+  const totalMedLost      = crewRows.reduce((s, r) => s + r.projectedMedLost, 0);
   const totalDayRejected  = dayRows.reduce((s, d) => s + d.rejected, 0);
   const totalDayLost      = dayRows.reduce((s, d) => s + d.projectedLost, 0);
+  const totalDayMedRejected = dayRows.reduce((s, d) => s + d.medRejected, 0);
+  const totalDayMedLost   = dayRows.reduce((s, d) => s + d.projectedMedLost, 0);
 
   return (
     <section className="space-y-6">
@@ -294,7 +340,7 @@ export default async function AdminLaporanPage({
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           {targetOmzet === 0 ? (
             <p className="py-3 text-center text-sm text-slate-400">
-              KPI belum dikonfigurasi untuk {currentMonthLabel}. Hubungi tim BBA.
+              KPI belum dikonfigurasi untuk {currentMonthLabel}. Hubungi tim Apotrik.
             </p>
           ) : (
             <div className="space-y-4">
@@ -421,8 +467,30 @@ export default async function AdminLaporanPage({
                         </div>
                         <div>
                           <span className="text-slate-400">Est. Hilang</span>
+                          <span
+                            className="ml-1.5 font-semibold tabular-nums text-rose-600"
+                            title={r.atvFallback ? "Estimasi memakai ATV rata-rata cabang (baris ini tanpa transaksi)" : undefined}
+                          >
+                            {r.atvFallback ? "≈ " : ""}{IDR.format(r.projectedLost)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                    {r.medRejected > 0 && (
+                      <>
+                        <div>
+                          <span className="text-slate-400">Obat Tertolak</span>
                           <span className="ml-1.5 font-semibold tabular-nums text-rose-600">
-                            {IDR.format(r.projectedLost)}
+                            {NUM.format(r.medRejected)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">Est. Hilang (obat)</span>
+                          <span
+                            className="ml-1.5 font-semibold tabular-nums text-rose-600"
+                            title={r.medFallback ? "Estimasi memakai harga rata-rata per item cabang (baris ini tanpa produk terjual)" : undefined}
+                          >
+                            {r.medFallback ? "≈ " : ""}{IDR.format(r.projectedMedLost)}
                           </span>
                         </div>
                       </>
@@ -465,6 +533,18 @@ export default async function AdminLaporanPage({
                         {IDR.format(totalProjectedLost)}
                       </span>
                     </div>
+                    <div>
+                      <span className="text-slate-400">Obat Tertolak</span>
+                      <span className="ml-1.5 font-semibold tabular-nums text-rose-600">
+                        {NUM.format(totalMedRejected)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Est. Hilang (obat)</span>
+                      <span className="ml-1.5 font-semibold tabular-nums text-rose-600">
+                        {IDR.format(totalMedLost)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -483,6 +563,8 @@ export default async function AdminLaporanPage({
                     <th className="px-4 py-3 text-right">ATU</th>
                     <th className="px-4 py-3 text-right">Plg. Tertolak</th>
                     <th className="px-4 py-3 text-right">Perkiraan Omzet Tertolak</th>
+                    <th className="px-4 py-3 text-right">Obat Tertolak</th>
+                    <th className="px-4 py-3 text-right">Perkiraan Omzet (Obat)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -495,7 +577,9 @@ export default async function AdminLaporanPage({
                       <td className="px-4 py-3 text-right tabular-nums text-slate-600">{NUM.format(r.prod)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-slate-700">{r.atu.toFixed(2)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-slate-600">{NUM.format(r.rejected)}</td>
-                      <td className="px-4 py-3 text-right font-medium tabular-nums text-rose-600">{IDR.format(r.projectedLost)}</td>
+                      <td className="px-4 py-3 text-right font-medium tabular-nums text-rose-600" title={r.atvFallback ? "Estimasi memakai ATV rata-rata cabang (baris ini tanpa transaksi)" : undefined}>{r.atvFallback ? "≈ " : ""}{IDR.format(r.projectedLost)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-slate-600">{NUM.format(r.medRejected)}</td>
+                      <td className="px-4 py-3 text-right font-medium tabular-nums text-rose-600" title={r.medFallback ? "Estimasi memakai harga rata-rata per item cabang (baris ini tanpa produk terjual)" : undefined}>{r.medFallback ? "≈ " : ""}{IDR.format(r.projectedMedLost)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -510,6 +594,8 @@ export default async function AdminLaporanPage({
                       <td className="px-4 py-3 text-right">—</td>
                       <td className="px-4 py-3 text-right tabular-nums">{NUM.format(totalRejected)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-rose-600">{IDR.format(totalProjectedLost)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{NUM.format(totalMedRejected)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-rose-600">{IDR.format(totalMedLost)}</td>
                     </tr>
                   </tfoot>
                 )}
@@ -523,7 +609,7 @@ export default async function AdminLaporanPage({
       {dayRows.length === 0 && crewRows.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Penolakan Pelanggan per Hari
+            Penolakan per Hari (Pelanggan & Obat)
           </h2>
           <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
             <span className="text-emerald-500">✓</span>
@@ -536,7 +622,7 @@ export default async function AdminLaporanPage({
       {dayRows.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Penolakan Pelanggan per Hari
+            Penolakan per Hari (Pelanggan & Obat)
           </h2>
 
           <>
@@ -557,9 +643,25 @@ export default async function AdminLaporanPage({
                     <p className="text-xs font-bold tabular-nums text-rose-600">
                       {NUM.format(d.rejected)} pelanggan
                     </p>
-                    <p className="text-[11px] tabular-nums text-rose-500">
-                      {IDR.format(d.projectedLost)}
+                    <p
+                      className="text-[11px] tabular-nums text-rose-500"
+                      title={d.atvFallback ? "Estimasi memakai ATV rata-rata cabang (hari ini tanpa transaksi)" : undefined}
+                    >
+                      {d.atvFallback ? "≈ " : ""}{IDR.format(d.projectedLost)}
                     </p>
+                    {d.medRejected > 0 && (
+                      <>
+                        <p className="mt-1 text-xs font-bold tabular-nums text-rose-600">
+                          {NUM.format(d.medRejected)} obat
+                        </p>
+                        <p
+                          className="text-[11px] tabular-nums text-rose-500"
+                          title={d.medFallback ? "Estimasi memakai harga rata-rata per item cabang (hari ini tanpa produk terjual)" : undefined}
+                        >
+                          {d.medFallback ? "≈ " : ""}{IDR.format(d.projectedMedLost)}
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -574,6 +676,12 @@ export default async function AdminLaporanPage({
                   <p className="text-[11px] tabular-nums text-rose-500">
                     {IDR.format(totalDayLost)}
                   </p>
+                  <p className="mt-1 text-xs font-bold tabular-nums text-rose-600">
+                    {NUM.format(totalDayMedRejected)} obat
+                  </p>
+                  <p className="text-[11px] tabular-nums text-rose-500">
+                    {IDR.format(totalDayMedLost)}
+                  </p>
                 </div>
               </div>
             </div>
@@ -587,6 +695,8 @@ export default async function AdminLaporanPage({
                     <th className="px-4 py-3 text-right">Plg. Tertolak</th>
                     <th className="px-4 py-3 text-right">ATV Hari Itu</th>
                     <th className="px-4 py-3 text-right">Perkiraan Omzet Tertolak</th>
+                    <th className="px-4 py-3 text-right">Obat Tertolak</th>
+                    <th className="px-4 py-3 text-right">Perkiraan Omzet (Obat)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -595,7 +705,9 @@ export default async function AdminLaporanPage({
                       <td className="px-4 py-3 font-medium text-slate-700">{fmtFullDate(d.date)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-slate-700">{NUM.format(d.rejected)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-slate-600">{IDR.format(d.atv)}</td>
-                      <td className="px-4 py-3 text-right font-medium tabular-nums text-rose-600">{IDR.format(d.projectedLost)}</td>
+                      <td className="px-4 py-3 text-right font-medium tabular-nums text-rose-600" title={d.atvFallback ? "Estimasi memakai ATV rata-rata cabang (hari ini tanpa transaksi)" : undefined}>{d.atvFallback ? "≈ " : ""}{IDR.format(d.projectedLost)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-slate-700">{NUM.format(d.medRejected)}</td>
+                      <td className="px-4 py-3 text-right font-medium tabular-nums text-rose-600" title={d.medFallback ? "Estimasi memakai harga rata-rata per item cabang (hari ini tanpa produk terjual)" : undefined}>{d.medFallback ? "≈ " : ""}{IDR.format(d.projectedMedLost)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -605,6 +717,8 @@ export default async function AdminLaporanPage({
                     <td className="px-4 py-3 text-right tabular-nums">{NUM.format(totalDayRejected)}</td>
                     <td className="px-4 py-3 text-right">—</td>
                     <td className="px-4 py-3 text-right tabular-nums text-rose-600">{IDR.format(totalDayLost)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{NUM.format(totalDayMedRejected)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-rose-600">{IDR.format(totalDayMedLost)}</td>
                   </tr>
                 </tfoot>
               </table>

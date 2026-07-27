@@ -9,6 +9,7 @@ import { Input } from "@/components/shared/input";
 import { PendingSubmitButton } from "./submit-buttons";
 import { MobileFilterSheet } from "./mobile-filter-sheet";
 import { DirectEditModal } from "./direct-edit-modal";
+import { RejectModal } from "./reject-modal";
 import { MobileActionBar } from "./mobile-action-bar";
 import { HelpDrawer } from "@/components/shared/help-drawer";
 import { VERIFIKASI_HELP } from "./help-content";
@@ -34,6 +35,7 @@ type VerificationQueueRow = {
   transaction_total: number;
   product_total: number;
   rejected_customer_total: number;
+  rejected_medicine_total: number;
   late_reason: string | null;
   status: string;
   user: { full_name: string } | { full_name: string }[] | null;
@@ -113,7 +115,7 @@ export default async function AdminVerifikasiPage({
   let query = supabase
     .from("daily_submissions")
     .select(
-      "id, submission_date, shift_label, omzet_total, transaction_total, product_total, rejected_customer_total, late_reason, status, user:user_id(full_name)",
+      "id, submission_date, shift_label, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, late_reason, status, user:user_id(full_name)",
       { count: "exact" },
     )
     .eq("tenant_apotek_id", active.tenantId)
@@ -154,10 +156,11 @@ export default async function AdminVerifikasiPage({
       ? await supabase.from("master_products").select("id, product_name").in("id", productIds)
       : { data: [] as { id: string; product_name: string }[] };
   const productNameById = new Map((productRows ?? []).map((p) => [p.id, p.product_name]));
-  const productsBySubmission = new Map<string, { product_name: string; quantity_sold: number }[]>();
+  const productsBySubmission = new Map<string, { product_id: string; product_name: string; quantity_sold: number }[]>();
   for (const row of submissionProducts ?? []) {
     const prev = productsBySubmission.get(row.submission_id) ?? [];
     prev.push({
+      product_id: row.product_id,
       product_name: productNameById.get(row.product_id) ?? "Produk",
       quantity_sold: Number(row.quantity_sold ?? 0),
     });
@@ -425,6 +428,12 @@ export default async function AdminVerifikasiPage({
                                 {numberFormatter.format(Number(row.rejected_customer_total))}
                               </span>
                             </span>
+                            <span className="text-[11px] text-slate-500">
+                              Obat:{" "}
+                              <span className="font-semibold text-slate-700">
+                                {numberFormatter.format(Number(row.rejected_medicine_total))}
+                              </span>
+                            </span>
                           </div>
 
                           <div className="mt-2.5">
@@ -446,8 +455,10 @@ export default async function AdminVerifikasiPage({
                             transactionTotal: Number(row.transaction_total),
                             productTotal: Number(row.product_total),
                             rejectedCustomerTotal: Number(row.rejected_customer_total),
+                            rejectedMedicineTotal: Number(row.rejected_medicine_total),
                             lateReason: row.late_reason,
                           }}
+                          focusProducts={productsBySubmission.get(row.id) ?? []}
                         />
 
                         {/* ── Expandable detail ────────────────────────── */}
@@ -620,8 +631,17 @@ export default async function AdminVerifikasiPage({
                 </>
               )}
             </div>
+            <label className="mt-2 block text-xs text-slate-600">
+              Alasan (wajib untuk <span className="font-semibold">Tolak massal</span>)
+              <textarea
+                name="note"
+                rows={2}
+                placeholder="Alasan penolakan — terlihat crew di riwayat input…"
+                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              />
+            </label>
             <p className="mt-2 text-xs text-slate-500">
-              Pilih baris yang ingin diproses. Default semua baris halaman ini terpilih.
+              Centang baris yang ingin diproses, lalu pilih aksi. Tidak ada baris yang tercentang otomatis.
             </p>
             <Card className="mt-3 overflow-x-auto rounded-2xl shadow-none">
               <table className="min-w-[820px] text-left text-sm">
@@ -648,7 +668,7 @@ export default async function AdminVerifikasiPage({
                   {actionableRows.map((row) => (
                     <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50 has-[:checked]:bg-sky-50/50">
                       <td className="px-3 py-2">
-                        <input type="checkbox" name="submissionIds" value={row.id} defaultChecked />
+                        <input type="checkbox" name="submissionIds" value={row.id} />
                       </td>
                       <td className="px-3 py-2 text-sm">{row.submission_date}</td>
                       <td className="px-3 py-2">
@@ -660,7 +680,7 @@ export default async function AdminVerifikasiPage({
                       <td className="px-3 py-2">
                         <p className="font-medium text-slate-800">{numberFormatter.format(Number(row.omzet_total))}</p>
                         <p className="text-xs text-slate-400">
-                          Trx: {numberFormatter.format(Number(row.transaction_total))} &middot; Produk: {numberFormatter.format(Number(row.product_total))} &middot; DT: {numberFormatter.format(Number(row.rejected_customer_total))}
+                          Trx: {numberFormatter.format(Number(row.transaction_total))} &middot; Produk: {numberFormatter.format(Number(row.product_total))} &middot; DT: {numberFormatter.format(Number(row.rejected_customer_total))} &middot; Obat: {numberFormatter.format(Number(row.rejected_medicine_total))}
                         </p>
                       </td>
                       <td className="px-3 py-2">
@@ -691,6 +711,7 @@ export default async function AdminVerifikasiPage({
                               <p>Transaksi: <span className="font-medium">{numberFormatter.format(Number(row.transaction_total))}</span></p>
                               <p>Produk: <span className="font-medium">{numberFormatter.format(Number(row.product_total))}</span></p>
                               <p>Pelanggan ditolak: <span className="font-medium">{numberFormatter.format(Number(row.rejected_customer_total))}</span></p>
+                              <p>Obat tertolak: <span className="font-medium">{numberFormatter.format(Number(row.rejected_medicine_total))}</span></p>
                             </div>
                             <p className="mt-2">
                               Alasan terlambat:{" "}
@@ -737,17 +758,22 @@ export default async function AdminVerifikasiPage({
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-2">
-                          {(["approve", "reject"] as const).map((action) => (
-                            <PendingSubmitButton
-                              key={`${row.id}-${action}`}
-                              formAction={verifySubmissionAction}
-                              buttonName="verification"
-                              buttonValue={`${row.id}:${action}`}
-                              idleLabel={getVerificationActionLabel(action)}
-                              pendingLabel="Memproses..."
-                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-                            />
-                          ))}
+                          <PendingSubmitButton
+                            formAction={verifySubmissionAction}
+                            buttonName="verification"
+                            buttonValue={`${row.id}:approve`}
+                            idleLabel={getVerificationActionLabel("approve")}
+                            pendingLabel="Memproses..."
+                            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                          />
+                          <RejectModal
+                            submissionId={row.id}
+                            page={page}
+                            selectedStatus={selectedStatus}
+                            from={from}
+                            to={to}
+                            triggerClassName="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
+                          />
                           <DirectEditModal
                             submissionId={row.id}
                             page={page}
@@ -759,8 +785,10 @@ export default async function AdminVerifikasiPage({
                               transactionTotal: Number(row.transaction_total),
                               productTotal: Number(row.product_total),
                               rejectedCustomerTotal: Number(row.rejected_customer_total),
+                              rejectedMedicineTotal: Number(row.rejected_medicine_total),
                               lateReason: row.late_reason,
                             }}
+                            focusProducts={productsBySubmission.get(row.id) ?? []}
                           />
                         </div>
                       </td>

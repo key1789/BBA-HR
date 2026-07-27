@@ -49,7 +49,7 @@ export default async function AcceptInvitationPage({ params }: { params: Promise
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center space-y-4">
           <h1 className="text-xl font-bold text-slate-800">Undangan dibatalkan</h1>
-          <p className="text-sm text-slate-500">Hubungi admin BBA untuk undangan baru.</p>
+          <p className="text-sm text-slate-500">Hubungi admin Apotrik untuk undangan baru.</p>
           <Link href="/login" className="inline-block px-6 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold text-sm">
             Kembali ke login
           </Link>
@@ -67,7 +67,7 @@ export default async function AcceptInvitationPage({ params }: { params: Promise
           </div>
           <h1 className="text-xl font-bold text-slate-800">Undangan kadaluwarsa</h1>
           <p className="text-sm text-slate-500">
-            Link undangan ini sudah tidak berlaku. Silakan hubungi Admin BBA untuk mendapatkan undangan baru.
+            Link undangan ini sudah tidak berlaku. Silakan hubungi Admin Apotrik untuk mendapatkan undangan baru.
           </p>
           <Link href="/login" className="inline-block px-6 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold text-sm">
             Kembali ke login

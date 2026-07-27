@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { GlassCard } from "@/components/shared/glass-card";
-import { BbaDashboardSalesChart } from "@/app/bba/dashboard/bba-dashboard-sales-chart";
+import { BbaDashboardSalesChart } from "@/app/sa/dashboard/bba-dashboard-sales-chart";
 import type { SalesMonthlyPoint } from "@/lib/bba-dashboard-metrics";
 import {
   LayoutDashboard, Wrench, ArrowRight, CalendarRange,
@@ -514,7 +514,7 @@ export function OwnerDashboardClient({
                 Perlu perhatian
               </p>
               <ul className="mt-1.5 space-y-0.5 text-[10px] font-bold text-amber-700">
-                {opsData.overdueQueue > 0 && <li>• {opsData.overdueQueue} laporan overdue menunggu verifikasi BBA</li>}
+                {opsData.overdueQueue > 0 && <li>• {opsData.overdueQueue} laporan overdue menunggu verifikasi Apotrik</li>}
                 {opsData.pendingLeave > 0 && <li>• {opsData.pendingLeave} pengajuan izin belum diproses</li>}
                 {opsData.pendingSwap > 0 && <li>• {opsData.pendingSwap} permintaan tukar shift belum diproses</li>}
               </ul>

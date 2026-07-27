@@ -41,15 +41,22 @@ export default function LoginPage() {
             
             <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-white p-2 shadow-lg">
               <Image
-                src="/bba-logo.png"
-                alt="BBA HR Logo"
+                src="/apotrik-logo.png"
+                alt="Apotrik Logo"
                 width={80}
                 height={80}
                 className="rounded-full"
               />
             </div>
             
-            <h1 className="mb-6 text-3xl md:text-4xl font-bold tracking-tight">BBA System</h1>
+            <Image
+              src="/apotrik-wordmark-white.png"
+              alt="Apotrik"
+              width={3148}
+              height={656}
+              priority
+              className="mb-6 h-11 md:h-14 w-auto"
+            />
             
             <p className="mt-4 text-[11px] md:text-xs font-light leading-relaxed opacity-90 max-w-[280px]">
               Sistem manajemen operasional apotek terpadu. Masukkan kredensial resmi Anda untuk mengakses dashboard.

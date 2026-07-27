@@ -36,17 +36,29 @@ export default async function CrewLayout({ children }: { children: React.ReactNo
 
   const supabase = await createClient();
 
-  const { data: addons } = await supabase
-    .from("addon_settings")
-    .select("addon_key, is_enabled")
-    .eq("tenant_apotek_id", session.activeMembership?.tenantId ?? "");
+  const tenantId = session.activeMembership?.tenantId ?? "";
+
+  const [{ data: addons }, { data: tenantRow }] = await Promise.all([
+    supabase
+      .from("addon_settings")
+      .select("addon_key, is_enabled")
+      .eq("tenant_apotek_id", tenantId),
+    supabase
+      .from("tenant_apotek")
+      .select("closing_mode")
+      .eq("id", tenantId)
+      .maybeSingle(),
+  ]);
 
   const branchConfig = {
     addon_absensi:  addons?.find(a => a.addon_key === "absensi_shift")?.is_enabled   ?? false,
     addon_grooming: addons?.find(a => a.addon_key === "review_internal")?.is_enabled ?? false,
+    // Mode Admin Penuh: crew tidak menginput closingan (admin yang mencatat).
+    closing_admin_full: tenantRow?.closing_mode === "admin_full",
   };
 
   const sidebarItems = ALL_SIDEBAR_ITEMS.filter((item) => {
+    if (item.key === "input"        && branchConfig.closing_admin_full) return false;
     if (item.key === "kehadiran"    && !branchConfig.addon_absensi)    return false;
     if (item.key === "review" && !branchConfig.addon_grooming) return false;
     return true;
@@ -69,9 +81,9 @@ export default async function CrewLayout({ children }: { children: React.ReactNo
 
         {/* Brand */}
         <div className="px-5 py-5 border-b border-slate-100 flex items-center gap-3">
-          <Image src="/bba-logo.png" alt="BBA System" width={36} height={36} className="rounded-xl shrink-0" />
+          <Image src="/apotrik-logo.png" alt="Apotrik" width={36} height={36} className="rounded-xl shrink-0" />
           <div className="min-w-0">
-            <p className="font-black text-slate-800 tracking-tight text-sm leading-none">BBA System</p>
+            <Image src="/apotrik-wordmark.png" alt="Apotrik" width={3148} height={656} className="h-4 w-auto" />
             <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest mt-0.5">Crew Access</p>
           </div>
         </div>
@@ -121,9 +133,9 @@ export default async function CrewLayout({ children }: { children: React.ReactNo
         {/* Mobile header */}
         <header className="md:hidden bg-sky-600 px-5 pt-8 pb-16 flex items-center justify-between rounded-b-[2rem] shadow-sm relative z-0">
           <div className="flex items-center gap-3">
-            <Image src="/bba-logo.png" alt="BBA System" width={36} height={36} className="rounded-full shrink-0" />
+            <Image src="/apotrik-logo.png" alt="Apotrik" width={36} height={36} className="rounded-full shrink-0" />
             <div>
-              <p className="font-black text-base text-white tracking-tight leading-none">BBA System</p>
+              <Image src="/apotrik-wordmark-white.png" alt="Apotrik" width={3148} height={656} className="h-[18px] w-auto" />
               <p className="text-[9px] text-sky-200 uppercase tracking-widest font-bold mt-0.5">Crew Access</p>
             </div>
           </div>

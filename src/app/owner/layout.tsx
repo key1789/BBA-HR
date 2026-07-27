@@ -22,7 +22,7 @@ export default async function OwnerLayout({
   const tenantId = session.activeMembership?.tenantId;
 
   // Update last login + fetch payroll addon in parallel
-  const [, payrollRes] = await Promise.all([
+  const [, payrollRes, scheduleRes] = await Promise.all([
     supabase
       .from("app_users")
       .update({ last_login_at: new Date().toISOString() })
@@ -35,12 +35,25 @@ export default async function OwnerLayout({
           .eq("addon_key", "payroll")
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    tenantId
+      ? supabase
+          .from("addon_settings")
+          .select("is_enabled, settings")
+          .eq("tenant_apotek_id", tenantId)
+          .eq("addon_key", "absensi_shift")
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const payrollRow = payrollRes.data;
   const showSalaryConfig =
     Boolean(payrollRow?.is_enabled) &&
     Boolean((payrollRow?.settings as Record<string, unknown> | null)?.allow_owner_input);
+
+  const scheduleRow = scheduleRes.data;
+  const showSchedule =
+    Boolean(scheduleRow?.is_enabled) &&
+    Boolean((scheduleRow?.settings as Record<string, unknown> | null)?.allow_owner_schedule);
 
   async function handleLogout() {
     "use server";
@@ -58,6 +71,7 @@ export default async function OwnerLayout({
           userEmail={userEmail}
           handleLogout={handleLogout}
           showSalaryConfig={showSalaryConfig}
+          showSchedule={showSchedule}
         />
       </div>
 
@@ -65,7 +79,7 @@ export default async function OwnerLayout({
       <div className="md:hidden fixed top-0 left-0 right-0 bg-slate-900 text-white px-4 py-3 flex items-center justify-between shadow-md z-40 border-b border-slate-800">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg overflow-hidden ring-1 ring-white/10">
-            <Image src="/bba-logo.png" width={32} height={32} alt="Owner Portal" className="w-full h-full object-cover" />
+            <Image src="/apotrik-logo.png" width={32} height={32} alt="Owner Portal" className="w-full h-full object-cover" />
           </div>
           <h1 className="font-bold text-sm text-white tracking-tight">Owner Portal</h1>
         </div>
@@ -87,7 +101,7 @@ export default async function OwnerLayout({
 
       {/* ── Mobile Bottom Nav ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-white px-1 py-2 flex justify-around items-stretch z-50 border-t border-slate-800 gap-0.5">
-        <OwnerPortalNav variant="bottom" showSalaryConfig={showSalaryConfig} />
+        <OwnerPortalNav variant="bottom" showSalaryConfig={showSalaryConfig} showSchedule={showSchedule} />
       </nav>
     </div>
   );

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { HelpDrawer } from "@/components/shared/help-drawer";
 import { AddonGate } from "@/components/shared/addon-gate";
 import { AbsensiClient } from "./absensi-client";
+import { JadwalManager } from "@/components/branch/tab-jadwal/JadwalManager";
 import { ABSENSI_HELP } from "./help-content";
 import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { CalendarDays } from "lucide-react";
@@ -83,7 +84,7 @@ export default async function AdminAbsensiPage({
     await Promise.all([
       supabase
         .from("addon_settings")
-        .select("is_enabled")
+        .select("is_enabled, settings")
         .eq("tenant_apotek_id", active.tenantId)
         .eq("addon_key", "absensi_shift")
         .maybeSingle(),
@@ -127,6 +128,49 @@ export default async function AdminAbsensiPage({
     ]);
 
   const addonEnabled = addonResult.data?.is_enabled ?? false;
+
+  // Delegasi kelola jadwal: admin boleh mengatur roster+pola bila Apotrik mengizinkan.
+  const allowAdminSchedule =
+    addonEnabled &&
+    Boolean((addonResult.data?.settings as Record<string, unknown> | null)?.allow_admin_schedule);
+
+  // Data pengelolaan jadwal — hanya di-fetch bila admin diberi izin (hemat query).
+  let scheduleData:
+    | { users: unknown[]; shifts: unknown[]; roster: unknown[]; shiftDefaults: unknown[] }
+    | null = null;
+  if (allowAdminSchedule) {
+    const [usersRes, shiftsRes, rosterRes, defaultsRes] = await Promise.all([
+      supabaseAdmin
+        .from("tenant_memberships")
+        .select(
+          "id, role, is_active, user_id, app_users (id, full_name, email, phone, is_active, is_branch_desk_account)",
+        )
+        .eq("tenant_apotek_id", active.tenantId)
+        .order("assigned_at", { ascending: false }),
+      supabaseAdmin
+        .from("master_shifts")
+        .select("*")
+        .eq("tenant_apotek_id", active.tenantId)
+        .order("start_time", { ascending: true }),
+      supabaseAdmin
+        .from("shift_schedules")
+        .select("*")
+        .eq("tenant_apotek_id", active.tenantId)
+        .gte("schedule_date", monthStart)
+        .lte("schedule_date", monthEnd)
+        .order("schedule_date", { ascending: true }),
+      supabaseAdmin
+        .from("crew_shift_defaults")
+        .select("*")
+        .eq("tenant_apotek_id", active.tenantId),
+    ]);
+    scheduleData = {
+      users: usersRes.data ?? [],
+      shifts: shiftsRes.data ?? [],
+      roster: rosterRes.data ?? [],
+      shiftDefaults: defaultsRes.data ?? [],
+    };
+  }
 
   // ── Build name map ───────────────────────────────────────────────────────
   const nameById = new Map<string, string>();
@@ -227,6 +271,24 @@ export default async function AdminAbsensiPage({
         addonKey="absensi_shift"
         description="Fitur kalender jadwal shift, approval izin, dan persetujuan tukar shift antar kru."
       >
+        {scheduleData && (
+          <div className="space-y-2 mb-4">
+            <div className="flex items-center gap-2 px-1">
+              <CalendarDays size={14} className="text-sky-600" />
+              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Kelola Pola &amp; Jadwal</p>
+              <span className="text-[9px] font-bold text-slate-400">· diizinkan oleh Apotrik</span>
+            </div>
+            <JadwalManager
+              branchId={active.tenantId}
+              users={scheduleData.users}
+              shifts={scheduleData.shifts}
+              roster={scheduleData.roster}
+              shiftDefaults={scheduleData.shiftDefaults}
+              currentMonth={month}
+              currentYear={year}
+            />
+          </div>
+        )}
         <AbsensiClient
           schedulesByDate={schedulesByDate}
           pendingLeaves={pendingLeaves}

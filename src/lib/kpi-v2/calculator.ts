@@ -1,6 +1,5 @@
-import { createAdminClient } from "@/lib/supabase/admin";
 import type { BonusType, KpiConfigV2 } from "@/lib/types/kpi-v2";
-import { calculateDailyTargetPerUser, calculateTeamDailyTarget } from "./utils";
+import { calculateTeamDailyTarget, effectiveDailyTargetForUser } from "./utils";
 
 export interface DailyAchievementRow {
   achievement_date: string;
@@ -63,8 +62,6 @@ function calculateAchievementScore(
   weightAtv: number,
   weightAtu: number,
   useOmzet: boolean,
-  useAtv: boolean,
-  useAtu: boolean,
   globalAtvEnabled: boolean,
   globalAtuEnabled: boolean,
 ): number {
@@ -77,13 +74,15 @@ function calculateAchievementScore(
     totalWeight += weightOmzet;
   }
 
-  if (useAtv && globalAtvEnabled && targetAtv > 0) {
+  // ATV/ATU ikut dihitung bila dinyalakan per-apotek (global) DAN diberi bobot > 0.
+  // Bobot 0 = skema ini mengabaikannya. (Flag per-skema use_atv/use_atu ditinggalkan.)
+  if (globalAtvEnabled && weightAtv > 0 && targetAtv > 0) {
     const atvPercent = (actualAtv / targetAtv) * 100;
     score += atvPercent * (weightAtv / 100);
     totalWeight += weightAtv;
   }
 
-  if (useAtu && globalAtuEnabled && targetAtu > 0) {
+  if (globalAtuEnabled && weightAtu > 0 && targetAtu > 0) {
     const atuPercent = (actualAtu / targetAtu) * 100;
     score += atuPercent * (weightAtu / 100);
     totalWeight += weightAtu;
@@ -149,8 +148,6 @@ function calculateTeamMonthly(
     scheme.weight_atv,
     scheme.weight_atu,
     scheme.use_omzet,
-    scheme.use_atv,
-    scheme.use_atu,
     config.global.is_atv_enabled,
     config.global.is_atu_enabled,
   );
@@ -317,6 +314,7 @@ function calculateTeamDaily(
 function calculateIndividualMonthly(
   config: KpiConfigV2,
   crewAchievements: CrewAchievementRow[],
+  activeCrewCount?: number,
 ): Record<string, { bonus: number; breakdown: BonusBreakdown }> {
   const scheme = config.individual_monthly;
   if (!scheme.enabled) return {};
@@ -336,14 +334,17 @@ function calculateIndividualMonthly(
     {} as Record<string, { omzet: number; transactions: number; items: number }>,
   );
 
-  // Fair-share per orang = target global ÷ jumlah crew yang ada data periode ini.
-  // Dipakai sebagai target default untuk KEDUA mode (rata maupun manual).
+  // Fair-share per orang = target global ÷ jumlah crew AKTIF (bila diberikan),
+  // agar target stabil tak tergantung siapa yang kebetulan sudah input.
+  // Fallback: jumlah crew yang ada data periode ini (perilaku lama).
   // Mode manual meng-override nilai ini via user_configs[userId].target_omzet di bawah.
-  const userCount = Math.max(Object.keys(userTotals).length, 1);
+  const userCount = Math.max(activeCrewCount ?? Object.keys(userTotals).length, 1);
   const baseTarget = config.global.target_omzet / userCount;
 
   Object.entries(userTotals).forEach(([userId, totals]) => {
     let userTarget = baseTarget;
+    let userTargetAtv = config.global.target_atv;
+    let userTargetAtu = config.global.target_atu;
     const userConfig = scheme.user_configs?.[userId];
     const weights = { omzet: scheme.weight_omzet, atv: scheme.weight_atv, atu: scheme.weight_atu };
     const bonusCfg = {
@@ -355,6 +356,8 @@ function calculateIndividualMonthly(
 
     if (scheme.target_distribution === "manual" && userConfig) {
       if (userConfig.target_omzet != null) userTarget = Number(userConfig.target_omzet) || userTarget;
+      if (userConfig.target_atv != null) userTargetAtv = Number(userConfig.target_atv) || userTargetAtv;
+      if (userConfig.target_atu != null) userTargetAtu = Number(userConfig.target_atu) || userTargetAtu;
       if (userConfig.weight_omzet !== undefined) weights.omzet = userConfig.weight_omzet;
       if (userConfig.weight_atv !== undefined) weights.atv = userConfig.weight_atv;
       if (userConfig.weight_atu !== undefined) weights.atu = userConfig.weight_atu;
@@ -372,14 +375,12 @@ function calculateIndividualMonthly(
       userAtv,
       userAtu,
       userTarget,
-      config.global.target_atv,
-      config.global.target_atu,
+      userTargetAtv,
+      userTargetAtu,
       weights.omzet,
       weights.atv,
       weights.atu,
       scheme.use_omzet,
-      scheme.use_atv,
-      scheme.use_atu,
       config.global.is_atv_enabled,
       config.global.is_atu_enabled,
     );
@@ -413,23 +414,21 @@ function calculateIndividualMonthly(
 function calculateIndividualDaily(
   config: KpiConfigV2,
   crewAchievements: CrewAchievementRow[],
+  activeCrewCount?: number,
 ): Record<string, { bonus: number; breakdown: BonusBreakdown }> {
   const scheme = config.individual_daily;
   if (!scheme.enabled) return {};
 
   const result: Record<string, { bonus: number; breakdown: BonusBreakdown }> = {};
-  const wdGlobal = config.global.default_working_days || 26;
-  const activeUserCount = new Set(crewAchievements.map((c) => c.user_id)).size || 1;
+  // Pembagi fair-share = crew AKTIF (bila diberikan), fallback ke jumlah yang punya data.
+  const activeUserCount =
+    activeCrewCount && activeCrewCount > 0
+      ? activeCrewCount
+      : new Set(crewAchievements.map((c) => c.user_id)).size || 1;
 
   crewAchievements.forEach((ca) => {
-    let workingDays = wdGlobal;
-    // Fair-share sebagai default untuk kedua mode (rata & manual).
-    // Mode manual meng-override via userConfig.target_omzet_daily di bawah.
-    let dailyTarget = calculateDailyTargetPerUser(
-      config.global.target_omzet,
-      activeUserCount,
-      workingDays,
-    );
+    // Target harian dari helper bersama — menepati tampilan UI (override → porsi÷hari → fair-share).
+    const dailyTarget = effectiveDailyTargetForUser(scheme, config.global, ca.user_id, activeUserCount);
     const bonusCfg = {
       type: scheme.bonus_type,
       flat: scheme.flat_nominal,
@@ -439,12 +438,6 @@ function calculateIndividualDaily(
 
     const userConfig = scheme.user_configs?.[ca.user_id];
     if (userConfig) {
-      if (userConfig.working_days) workingDays = userConfig.working_days;
-      if (userConfig.target_omzet_daily != null) {
-        dailyTarget = Number(userConfig.target_omzet_daily) || dailyTarget;
-      } else if (scheme.target_distribution === "rata") {
-        dailyTarget = calculateDailyTargetPerUser(config.global.target_omzet, activeUserCount, workingDays);
-      }
       if (userConfig.bonus_type) bonusCfg.type = userConfig.bonus_type;
       if (userConfig.flat_nominal !== undefined) bonusCfg.flat = userConfig.flat_nominal;
       if (userConfig.kelipatan_step !== undefined) bonusCfg.step = userConfig.kelipatan_step;
@@ -485,19 +478,8 @@ function calculateIndividualDaily(
 
   Object.keys(result).forEach((userId) => {
     const scheme = config.individual_daily;
-    const activeUserCount = new Set(crewAchievements.map((c) => c.user_id)).size || 1;
-    const userConfig = scheme.user_configs?.[userId];
-    const wdGlobal = config.global.default_working_days || 26;
-    const workingDays = userConfig?.working_days ?? wdGlobal;
-    // Fair-share sebagai default; override via target_omzet_daily jika ada.
-    let dailyTarget = calculateDailyTargetPerUser(
-      config.global.target_omzet,
-      activeUserCount,
-      workingDays,
-    );
-    if (userConfig?.target_omzet_daily != null) {
-      dailyTarget = Number(userConfig.target_omzet_daily) || dailyTarget;
-    }
+    // Target harian dari helper bersama yang sama dgn loop utama & UI (activeUserCount konsisten).
+    const dailyTarget = effectiveDailyTargetForUser(scheme, config.global, userId, activeUserCount);
 
     const byDate = new Map<string, number>();
     for (const r of crewAchievements) {
@@ -524,15 +506,51 @@ function calculateIndividualDaily(
   return result;
 }
 
+/**
+ * Gabungkan baris capaian per (user, tanggal). Satu crew bisa punya >1 closingan
+ * per hari (mis. beberapa shift) → tanpa ini, skema HARIAN menghitung tiap shift
+ * sebagai "hari" tersendiri (bonus flat dobel / kelipatan salah). Skema BULANAN
+ * tetap benar karena hanya menjumlah.
+ */
+function aggregateCrewByUserDate(rows: CrewAchievementRow[]): CrewAchievementRow[] {
+  const map = new Map<string, CrewAchievementRow>();
+  for (const r of rows) {
+    const dateKey = String(r.achievement_date ?? "").slice(0, 10);
+    const key = `${r.user_id}|${dateKey}`;
+    const cur = map.get(key);
+    if (cur) {
+      cur.omzet += Number(r.omzet) || 0;
+      cur.transactions += Number(r.transactions) || 0;
+      cur.items += Number(r.items) || 0;
+    } else {
+      map.set(key, {
+        user_id: String(r.user_id),
+        achievement_date: dateKey,
+        omzet: Number(r.omzet) || 0,
+        transactions: Number(r.transactions) || 0,
+        items: Number(r.items) || 0,
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
 export function calculateMonthlyBonusFromInputs(
   config: KpiConfigV2,
   dailyAchievements: DailyAchievementRow[],
   crewAchievements: CrewAchievementRow[],
+  opts?: { activeCrewCount?: number },
 ): BonusResult[] {
-  const teamMonthly = calculateTeamMonthly(config, crewAchievements);
-  const teamDaily = calculateTeamDaily(config, dailyAchievements, crewAchievements);
-  const individualMonthly = calculateIndividualMonthly(config, crewAchievements);
-  const individualDaily = calculateIndividualDaily(config, crewAchievements);
+  // B2: satukan multi-shift/hari agar skema harian tak dobel-hitung.
+  const crew = aggregateCrewByUserDate(crewAchievements);
+  // B3: pembagi "rata" = jumlah crew AKTIF (bila diberikan), bukan yang kebetulan sudah input.
+  const activeCrewCount =
+    opts?.activeCrewCount && opts.activeCrewCount > 0 ? opts.activeCrewCount : undefined;
+
+  const teamMonthly = calculateTeamMonthly(config, crew);
+  const teamDaily = calculateTeamDaily(config, dailyAchievements, crew);
+  const individualMonthly = calculateIndividualMonthly(config, crew, activeCrewCount);
+  const individualDaily = calculateIndividualDaily(config, crew, activeCrewCount);
 
   const allUserIds = Array.from(
     new Set([
@@ -612,66 +630,6 @@ export function pickPrimaryKpiDisplayFromBonusResult(
   };
 }
 
-/**
- * Hitung bonus KPI V2 untuk cabang & periode.
- * Tabel `daily_achievements` / `crew_achievements` opsional — bila belum ada di DB, gunakan input kosong (hasil 0) atau {@link calculateMonthlyBonusFromInputs}.
- */
-export async function calculateMonthlyBonus(
-  branchId: string,
-  month: number,
-  year: number,
-): Promise<BonusResult[]> {
-  const admin = createAdminClient();
-  const { data: row, error } = await admin
-    .from("kpi_configs")
-    .select("bonus_config_v2")
-    .eq("tenant_apotek_id", branchId)
-    .eq("period_month", month)
-    .eq("period_year", year)
-    .maybeSingle();
-
-  if (error || !row?.bonus_config_v2) {
-    throw new Error(error?.message ?? "KPI V2 untuk periode ini tidak ditemukan.");
-  }
-
-  const config = row.bonus_config_v2 as KpiConfigV2;
-  const { startDate, endDate } = periodBounds(year, month);
-
-  let dailyAchievements: DailyAchievementRow[] = [];
-  let crewAchievements: CrewAchievementRow[] = [];
-
-  const dailyRes = await admin
-    .from("daily_achievements")
-    .select("*")
-    .eq("tenant_apotek_id", branchId)
-    .gte("achievement_date", startDate)
-    .lte("achievement_date", endDate);
-
-  if (!dailyRes.error && dailyRes.data) {
-    dailyAchievements = (dailyRes.data as Record<string, unknown>[]).map((r) => ({
-      achievement_date: String(r.achievement_date ?? "").slice(0, 10),
-      total_omzet: Number(r.total_omzet ?? r.omzet ?? 0) || 0,
-      total_transactions: Number(r.total_transactions ?? r.transactions ?? 0) || 0,
-      total_items: Number(r.total_items ?? r.items ?? 0) || 0,
-    }));
-  }
-
-  const crewRes = await admin
-    .from("crew_achievements")
-    .select("*")
-    .eq("tenant_apotek_id", branchId)
-    .gte("achievement_date", startDate)
-    .lte("achievement_date", endDate);
-
-  if (!crewRes.error && crewRes.data) {
-    crewAchievements = (crewRes.data as Record<string, unknown>[]).map((r) => ({
-      user_id: String(r.user_id ?? ""),
-      achievement_date: String(r.achievement_date ?? "").slice(0, 10),
-      omzet: Number(r.omzet ?? r.total_omzet ?? 0) || 0,
-      transactions: Number(r.transactions ?? r.total_transactions ?? 0) || 0,
-      items: Number(r.items ?? r.total_items ?? 0) || 0,
-    }));
-  }
-
-  return calculateMonthlyBonusFromInputs(config, dailyAchievements, crewAchievements);
-}
+// Dihapus: `calculateMonthlyBonus(branchId, month, year)` — versi yang membaca tabel
+// `daily_achievements`/`crew_achievements` (tak pernah diisi & tak dipanggil di mana pun).
+// Semua jalur produksi memakai `calculateMonthlyBonusFromInputs` dari `daily_submissions`.

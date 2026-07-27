@@ -32,7 +32,7 @@ export default async function AcceptBbaPortalInvitationPage({
           <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle2 size={32} />
           </div>
-          <h1 className="text-xl font-bold text-slate-800">Akun portal BBA sudah aktif</h1>
+          <h1 className="text-xl font-bold text-slate-800">Akun portal Apotrik sudah aktif</h1>
           <p className="text-sm text-slate-500">
             Undangan ini telah digunakan. Silakan login dengan email{" "}
             <span className="font-semibold text-slate-700">{invitation.email}</span>.

@@ -116,6 +116,7 @@ export default async function OwnerKaryawanPage({
             name:   String(a.name ?? ""),
             amount: Number(a.amount ?? 0),
             type:   (a.type === "deduction" ? "deduction" : "addition") as "addition" | "deduction",
+            basis:  (String(a.basis ?? "monthly").toLowerCase() === "daily" ? "daily" : "monthly") as "monthly" | "daily",
           })),
         };
       });
@@ -160,7 +161,7 @@ export default async function OwnerKaryawanPage({
               <div>
                 <p className="text-sm font-black text-slate-700">Akses Belum Diizinkan</p>
                 <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                  BBA belum mengizinkan Owner untuk mengelola konfigurasi gaji cabang ini.
+                  Apotrik belum mengizinkan Owner untuk mengelola konfigurasi gaji cabang ini.
                 </p>
               </div>
             </div>
@@ -172,7 +173,7 @@ export default async function OwnerKaryawanPage({
               <div>
                 <p className="text-sm font-black text-slate-700">Fitur Payroll Belum Aktif</p>
                 <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                  Modul payroll belum diaktifkan untuk cabang ini. Hubungi BBA untuk mengaktifkannya.
+                  Modul payroll belum diaktifkan untuk cabang ini. Hubungi Apotrik untuk mengaktifkannya.
                 </p>
               </div>
             </div>

@@ -25,6 +25,7 @@ export function DirectEditModal({
   from,
   to,
   defaultValues,
+  focusProducts = [],
 }: {
   submissionId: string;
   page: number;
@@ -36,8 +37,10 @@ export function DirectEditModal({
     transactionTotal: number;
     productTotal: number;
     rejectedCustomerTotal: number;
+    rejectedMedicineTotal: number;
     lateReason: string | null;
   };
+  focusProducts?: { product_id: string; product_name: string; quantity_sold: number }[];
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -139,6 +142,19 @@ export function DirectEditModal({
           </label>
 
           <label className="block">
+            <FieldLabel label="Obat Tertolak" prev={String(defaultValues.rejectedMedicineTotal)} />
+            <input
+              type="number"
+              name="rejected_medicine_total"
+              defaultValue={defaultValues.rejectedMedicineTotal}
+              min={0}
+              step={1}
+              required
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          </label>
+
+          <label className="block">
             <FieldLabel
               label="Alasan Terlambat"
               prev={defaultValues.lateReason?.trim() || "—"}
@@ -151,6 +167,32 @@ export function DirectEditModal({
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
           </label>
+
+          {focusProducts.length > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Produk Fokus (kuantitas)
+              </p>
+              <div className="space-y-2">
+                {focusProducts.map((fp) => (
+                  <label key={fp.product_id} className="flex items-center gap-2">
+                    <span className="flex-1 truncate text-xs text-slate-600">{fp.product_name}</span>
+                    <input
+                      type="number"
+                      name={`fp_${fp.product_id}`}
+                      defaultValue={fp.quantity_sold}
+                      min={0}
+                      step={1}
+                      className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-slate-400">
+                Mengubah kuantitas memengaruhi bonus produk fokus crew.
+              </p>
+            </div>
+          )}
 
           <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-700">
             Perubahan ini akan langsung <strong>disetujui (approved)</strong>. Tidak bisa dibatalkan.

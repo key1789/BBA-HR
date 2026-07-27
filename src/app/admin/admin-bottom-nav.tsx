@@ -2,27 +2,43 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ClipboardCheck, Banknote, Star, CalendarDays } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Banknote, Star, CalendarDays, UserCog } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
-  { name: "Dashboard",  path: "/admin/dashboard",          Icon: LayoutDashboard, badge: "none"       },
-  { name: "Verifikasi", path: "/admin/verifikasi",          Icon: ClipboardCheck,  badge: "unread"     },
-  { name: "Absensi",    path: "/admin/absensi",             Icon: CalendarDays,    badge: "attendance" },
-  { name: "Review",     path: "/admin/review-pelanggan",   Icon: Star,            badge: "none"       },
-  { name: "Setup Gaji", path: "/admin/konfigurasi-gaji",   Icon: Banknote,        badge: "none"       },
-] as const;
+type BadgeType = "none" | "unread" | "attendance";
+type NavItem = { name: string; path: string; Icon: React.ElementType; badge: BadgeType };
 
-type BadgeType = (typeof NAV_ITEMS)[number]["badge"];
+function buildNavItems(isAdminFull: boolean, showAbsensi: boolean, showSalaryConfig: boolean): NavItem[] {
+  return [
+    { name: "Dashboard", path: "/admin/dashboard", Icon: LayoutDashboard, badge: "none" },
+    isAdminFull
+      ? { name: "Closingan", path: "/admin/input-harian", Icon: UserCog, badge: "none" }
+      : { name: "Verifikasi", path: "/admin/verifikasi", Icon: ClipboardCheck, badge: "unread" },
+    ...(showAbsensi
+      ? [{ name: "Absensi", path: "/admin/absensi", Icon: CalendarDays, badge: "attendance" as BadgeType }]
+      : []),
+    { name: "Review", path: "/admin/review-pelanggan", Icon: Star, badge: "none" },
+    ...(showSalaryConfig
+      ? [{ name: "Setup Gaji", path: "/admin/konfigurasi-gaji", Icon: Banknote, badge: "none" as BadgeType }]
+      : []),
+  ];
+}
 
 export function AdminBottomNav({
   unreadCount,
   pendingAttendanceCount,
+  isAdminFull = false,
+  showAbsensi = true,
+  showSalaryConfig = true,
 }: {
   unreadCount: number;
   pendingAttendanceCount: number;
+  isAdminFull?: boolean;
+  showAbsensi?: boolean;
+  showSalaryConfig?: boolean;
 }) {
   const pathname = usePathname();
+  const NAV_ITEMS = buildNavItems(isAdminFull, showAbsensi, showSalaryConfig);
 
   function badgeCount(type: BadgeType): number {
     if (type === "unread") return unreadCount;

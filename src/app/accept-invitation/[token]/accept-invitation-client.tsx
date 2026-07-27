@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useActionState, useEffect } from "react";
-import { completeInvitationAction } from "@/app/bba/owners/actions";
+import { completeInvitationAction } from "@/app/sa/owners/actions";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck, Lock, User, Phone, Mail } from "lucide-react";
@@ -118,7 +118,7 @@ export function AcceptInvitationClient({ invitation, token }: Props) {
         </form>
 
         <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 text-center">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">BBA APOTEK SYSTEM © 2026</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">APOTRIK © 2026</p>
         </div>
       </div>
     </div>

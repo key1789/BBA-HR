@@ -131,8 +131,8 @@ function SchemeConfigSummary({
           <p className="mt-1 font-semibold text-slate-800">
             {[
               scheme.use_omzet ? `Omzet ${scheme.weight_omzet}%` : null,
-              scheme.use_atv && config.global.is_atv_enabled ? `ATV ${scheme.weight_atv}%` : null,
-              scheme.use_atu && config.global.is_atu_enabled ? `ATU ${scheme.weight_atu}%` : null,
+              config.global.is_atv_enabled && scheme.weight_atv > 0 ? `ATV ${scheme.weight_atv}%` : null,
+              config.global.is_atu_enabled && scheme.weight_atu > 0 ? `ATU ${scheme.weight_atu}%` : null,
             ]
               .filter(Boolean)
               .join(" · ") || "—"}

@@ -3,8 +3,11 @@ import fs from "fs";
 import path from "path";
 
 export async function GET() {
-  const logoBuffer = fs.readFileSync(path.join(process.cwd(), "public", "bba-logo.png"));
+  const logoBuffer = fs.readFileSync(path.join(process.cwd(), "public", "apotrik-logo.png"));
   const logoSrc = `data:image/png;base64,${logoBuffer.toString("base64")}`;
+
+  const wordmarkBuffer = fs.readFileSync(path.join(process.cwd(), "public", "apotrik-wordmark-white.png"));
+  const wordmarkSrc = `data:image/png;base64,${wordmarkBuffer.toString("base64")}`;
 
   return new ImageResponse(
     (
@@ -42,35 +45,15 @@ export async function GET() {
             src={logoSrc}
             width={200}
             height={200}
-            alt="BBA Logo"
+            alt="Apotrik Logo"
             style={{ objectFit: "cover" }}
           />
         </div>
 
         {/* Text */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div
-            style={{
-              fontSize: 72,
-              fontWeight: 900,
-              color: "white",
-              letterSpacing: "-2px",
-              lineHeight: 1,
-            }}
-          >
-            BBA HR
-          </div>
-          <div
-            style={{
-              fontSize: 72,
-              fontWeight: 900,
-              color: "#38bdf8",
-              letterSpacing: "-2px",
-              lineHeight: 1,
-            }}
-          >
-            Platform
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={wordmarkSrc} width={576} height={120} alt="Apotrik" />
           <div
             style={{
               fontSize: 24,

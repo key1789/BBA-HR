@@ -28,10 +28,10 @@ export type CrewPayrollRow = {
   bpjsTkKaryawan: number;
   bpjsKesPerusahaan: number;
   bpjsTkPerusahaan: number;
-  customAdjustments: { name: string; amount: number; type: "addition" | "deduction" }[];
+  customAdjustments: { name: string; amount: number; type: "addition" | "deduction"; basis: "monthly" | "daily" }[];
 };
 
-type CustomAdj = { name: string; amount: number; type: "addition" | "deduction" };
+type CustomAdj = { name: string; amount: number; type: "addition" | "deduction"; basis: "monthly" | "daily" };
 type SaveAction = (prevState: unknown, formData: FormData) => Promise<{ success?: boolean; error?: string; message?: string }>;
 
 interface Props {
@@ -92,7 +92,7 @@ function CrewCard({
   const netSalary = totalGross - totalDeduction;
 
   const addCustomAdj = (type: "addition" | "deduction") => {
-    setCustomAdj((prev) => [...prev, { name: "", amount: 0, type }]);
+    setCustomAdj((prev) => [...prev, { name: "", amount: 0, type, basis: "monthly" }]);
     setIsDirty(true);
   };
   const removeCustomAdj = (idx: number) => {
@@ -333,6 +333,14 @@ function CrewCard({
                       onChange={(val) => updateCustomAdj(idx, { amount: val })}
                       className="w-28 rounded-xl border border-emerald-200 px-2 py-1.5 text-xs font-black text-emerald-600 bg-emerald-50/30 outline-none focus:border-emerald-400"
                     />
+                    <div className="flex shrink-0 overflow-hidden rounded-lg border border-slate-200 text-[8px] font-black uppercase" title="Bulanan = ×1; /hari = × hari masuk aktual saat rekap">
+                      <button type="button"
+                        onClick={() => updateCustomAdj(idx, { basis: "monthly" })}
+                        className={`px-1.5 py-1.5 ${adj.basis === "daily" ? "bg-white text-slate-400" : "bg-slate-800 text-white"}`}>Bln</button>
+                      <button type="button"
+                        onClick={() => updateCustomAdj(idx, { basis: "daily" })}
+                        className={`px-1.5 py-1.5 ${adj.basis === "daily" ? "bg-amber-500 text-white" : "bg-white text-slate-400"}`}>/hr</button>
+                    </div>
                     <button type="button" onClick={() => removeCustomAdj(idx)} className="text-rose-300 hover:text-rose-500 transition-colors">
                       <Trash2 size={13} />
                     </button>
@@ -375,6 +383,14 @@ function CrewCard({
                       onChange={(val) => updateCustomAdj(idx, { amount: val })}
                       className="w-28 rounded-xl border border-rose-200 px-2 py-1.5 text-xs font-black text-rose-600 bg-rose-50/30 outline-none focus:border-rose-400"
                     />
+                    <div className="flex shrink-0 overflow-hidden rounded-lg border border-slate-200 text-[8px] font-black uppercase" title="Bulanan = ×1; /hari = × hari masuk aktual saat rekap">
+                      <button type="button"
+                        onClick={() => updateCustomAdj(idx, { basis: "monthly" })}
+                        className={`px-1.5 py-1.5 ${adj.basis === "daily" ? "bg-white text-slate-400" : "bg-slate-800 text-white"}`}>Bln</button>
+                      <button type="button"
+                        onClick={() => updateCustomAdj(idx, { basis: "daily" })}
+                        className={`px-1.5 py-1.5 ${adj.basis === "daily" ? "bg-amber-500 text-white" : "bg-white text-slate-400"}`}>/hr</button>
+                    </div>
                     <button type="button" onClick={() => removeCustomAdj(idx)} className="text-rose-300 hover:text-rose-500 transition-colors">
                       <Trash2 size={13} />
                     </button>
@@ -387,6 +403,7 @@ function CrewCard({
           {/* ── BPJS ── */}
           <div className="border-t border-slate-100 pt-4 space-y-3">
             <p className="text-[9px] font-black uppercase tracking-widest text-rose-500">Potongan & Tanggungan BPJS</p>
+            <p className="text-[9px] font-medium text-slate-400">Isi nominal final (sudah termasuk plafon). Perbarui bila gaji pokok berubah.</p>
             <div className="grid grid-cols-2 gap-3">
 
               {/* Dari Karyawan */}

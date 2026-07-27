@@ -11,30 +11,30 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "BBA HR Platform",
+  title: "Apotrik",
   description: "Platform HR untuk operasional dan monitoring apotek",
   icons: {
-    icon: "/bba-logo.png",
-    apple: "/bba-logo.png",
+    icon: "/apotrik-logo.png",
+    apple: "/apotrik-logo.png",
   },
   openGraph: {
-    title: "BBA HR Platform",
+    title: "Apotrik",
     description: "Platform HR untuk operasional dan monitoring apotek",
     url: "https://bba-system.vercel.app",
-    siteName: "BBA HR Platform",
+    siteName: "Apotrik",
     images: [
       {
         url: "https://bba-system.vercel.app/api/og",
         width: 1200,
         height: 630,
-        alt: "BBA HR Platform",
+        alt: "Apotrik",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "BBA HR Platform",
+    title: "Apotrik",
     description: "Platform HR untuk operasional dan monitoring apotek",
     images: ["https://bba-system.vercel.app/api/og"],
   },

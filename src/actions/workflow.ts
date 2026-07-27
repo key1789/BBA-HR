@@ -151,7 +151,7 @@ export async function approveTaskAction(formData: FormData) {
       task_id: taskId,
       action: "approved",
       actor_user_id: user.id,
-      notes: "Final approval oleh Super Admin BBA.",
+      notes: "Final approval oleh Super Admin Apotrik.",
     });
 
   if (approvalError) return { error: approvalError.message };

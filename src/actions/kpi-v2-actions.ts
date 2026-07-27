@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
-import { createDefaultKpiV2Config, isKpiConfigV2 } from "@/lib/kpi-v2/utils";
+import { createDefaultKpiV2Config, isKpiConfigV2, validateKpiV2Config } from "@/lib/kpi-v2/utils";
 import { writeAuditLog } from "@/lib/audit-log";
 import { getSessionContext } from "@/lib/auth-context";
 import { syncMonthlyAppraisalsForPeriod } from "@/lib/kpi-v2/sync-monthly-appraisals";
@@ -55,6 +55,15 @@ export async function saveKpiV2Action(prevState: unknown, formData: FormData): P
 
     if (!tenantId || !Number.isFinite(month) || !Number.isFinite(year)) {
       return { error: "Data tidak lengkap" };
+    }
+
+    // Validasi server-side — jangan percaya input client untuk konfigurasi yang menentukan bonus/gaji.
+    if (!isKpiConfigV2(config)) {
+      return { error: "Konfigurasi KPI tidak valid." };
+    }
+    const validation = validateKpiV2Config(config);
+    if (!validation.isValid) {
+      return { error: validation.errors[0]?.message ?? "Konfigurasi KPI tidak valid." };
     }
 
     const supabaseAdmin = createAdminClient();
@@ -117,8 +126,8 @@ export async function saveKpiV2Action(prevState: unknown, formData: FormData): P
       // Auto-recalculate appraisals if they already exist for this period
       await autoRecalcIfAppraisalsExist(supabaseAdmin, tenantId, month, year, user.id);
 
-      revalidatePath(`/bba/branches/${tenantId}`);
-      revalidatePath(`/bba/audit/${tenantId}`);
+      revalidatePath(`/sa/branches/${tenantId}`);
+      revalidatePath(`/sa/audit/${tenantId}`);
       return {
         success: true,
         message: "Konfigurasi KPI berhasil diperbarui dan bonus otomatis direcalculate!",
@@ -175,8 +184,8 @@ export async function saveKpiV2Action(prevState: unknown, formData: FormData): P
     // Auto-recalculate appraisals if they already exist for this period
     await autoRecalcIfAppraisalsExist(supabaseAdmin, tenantId, month, year, user.id);
 
-    revalidatePath(`/bba/branches/${tenantId}`);
-    revalidatePath(`/bba/audit/${tenantId}`);
+    revalidatePath(`/sa/branches/${tenantId}`);
+    revalidatePath(`/sa/audit/${tenantId}`);
     return {
       success: true,
       message: "Konfigurasi KPI berhasil disimpan!",

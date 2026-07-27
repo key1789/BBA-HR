@@ -1,6 +1,8 @@
 import type {
+  IndividualSchemeConfig,
   IndividualUserConfig,
   KpiConfigV2,
+  KpiGlobalConfig,
   ValidationResult,
 } from "@/lib/types/kpi-v2";
 
@@ -19,6 +21,21 @@ export type KpiV2SchemeId = (typeof KPI_V2_SCHEME_ORDER)[number];
  */
 export function getKpiV2SchemesEnabledForPeriod(config: KpiConfigV2): KpiV2SchemeId[] {
   return KPI_V2_SCHEME_ORDER.filter((id) => config[id]?.enabled === true);
+}
+
+/**
+ * Apakah baris kpi_configs BENAR-BENAR terkonfigurasi (punya target/skema nyata),
+ * bukan sekadar baris bootstrap dengan target 0? Menutup v1 (target_omzet) & v2 (skema aktif).
+ * Dipakai oleh skor kelengkapan cabang agar centang "KPI dikonfigurasi" jujur.
+ */
+export function isKpiConfigReady(
+  kpi: { target_omzet?: number | null; bonus_config_v2?: unknown } | null | undefined,
+): boolean {
+  if (!kpi) return false;
+  if (isKpiConfigV2(kpi.bonus_config_v2) && getKpiV2SchemesEnabledForPeriod(kpi.bonus_config_v2).length > 0) {
+    return true;
+  }
+  return Number(kpi.target_omzet ?? 0) > 0;
 }
 
 // =====================================================
@@ -171,6 +188,42 @@ export function calculateTeamDailyTarget(globalTargetOmzet: number, workingDays:
   return globalTargetOmzet / workingDays;
 }
 
+/**
+ * Target harian efektif seorang crew di skema Individual Daily.
+ * SATU sumber kebenaran — dipakai UI (tampilan) DAN calculator (bayaran) agar tak pernah berbeda.
+ * Prioritas: override harian (>0) → porsi bulanan ÷ hari kerja (mode manual) → fair-share global.
+ */
+export function effectiveDailyTargetForUser(
+  scheme: IndividualSchemeConfig,
+  global: KpiGlobalConfig,
+  userId: string,
+  activeUserCount: number,
+): number {
+  const uc = scheme.user_configs?.[userId];
+  const wdRaw = uc?.working_days;
+  const workingDays =
+    typeof wdRaw === "number" && Number.isFinite(wdRaw) && wdRaw > 0
+      ? wdRaw
+      : global.default_working_days || 26;
+
+  // 1) Override harian eksplisit selalu menang.
+  const override = uc?.target_omzet_daily;
+  if (typeof override === "number" && Number.isFinite(override) && override > 0) {
+    return override;
+  }
+
+  // 2) Mode manual: porsi bulanan ÷ hari kerja (menepati tampilan UI).
+  if (scheme.target_distribution === "manual") {
+    const porsi = uc?.target_omzet;
+    if (typeof porsi === "number" && Number.isFinite(porsi) && porsi > 0) {
+      return workingDays > 0 ? porsi / workingDays : 0;
+    }
+  }
+
+  // 3) Default: bagi rata (fair-share) dari target global.
+  return calculateDailyTargetPerUser(global.target_omzet, activeUserCount, workingDays);
+}
+
 /** Validasi menyeluruh konfigurasi KPI V2 sebelum simpan / kalkulasi. */
 export function validateKpiV2Config(config: KpiConfigV2): ValidationResult {
   const errors: ValidationResult["errors"] = [];
@@ -203,81 +256,73 @@ export function validateKpiV2Config(config: KpiConfigV2): ValidationResult {
     useU: boolean,
     bonusType: string,
     flat: number,
+    step: number,
+    reward: number,
+    minPercent: number,
   ) => {
     if (!enabled) return;
     const wr = validateWeights(wO, wA, wU, useA, useU);
     warnings.push(...wr.warnings.map((w) => ({ ...w, field: `${key}.${w.field}` })));
     errors.push(...wr.errors.map((e) => ({ ...e, field: `${key}.${e.field}` })));
     if (bonusType === "flat" && flat <= 0) {
-      warnings.push({ field: `${key}.flat_nominal`, message: "Bonus flat = 0" });
+      warnings.push({ field: `${key}.flat_nominal`, message: "Bonus flat = 0 — skema ini tidak membayar apa pun" });
+    }
+    // Kelipatan dengan step/reward tak valid → tak akan pernah membayar. (Dulu tak diperingatkan.)
+    if (bonusType === "kelipatan") {
+      if (step <= 0) {
+        warnings.push({ field: `${key}.kelipatan_step`, message: "Kelipatan step = 0 — bonus tidak akan dihitung" });
+      }
+      if (reward <= 0) {
+        warnings.push({ field: `${key}.kelipatan_reward`, message: "Kelipatan reward = 0 — skema ini tidak membayar apa pun" });
+      }
+    }
+    if (minPercent < 0 || minPercent > 200) {
+      errors.push({ field: `${key}.min_achievement_percent`, message: "Minimal pencapaian harus 0–200%" });
     }
   };
 
-  checkScheme(
-    "team_monthly",
-    config.team_monthly.enabled,
-    config.team_monthly.weight_omzet,
-    config.team_monthly.weight_atv,
-    config.team_monthly.weight_atu,
-    config.team_monthly.use_atv,
-    config.team_monthly.use_atu,
-    config.team_monthly.bonus_type,
-    config.team_monthly.flat_nominal,
-  );
-  checkScheme(
-    "team_daily",
-    config.team_daily.enabled,
-    config.team_daily.weight_omzet,
-    config.team_daily.weight_atv,
-    config.team_daily.weight_atu,
-    config.team_daily.use_atv,
-    config.team_daily.use_atu,
-    config.team_daily.bonus_type,
-    config.team_daily.flat_nominal,
-  );
-  checkScheme(
-    "individual_monthly",
-    config.individual_monthly.enabled,
-    config.individual_monthly.weight_omzet,
-    config.individual_monthly.weight_atv,
-    config.individual_monthly.weight_atu,
-    config.individual_monthly.use_atv,
-    config.individual_monthly.use_atu,
-    config.individual_monthly.bonus_type,
-    config.individual_monthly.flat_nominal,
-  );
-  checkScheme(
-    "individual_daily",
-    config.individual_daily.enabled,
-    config.individual_daily.weight_omzet,
-    config.individual_daily.weight_atv,
-    config.individual_daily.weight_atu,
-    config.individual_daily.use_atv,
-    config.individual_daily.use_atu,
-    config.individual_daily.bonus_type,
-    config.individual_daily.flat_nominal,
-  );
-
-  if (
-    config.individual_monthly.enabled &&
-    config.individual_monthly.target_distribution === "manual"
-  ) {
-    const keys = Object.keys(config.individual_monthly.user_configs ?? {});
-    if (keys.length === 0) {
-      errors.push({
-        field: "individual_monthly.user_configs",
-        message: "Distribusi manual dipilih tetapi belum ada konfigurasi per pengguna",
-      });
-    }
+  const schemeKeys = ["team_monthly", "team_daily", "individual_monthly", "individual_daily"] as const;
+  for (const k of schemeKeys) {
+    const s = config[k];
+    checkScheme(
+      k,
+      s.enabled,
+      s.weight_omzet,
+      s.weight_atv,
+      s.weight_atu,
+      s.use_atv,
+      s.use_atu,
+      s.bonus_type,
+      s.flat_nominal,
+      s.kelipatan_step,
+      s.kelipatan_reward,
+      s.min_achievement_percent,
+    );
   }
 
-  if (config.individual_daily.enabled && config.individual_daily.target_distribution === "manual") {
-    const keys = Object.keys(config.individual_daily.user_configs ?? {});
-    if (keys.length === 0) {
+  // Distribusi manual: (1) wajib ada konfigurasi; (2) jumlah porsi cocok dgn target global.
+  // Cek jumlah kini di validator INTI → server (saveKpiV2Action) ikut memblok, tak cuma client.
+  for (const k of ["individual_monthly", "individual_daily"] as const) {
+    const scheme = config[k];
+    if (!scheme.enabled || scheme.target_distribution !== "manual") continue;
+    const cfgs = scheme.user_configs ?? {};
+    if (Object.keys(cfgs).length === 0) {
       errors.push({
-        field: "individual_daily.user_configs",
+        field: `${k}.user_configs`,
         message: "Distribusi manual dipilih tetapi belum ada konfigurasi per pengguna",
       });
+      continue;
+    }
+    const totalPorsi = Object.values(cfgs).reduce(
+      (sum, uc) => sum + (typeof uc.target_omzet === "number" ? uc.target_omzet : 0),
+      0,
+    );
+    // Daily boleh pakai override harian → porsi bisa sengaja tak dijumlah pas: peringatan saja.
+    // Monthly murni porsi → mismatch = error.
+    if (Math.abs(totalPorsi - config.global.target_omzet) > 1) {
+      const msg = `Total porsi (Rp ${totalPorsi.toLocaleString("id-ID")}) ≠ target global (Rp ${config.global.target_omzet.toLocaleString("id-ID")})`;
+      if (k === "individual_monthly") errors.push({ field: `${k}.user_configs`, message: msg });
+      else warnings.push({ field: `${k}.user_configs`, message: `${msg} — cek bila tak memakai override harian` });
     }
   }
 

@@ -9,6 +9,7 @@ export type ExportDailyTotal = {
   transactions: number;
   products: number;
   rejectedCustomers: number;
+  rejectedMedicines: number;
 };
 
 export type ExportCrewDaily = {
@@ -18,6 +19,7 @@ export type ExportCrewDaily = {
   transactions: number;
   products: number;
   rejectedCustomers: number;
+  rejectedMedicines: number;
 };
 
 export type ExportMonthlyTrend = { month: number; year: number; omzet: number };
@@ -98,7 +100,7 @@ export async function fetchExportData(
     supabase
       .from("daily_submissions")
       .select(
-        "submission_date, user_id, omzet_total, transaction_total, product_total, rejected_customer_total",
+        "submission_date, user_id, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total",
       )
       .eq("tenant_apotek_id", branchId)
       .in("status", COUNTED_STATUSES)
@@ -158,11 +160,13 @@ export async function fetchExportData(
       transactions: 0,
       products: 0,
       rejectedCustomers: 0,
+      rejectedMedicines: 0,
     };
     bd.omzet += Number(sub.omzet_total ?? 0);
     bd.transactions += Number(sub.transaction_total ?? 0);
     bd.products += Number(sub.product_total ?? 0);
     bd.rejectedCustomers += Number(sub.rejected_customer_total ?? 0);
+    bd.rejectedMedicines += Number(sub.rejected_medicine_total ?? 0);
     byDate.set(date, bd);
 
     // Per-crew daily
@@ -174,11 +178,13 @@ export async function fetchExportData(
       transactions: 0,
       products: 0,
       rejectedCustomers: 0,
+      rejectedMedicines: 0,
     };
     cd.omzet += Number(sub.omzet_total ?? 0);
     cd.transactions += Number(sub.transaction_total ?? 0);
     cd.products += Number(sub.product_total ?? 0);
     cd.rejectedCustomers += Number(sub.rejected_customer_total ?? 0);
+    cd.rejectedMedicines += Number(sub.rejected_medicine_total ?? 0);
     byUserDate.set(key, cd);
   }
 

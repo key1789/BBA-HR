@@ -7,7 +7,7 @@ import {
   computeDashboardKpis,
   monthBoundsKeys,
 } from "@/lib/bba-dashboard-metrics";
-import type { LeaderboardRow } from "@/app/bba/dashboard/bba-dashboard-leaderboard";
+import type { LeaderboardRow } from "@/app/sa/dashboard/bba-dashboard-leaderboard";
 
 type OmzetSubmissionRow = {
   submission_date: string;
@@ -15,6 +15,7 @@ type OmzetSubmissionRow = {
   transaction_total: number | null;
   product_total: number | null;
   rejected_customer_total: number | null;
+  rejected_medicine_total: number | null;
   user_id: string;
   user: { full_name: string } | { full_name: string }[] | null;
 };
@@ -63,7 +64,7 @@ export async function fetchOwnerPenjualanSnapshot(
   const { data: omzetRowsData } = await supabase
     .from("daily_submissions")
     .select(
-      "submission_date, omzet_total, transaction_total, product_total, rejected_customer_total, user_id, user:user_id(full_name)",
+      "submission_date, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, user_id, user:user_id(full_name)",
     )
     .eq("tenant_apotek_id", tenantId)
     .in("status", [...OWNER_PORTAL_SUBMISSION_STATUSES])

@@ -36,7 +36,7 @@ export function requirePermission(role: AppPermissionRole, permission: Permissio
 }
 
 /**
- * Pemetaan sesi layout BBA (/bba/*) ke role izin fitur cabang.
+ * Pemetaan sesi layout BBA (/sa/*) ke role izin fitur cabang.
  * Global super admin & staf BBA penuh diperlakukan setara super_admin; analyst terbatas menu tetap dapat KPI penuh sesuai kebijakan produk.
  */
 export function mapBbaSessionToAppPermissionRole(session: SessionContext | null): AppPermissionRole {

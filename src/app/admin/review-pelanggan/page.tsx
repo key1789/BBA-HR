@@ -16,7 +16,7 @@ import { Star } from "lucide-react";
 
 type ReviewRow = {
   id: string;
-  user_id: string | null;
+  tagged_user_id: string | null;
   review_text: string | null;
   customer_name: string | null;
   rating: number | null;
@@ -94,13 +94,13 @@ export default async function AdminReviewPelangganPage({
 
   let reviewQuery = supabase
     .from("customer_review_logs")
-    .select("id, user_id, review_text, customer_name, rating, reviewed_at")
+    .select("id, tagged_user_id, review_text, customer_name, rating, reviewed_at")
     .eq("tenant_apotek_id", active.tenantId)
     .order("reviewed_at", { ascending: false })
     .limit(50);
 
   if (selectedCrewId) {
-    reviewQuery = reviewQuery.eq("user_id", selectedCrewId);
+    reviewQuery = reviewQuery.eq("tagged_user_id", selectedCrewId);
   }
 
   const { data: recentReviews } = await reviewQuery;
@@ -109,9 +109,8 @@ export default async function AdminReviewPelangganPage({
   // ── Derived stats ─────────────────────────────────────────────────────────
   const crewNameById = new Map(crew.map((c) => [c.id, c.full_name]));
   const reminderWindow = getOperationalReminderWindow();
-  // WIB datetime for the datetime-local input default
-  const wibNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  const todayIso = wibNow.toISOString().slice(0, 16);
+  // WIB datetime for the datetime-local input default (dari jam WIB yang sudah dihitung reminderWindow)
+  const todayIso = `${reminderWindow.dateKey}T${String(reminderWindow.hour).padStart(2, "0")}:${String(reminderWindow.minute).padStart(2, "0")}`;
   const isTruncated = reviews.length === 50;
 
   const reviewsWithRating = reviews.filter((r) => r.rating !== null);
@@ -303,8 +302,8 @@ export default async function AdminReviewPelangganPage({
           ) : (
             <div className="divide-y divide-slate-50">
               {reviews.map((r) => {
-                const crewName = r.user_id
-                  ? (crewNameById.get(r.user_id) ?? "Tidak dikenal")
+                const crewName = r.tagged_user_id
+                  ? (crewNameById.get(r.tagged_user_id) ?? "Tidak dikenal")
                   : "—";
                 const rating = r.rating !== null ? Number(r.rating) : null;
 

@@ -23,6 +23,7 @@ export function CrewBottomNav({ branchConfig }: { branchConfig: Record<string, b
   const pathname = usePathname();
 
   const items = ALL_NAV_ITEMS.filter((item) => {
+    if (item.key === "input"       && branchConfig.closing_admin_full) return false;
     if (item.key === "kehadiran"   && !branchConfig.addon_absensi)    return false;
     if (item.key === "review" && !branchConfig.addon_grooming) return false;
     return true;

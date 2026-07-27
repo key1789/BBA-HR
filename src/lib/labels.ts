@@ -21,14 +21,14 @@ const EXPORT_JOB_STATUS_LABEL: Record<string, string> = {
 };
 
 const PAYROLL_STATUS_LABEL: Record<string, string> = {
-  draft_bba: "Draft BBA",
+  draft_bba: "Draft Apotrik",
   reviewed_ba: "Reviewed BA",
   pending_audit: "Pending Audit",
   pending_owner_approval: "Pending Owner Approval",
   approved_owner: "Approved Owner",
   paid: "Paid",
   archived: "Archived",
-  unlocked_by_bba_admin: "Unlocked by BBA Admin",
+  unlocked_by_bba_admin: "Unlocked by Apotrik Admin",
   locked: "Locked",
 };
 
@@ -36,7 +36,7 @@ const ROLE_LABEL: Record<string, string> = {
   crew: "Crew",
   admin_apotek: "Admin Apotek",
   owner: "Owner",
-  super_admin_bba: "Super Admin BBA",
+  super_admin_bba: "Super Admin Apotrik",
 };
 
 const AUDIT_STATUS_LABEL: Record<string, string> = {

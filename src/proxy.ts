@@ -147,7 +147,7 @@ export async function proxy(request: NextRequest) {
   if (
     user &&
     role === "super_admin_bba" &&
-    pathname.startsWith("/bba/")
+    pathname.startsWith("/sa/")
   ) {
     const { data: profile } = await supabase
       .from("app_users")

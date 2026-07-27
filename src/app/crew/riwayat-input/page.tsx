@@ -26,6 +26,7 @@ type SubmissionRow = {
   transaction_total: number;
   product_total: number;
   rejected_customer_total: number;
+  rejected_medicine_total: number;
   status: SubmissionStatus;
 };
 
@@ -86,7 +87,7 @@ export default async function CrewRiwayatInputPage({
   let query = supabase
     .from("daily_submissions")
     .select(
-      "id, submission_date, shift_label, omzet_total, transaction_total, product_total, rejected_customer_total, status",
+      "id, submission_date, shift_label, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, status",
       { count: "exact" },
     )
     .eq("tenant_apotek_id", active.tenantId)
@@ -256,13 +257,14 @@ export default async function CrewRiwayatInputPage({
               <th className="px-5 py-3.5 text-right">Transaksi</th>
               <th className="px-5 py-3.5 text-right">Produk</th>
               <th className="px-5 py-3.5 text-right">Tertolak</th>
+              <th className="px-5 py-3.5 text-right">Obat</th>
               <th className="px-5 py-3.5">Status</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td className="px-5 py-8 text-slate-400 text-center text-sm font-medium" colSpan={7}>
+                <td className="px-5 py-8 text-slate-400 text-center text-sm font-medium" colSpan={8}>
                   Tidak ada data sesuai filter.
                 </td>
               </tr>
@@ -274,6 +276,7 @@ export default async function CrewRiwayatInputPage({
                 <td className="px-5 py-3 text-right font-medium text-slate-700">{fmt.format(Number(row.transaction_total))}</td>
                 <td className="px-5 py-3 text-right font-medium text-slate-700">{fmt.format(Number(row.product_total))}</td>
                 <td className="px-5 py-3 text-right font-medium text-slate-700">{fmt.format(Number(row.rejected_customer_total))}</td>
+                <td className="px-5 py-3 text-right font-medium text-slate-700">{fmt.format(Number(row.rejected_medicine_total))}</td>
                 <td className="px-5 py-3">
                   <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getSubmissionStatusBadgeClass(row.status)}`}>
                     {getSubmissionStatusLabel(row.status)}
@@ -318,6 +321,10 @@ export default async function CrewRiwayatInputPage({
               <div className="mt-1">
                 <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Tertolak</p>
                 <p className="font-bold text-slate-700 mt-0.5">{fmt.format(Number(row.rejected_customer_total))}</p>
+              </div>
+              <div className="mt-1">
+                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Obat Tertolak</p>
+                <p className="font-bold text-slate-700 mt-0.5">{fmt.format(Number(row.rejected_medicine_total))}</p>
               </div>
             </div>
           </div>

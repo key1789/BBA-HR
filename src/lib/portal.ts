@@ -9,7 +9,7 @@ export function getDefaultPortalPath(role: Role): string {
     case "owner":
       return "/owner/penjualan-kinerja";
     case "super_admin_bba":
-      return "/bba/dashboard";
+      return "/sa/dashboard";
     default:
       return "/";
   }
@@ -32,7 +32,7 @@ export function canAccessPortalPath(pathname: string, role: Role): boolean {
     return role === "owner";
   }
 
-  if (pathname.startsWith("/bba/")) {
+  if (pathname.startsWith("/sa/")) {
     return role === "super_admin_bba";
   }
 

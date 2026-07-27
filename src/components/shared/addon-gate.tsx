@@ -67,7 +67,7 @@ export function AddonGate({
 
             {/* CTA */}
             <p className="mt-4 text-[11px] leading-relaxed text-slate-400">
-              Hubungi tim BBA untuk mengaktifkan fitur ini pada cabang Anda.
+              Hubungi tim Apotrik untuk mengaktifkan fitur ini pada cabang Anda.
             </p>
           </div>
         </div>

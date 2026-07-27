@@ -43,8 +43,8 @@ export default async function AdminKonfigurasiGajiPage() {
           <h2 className="text-lg font-black text-slate-800">Fitur Belum Aktif</h2>
           <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
             {!addonEnabled
-              ? "Modul Payroll belum diaktifkan oleh BBA untuk apotek ini."
-              : "BBA belum mengizinkan Admin untuk mengelola konfigurasi gaji."}
+              ? "Modul Payroll belum diaktifkan oleh Apotrik untuk apotek ini."
+              : "Apotrik belum mengizinkan Admin untuk mengelola konfigurasi gaji."}
           </p>
         </div>
       </AnimatedPage>
@@ -112,6 +112,7 @@ export default async function AdminKonfigurasiGajiPage() {
         name:   String(a.name ?? ""),
         amount: Number(a.amount ?? 0),
         type:   (a.type === "deduction" ? "deduction" : "addition") as "addition" | "deduction",
+        basis:  (String(a.basis ?? "monthly").toLowerCase() === "daily" ? "daily" : "monthly") as "monthly" | "daily",
       })),
     };
   });

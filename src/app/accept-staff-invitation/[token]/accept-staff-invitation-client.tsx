@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useActionState, useEffect } from "react";
-import { completeStaffInvitationAction } from "@/app/bba/branches/[id]/actions";
+import { completeStaffInvitationAction } from "@/app/sa/branches/[id]/actions";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Loader2, User, Lock, BadgeCheck } from "lucide-react";

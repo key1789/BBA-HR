@@ -3,6 +3,7 @@
 import { verifySubmissionAction } from "@/actions/operational";
 import { PendingSubmitButton } from "./submit-buttons";
 import { DirectEditModal } from "./direct-edit-modal";
+import { RejectModal } from "./reject-modal";
 
 export function MobileActionBar({
   submissionId,
@@ -11,6 +12,7 @@ export function MobileActionBar({
   from,
   to,
   defaultValues,
+  focusProducts = [],
 }: {
   submissionId: string;
   page: number;
@@ -22,8 +24,10 @@ export function MobileActionBar({
     transactionTotal: number;
     productTotal: number;
     rejectedCustomerTotal: number;
+    rejectedMedicineTotal: number;
     lateReason: string | null;
   };
+  focusProducts?: { product_id: string; product_name: string; quantity_sold: number }[];
 }) {
   return (
     <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">
@@ -42,20 +46,17 @@ export function MobileActionBar({
         />
       </form>
 
-      {/* Tolak — form sendiri */}
-      <form className="flex-1">
-        <input type="hidden" name="page" value={String(page)} />
-        <input type="hidden" name="status" value={selectedStatus} />
-        <input type="hidden" name="from" value={from} />
-        <input type="hidden" name="to" value={to} />
-        <PendingSubmitButton
-          formAction={verifySubmissionAction}
-          hiddenFields={{ verification: `${submissionId}:reject` }}
-          idleLabel="Tolak"
-          pendingLabel="..."
-          className="w-full rounded-xl border border-rose-300 bg-white py-2 text-xs font-black text-rose-700 transition-colors active:bg-rose-50 disabled:opacity-50"
+      {/* Tolak — modal alasan wajib (bukan form langsung) */}
+      <div className="flex-1">
+        <RejectModal
+          submissionId={submissionId}
+          page={page}
+          selectedStatus={selectedStatus}
+          from={from}
+          to={to}
+          triggerClassName="w-full rounded-xl border border-rose-300 bg-white py-2 text-xs font-black text-rose-700 transition-colors active:bg-rose-50"
         />
-      </form>
+      </div>
 
       {/* DirectEditModal di luar form — buka modal fixed, tidak nested */}
       <DirectEditModal
@@ -65,6 +66,7 @@ export function MobileActionBar({
         from={from}
         to={to}
         defaultValues={defaultValues}
+        focusProducts={focusProducts}
       />
     </div>
   );

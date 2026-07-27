@@ -148,7 +148,7 @@ function buildRingkasan(wb: ExcelJS.Workbook, data: ExportData) {
   // Title
   ws.mergeCells("A1:D1");
   const title = ws.getCell("A1");
-  title.value = `LAPORAN JAGO JUALAN BBA — ${branch.name}`;
+  title.value = `LAPORAN JAGO JUALAN APOTRIK — ${branch.name}`;
   title.font = boldFont(XL.white, 14);
   title.fill = headerFill(XL.emerald);
   title.alignment = { horizontal: "center", vertical: "middle" };
@@ -652,7 +652,7 @@ function buildTertolak(wb: ExcelJS.Workbook, data: ExportData) {
 // ─── Main export function ─────────────────────────────────────────────────────
 export async function buildExcelReport(data: ExportData): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "BBA Portal";
+  wb.creator = "Apotrik";
   wb.created = new Date();
   wb.modified = new Date();
 

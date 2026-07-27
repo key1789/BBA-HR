@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:unit": "tsx --test src/lib/report-metrics-core.test.ts src/lib/reminder-windows.test.ts",
+    "check:buttons": "node scripts/check-button-nesting.mjs",
+    "test:unit": "tsx --test src/lib/report-metrics-core.test.ts src/lib/reminder-windows.test.ts src/lib/produk-fokus-core.test.ts src/lib/products-import-core.test.ts src/lib/payroll-adjustments.test.ts src/lib/audit-scope.test.ts src/lib/kpi-v2/calculator.test.ts",
     "db:link": "supabase link --project-ref nsamydifarrfnzcotjna",
     "db:push": "supabase db push"
   },

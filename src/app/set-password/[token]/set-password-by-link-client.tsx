@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useEffect } from "react";
-import { completeStaffPasswordResetWithTokenAction } from "@/app/bba/branches/[id]/actions";
+import { completeStaffPasswordResetWithTokenAction } from "@/app/sa/branches/[id]/actions";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Loader2, Lock, ShieldCheck } from "lucide-react";

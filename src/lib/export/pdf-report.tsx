@@ -224,8 +224,8 @@ function CoverPage({ data }: { data: ExportData }) {
       {/* ── Top header ── */}
       <View style={S.bar}>
         <View>
-          <Text style={S.barT}>LAPORAN JAGO JUALAN BBA</Text>
-          <Text style={S.barS}>Laporan performa penjualan bulanan · BBA Portal</Text>
+          <Text style={S.barT}>LAPORAN JAGO JUALAN APOTRIK</Text>
+          <Text style={S.barS}>Laporan performa penjualan bulanan · Apotrik</Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
           <Text style={{ color: C.white, fontSize: 9, fontFamily: "Helvetica-Bold" }}>{monthName} {period.year}</Text>
@@ -341,7 +341,7 @@ function CoverPage({ data }: { data: ExportData }) {
         </View>
       )}
 
-      <PageFooter label={`Laporan Jago Jualan BBA · ${branch.name} · ${monthName} ${period.year}`} />
+      <PageFooter label={`Laporan Jago Jualan Apotrik · ${branch.name} · ${monthName} ${period.year}`} />
     </Page>
   );
 }
@@ -920,8 +920,8 @@ export function PdfReport({ data }: { data: ExportData }) {
   return (
     <Document
       title={`Laporan Jago Jualan - ${data.branch.name} - ${MONTHS_ID[data.period.month - 1]} ${data.period.year}`}
-      author="BBA Portal"
-      creator="BBA Portal"
+      author="Apotrik"
+      creator="Apotrik"
     >
       <CoverPage data={data} />
       <DailySummaryPage data={data} />

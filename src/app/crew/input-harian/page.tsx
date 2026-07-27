@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { redirect } from "next/navigation";
 import { getSessionContext } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -28,6 +29,16 @@ export default async function CrewInputHarianPage() {
   const supabaseAdmin = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Mode Admin Penuh: crew tidak menginput closingan (admin yang mencatat).
+  const { data: tenantRow } = await supabase
+    .from("tenant_apotek")
+    .select("closing_mode")
+    .eq("id", active.tenantId)
+    .maybeSingle();
+  if (tenantRow?.closing_mode === "admin_full") {
+    redirect(active.role === "admin_apotek" ? "/admin/input-harian" : "/crew/dashboard");
+  }
+
   // Use WIB date for period calculation
   const reminderWindow = getOperationalReminderWindow();
   const [periodYear, periodMonth] = reminderWindow.dateKey.split("-").map(Number);
@@ -42,7 +53,7 @@ export default async function CrewInputHarianPage() {
   ] = await Promise.all([
     supabase
       .from("daily_submissions")
-      .select("id, submission_date, shift_label, omzet_total, transaction_total, product_total, rejected_customer_total, late_reason, status")
+      .select("id, submission_date, shift_label, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, late_reason, status")
       .eq("tenant_apotek_id", active.tenantId)
       .eq("user_id", user?.id ?? "")
       .gte("submission_date", startDate)

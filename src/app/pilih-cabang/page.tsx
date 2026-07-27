@@ -6,7 +6,7 @@ const ROLE_LABELS: Record<string, string> = {
   crew: "Crew",
   admin_apotek: "Admin Apotek",
   owner: "Owner",
-  super_admin_bba: "Super Admin BBA",
+  super_admin_bba: "Super Admin Apotrik",
 };
 
 export default async function PilihCabangPage() {

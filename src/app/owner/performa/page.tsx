@@ -1,7 +1,7 @@
 import { AnimatedPage } from "@/components/shared/animated-page";
 import { getOwnerPortalContext } from "@/app/owner/_lib/owner-portal-context";
 import { fetchAuditBranchDashboardData } from "@/lib/audit-branch-dashboard-data";
-import { AuditDetailClient } from "@/app/bba/audit/[id]/audit-detail-client";
+import { AuditDetailClient } from "@/app/sa/audit/[id]/audit-detail-client";
 import { Building2 } from "lucide-react";
 import { OwnerPortalShell } from "@/components/owner/owner-portal-shell";
 import { OwnerPerformaTabs } from "./owner-performa-client";

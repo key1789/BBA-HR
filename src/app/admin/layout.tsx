@@ -1,8 +1,8 @@
 import { getSessionContext } from "@/lib/auth-context";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import Image from "next/image";
 import {
   LayoutDashboard,
@@ -11,19 +11,26 @@ import {
   CalendarDays,
   Star,
   LogOut,
+  UserCog,
 } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { AdminBottomNav } from "./admin-bottom-nav";
 import { SidebarLink } from "@/components/shared/crew-sidebar-link";
 import { SwitchModeModal } from "@/components/shared/switch-mode-modal";
 
-const SIDEBAR_ITEMS = [
-  { name: "Dashboard",  path: "/admin/dashboard",          icon: LayoutDashboard },
-  { name: "Verifikasi", path: "/admin/verifikasi",          icon: ClipboardCheck  },
-  { name: "Absensi",    path: "/admin/absensi",             icon: CalendarDays    },
-  { name: "Review",     path: "/admin/review-pelanggan",   icon: Star            },
-  { name: "Setup Gaji", path: "/admin/konfigurasi-gaji",   icon: Banknote        },
-] as const;
+function buildSidebarItems(isAdminFull: boolean, showAbsensi: boolean, showSalaryConfig: boolean) {
+  return [
+    { name: "Dashboard", path: "/admin/dashboard", icon: LayoutDashboard },
+    isAdminFull
+      ? { name: "Input Closingan", path: "/admin/input-harian", icon: UserCog }
+      : { name: "Verifikasi", path: "/admin/verifikasi", icon: ClipboardCheck },
+    // Absensi hanya bila modul absensi_shift aktif (halaman di-gate AddonGate).
+    ...(showAbsensi ? [{ name: "Absensi", path: "/admin/absensi", icon: CalendarDays }] : []),
+    { name: "Review", path: "/admin/review-pelanggan", icon: Star },
+    // Setup Gaji hanya bila payroll aktif + admin diberi izin input (mirror kondisi kunci halaman).
+    ...(showSalaryConfig ? [{ name: "Setup Gaji", path: "/admin/konfigurasi-gaji", icon: Banknote }] : []),
+  ];
+}
 
 export default async function AdminLayout({
   children,
@@ -42,6 +49,29 @@ export default async function AdminLayout({
 
   const supabase = await createClient();
   const tenantId = session.activeMembership?.tenantId;
+
+  const { data: tenantRow } = await supabase
+    .from("tenant_apotek")
+    .select("closing_mode")
+    .eq("id", tenantId ?? "")
+    .maybeSingle();
+  const isAdminFull = tenantRow?.closing_mode === "admin_full";
+
+  // Delegasi: tampilkan link nav hanya bila fitur tersedia (konsisten dgn portal owner
+  // yang menyembunyikan link saat off, bukan menampilkan link → layar-kunci).
+  const { data: addonRows } = await createAdminClient()
+    .from("addon_settings")
+    .select("addon_key, is_enabled, settings")
+    .eq("tenant_apotek_id", tenantId ?? "")
+    .in("addon_key", ["payroll", "absensi_shift"]);
+  const payrollRow = addonRows?.find((r) => r.addon_key === "payroll");
+  const absensiRow = addonRows?.find((r) => r.addon_key === "absensi_shift");
+  const showSalaryConfig =
+    Boolean(payrollRow?.is_enabled) &&
+    Boolean((payrollRow?.settings as Record<string, unknown> | null)?.allow_admin_input);
+  const showAbsensi = Boolean(absensiRow?.is_enabled);
+
+  const sidebarItems = buildSidebarItems(isAdminFull, showAbsensi, showSalaryConfig);
 
   const [unreadCount, pendingAttendanceCount] = await Promise.all([
     getUnreadNotificationCount(session.userId).catch(() => 0),
@@ -84,16 +114,16 @@ export default async function AdminLayout({
 
         {/* Brand */}
         <div className="px-5 py-5 border-b border-slate-100 flex items-center gap-3">
-          <Image src="/bba-logo.png" alt="BBA System" width={36} height={36} className="rounded-xl shrink-0" />
+          <Image src="/apotrik-logo.png" alt="Apotrik" width={36} height={36} className="rounded-xl shrink-0" />
           <div className="min-w-0">
-            <p className="font-black text-slate-800 tracking-tight text-sm leading-none">BBA System</p>
+            <Image src="/apotrik-wordmark.png" alt="Apotrik" width={3148} height={656} className="h-4 w-auto" />
             <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest mt-0.5">Admin Access</p>
           </div>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {SIDEBAR_ITEMS.map((item) => {
+          {sidebarItems.map((item) => {
             const Icon = item.icon;
             return (
               <SidebarLink key={item.path} href={item.path} icon={<Icon size={17} />} label={item.name} />
@@ -136,9 +166,9 @@ export default async function AdminLayout({
         {/* Mobile header */}
         <header className="md:hidden bg-sky-600 px-5 pt-8 pb-16 flex items-center justify-between rounded-b-[2rem] shadow-sm relative z-0">
           <div className="flex items-center gap-3">
-            <Image src="/bba-logo.png" alt="BBA System" width={36} height={36} className="rounded-full shrink-0" />
+            <Image src="/apotrik-logo.png" alt="Apotrik" width={36} height={36} className="rounded-full shrink-0" />
             <div>
-              <p className="font-black text-base text-white tracking-tight leading-none">BBA System</p>
+              <Image src="/apotrik-wordmark-white.png" alt="Apotrik" width={3148} height={656} className="h-[18px] w-auto" />
               <p className="text-[9px] text-sky-200 uppercase tracking-widest font-bold mt-0.5">Admin Access</p>
             </div>
           </div>
@@ -163,7 +193,7 @@ export default async function AdminLayout({
         </main>
 
         {/* Bottom nav (mobile only) */}
-        <AdminBottomNav unreadCount={unreadCount} pendingAttendanceCount={pendingAttendanceCount} />
+        <AdminBottomNav unreadCount={unreadCount} pendingAttendanceCount={pendingAttendanceCount} isAdminFull={isAdminFull} showAbsensi={showAbsensi} showSalaryConfig={showSalaryConfig} />
       </div>
     </div>
   );

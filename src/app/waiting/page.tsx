@@ -12,7 +12,7 @@ export default function WaitingApprovalPage() {
         <div>
           <h1 className="text-xl font-bold text-slate-900">Menunggu Persetujuan</h1>
           <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-            Akun Anda berhasil dibuat, namun belum dihubungkan ke cabang apotek manapun. Silakan hubungi Super Admin BBA untuk persetujuan dan penempatan.
+            Akun Anda berhasil dibuat, namun belum dihubungkan ke cabang apotek manapun. Silakan hubungi Super Admin Apotrik untuk persetujuan dan penempatan.
           </p>
         </div>
         <form action={logoutAction}>

@@ -73,7 +73,7 @@ function payrollRedirect(
   extra: Record<string, string | undefined> = {},
 ): never {
   const tenantId = resolvePayrollTenantId(formData, active);
-  return redirectWithFeedback("/bba/payroll", status, message, {
+  return redirectWithFeedback("/sa/payroll", status, message, {
     tenant: tenantId ?? undefined,
     ...extra,
   });
@@ -83,9 +83,9 @@ export async function createExportJobAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/export-center", "error", "access_denied");
+    return redirectWithFeedback("/sa/export-center", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "export", "/bba/export-center");
+  assertAnalystPortalMenu(session, "export", "/sa/export-center");
 
   const exportType = formData.get("exportType")?.toString()?.trim();
   const format = formData.get("format")?.toString() ?? "csv";
@@ -93,13 +93,13 @@ export async function createExportJobAction(formData: FormData) {
   const allowedFormats = ["csv", "pdf"];
   if (!exportType || !allowedTypes.includes(exportType)) {
     return redirectWithFeedback(
-      "/bba/export-center",
+      "/sa/export-center",
       "error",
       "invalid_export_type",
     );
   }
   if (!allowedFormats.includes(format)) {
-    return redirectWithFeedback("/bba/export-center", "error", "invalid_format");
+    return redirectWithFeedback("/sa/export-center", "error", "invalid_format");
   }
 
   const supabase = await createClient();
@@ -107,7 +107,7 @@ export async function createExportJobAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirectWithFeedback("/bba/export-center", "error", "user_not_found");
+    return redirectWithFeedback("/sa/export-center", "error", "user_not_found");
   }
 
   const { data, error } = await supabase
@@ -123,7 +123,7 @@ export async function createExportJobAction(formData: FormData) {
     .single();
 
   if (error || !data?.id) {
-    return redirectWithFeedback("/bba/export-center", "error", "create_failed");
+    return redirectWithFeedback("/sa/export-center", "error", "create_failed");
   }
 
   await writeAuditLog(supabase, {
@@ -135,31 +135,31 @@ export async function createExportJobAction(formData: FormData) {
     newValue: { exportType, format },
   });
 
-  revalidatePath("/bba/export-center");
-  revalidatePath("/bba/audit-log");
-  return redirectWithFeedback("/bba/export-center", "success", "export_queued");
+  revalidatePath("/sa/export-center");
+  revalidatePath("/sa/audit-log");
+  return redirectWithFeedback("/sa/export-center", "success", "export_queued");
 }
 
 export async function lockPayrollPeriodAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/payroll", "error", "access_denied");
+    return redirectWithFeedback("/sa/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "audit", "/bba/audit");
+  assertAnalystPortalMenu(session, "audit", "/sa/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
-    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+    return redirectWithFeedback("/sa/payroll", "error", "tenant_required");
   }
 
   const periodId = formData.get("periodId")?.toString();
   const reason = formData.get("reason")?.toString()?.trim();
   if (!periodId) {
-    return redirectWithFeedback("/bba/payroll", "error", "period_required");
+    return redirectWithFeedback("/sa/payroll", "error", "period_required");
   }
   if (!reason || reason.length < 3) {
-    return redirectWithFeedback("/bba/payroll", "error", "lock_reason_required");
+    return redirectWithFeedback("/sa/payroll", "error", "lock_reason_required");
   }
 
   const supabase = await createClient();
@@ -167,7 +167,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirectWithFeedback("/bba/payroll", "error", "user_not_found");
+    return redirectWithFeedback("/sa/payroll", "error", "user_not_found");
   }
 
   const { data: currentPeriod, error: currentError } = await supabase
@@ -178,10 +178,10 @@ export async function lockPayrollPeriodAction(formData: FormData) {
     .maybeSingle();
 
   if (currentError || !currentPeriod?.status) {
-    return redirectWithFeedback("/bba/payroll", "error", "period_not_found");
+    return redirectWithFeedback("/sa/payroll", "error", "period_not_found");
   }
   if (currentPeriod.status === "locked") {
-    return redirectWithFeedback("/bba/payroll", "error", "already_locked");
+    return redirectWithFeedback("/sa/payroll", "error", "already_locked");
   }
 
   const { data: updatedPeriod, error: updateError } = await supabase
@@ -193,7 +193,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
     .maybeSingle();
 
   if (updateError || !updatedPeriod?.id) {
-    return redirectWithFeedback("/bba/payroll", "error", "lock_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "lock_failed");
   }
 
   const { error: lockEventError } = await supabase
@@ -206,7 +206,7 @@ export async function lockPayrollPeriodAction(formData: FormData) {
       reason,
     });
   if (lockEventError) {
-    return redirectWithFeedback("/bba/payroll", "error", "lock_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "lock_failed");
   }
 
   await writeAuditLog(supabase, {
@@ -218,8 +218,8 @@ export async function lockPayrollPeriodAction(formData: FormData) {
     newValue: { reason },
   });
 
-  revalidatePath("/bba/payroll");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/payroll");
+  revalidatePath("/sa/audit-log");
   return payrollRedirect(formData, active, "success", "period_locked");
 }
 
@@ -227,19 +227,19 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/payroll", "error", "access_denied");
+    return redirectWithFeedback("/sa/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "audit", "/bba/audit");
+  assertAnalystPortalMenu(session, "audit", "/sa/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
-    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+    return redirectWithFeedback("/sa/payroll", "error", "tenant_required");
   }
 
   const periodId = formData.get("periodId")?.toString();
   const reason = formData.get("reason")?.toString()?.trim();
   if (!periodId || !reason) {
-    return redirectWithFeedback("/bba/payroll", "error", "unlock_reason_required");
+    return redirectWithFeedback("/sa/payroll", "error", "unlock_reason_required");
   }
 
   const supabase = await createClient();
@@ -247,7 +247,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirectWithFeedback("/bba/payroll", "error", "user_not_found");
+    return redirectWithFeedback("/sa/payroll", "error", "user_not_found");
   }
 
   const { data: currentPeriod, error: currentError } = await supabase
@@ -258,10 +258,10 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     .maybeSingle();
 
   if (currentError || !currentPeriod?.status) {
-    return redirectWithFeedback("/bba/payroll", "error", "period_not_found");
+    return redirectWithFeedback("/sa/payroll", "error", "period_not_found");
   }
   if (currentPeriod.status !== "locked") {
-    return redirectWithFeedback("/bba/payroll", "error", "not_locked");
+    return redirectWithFeedback("/sa/payroll", "error", "not_locked");
   }
 
   const { data: updatedPeriod, error: updateError } = await supabase
@@ -273,7 +273,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     .maybeSingle();
 
   if (updateError || !updatedPeriod?.id) {
-    return redirectWithFeedback("/bba/payroll", "error", "unlock_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "unlock_failed");
   }
 
   const { error: unlockEventError } = await supabase
@@ -286,7 +286,7 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
       reason,
     });
   if (unlockEventError) {
-    return redirectWithFeedback("/bba/payroll", "error", "unlock_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "unlock_failed");
   }
 
   await writeAuditLog(supabase, {
@@ -298,8 +298,8 @@ export async function unlockPayrollPeriodAction(formData: FormData) {
     newValue: { reason },
   });
 
-  revalidatePath("/bba/payroll");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/payroll");
+  revalidatePath("/sa/audit-log");
   return payrollRedirect(formData, active, "success", "period_unlocked");
 }
 
@@ -307,13 +307,13 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/payroll", "error", "access_denied");
+    return redirectWithFeedback("/sa/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "audit", "/bba/audit");
+  assertAnalystPortalMenu(session, "audit", "/sa/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
-    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+    return redirectWithFeedback("/sa/payroll", "error", "tenant_required");
   }
 
   const periodMonth = Number(formData.get("periodMonth")?.toString() ?? "");
@@ -329,10 +329,10 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
     periodMonth > 12 ||
     periodYear < 2000
   ) {
-    return redirectWithFeedback("/bba/payroll", "error", "invalid_appraisal_period");
+    return redirectWithFeedback("/sa/payroll", "error", "invalid_appraisal_period");
   }
   if (reason.length < 3) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_reason_required");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_reason_required");
   }
 
   const supabase = await createClient();
@@ -340,7 +340,7 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirectWithFeedback("/bba/payroll", "error", "user_not_found");
+    return redirectWithFeedback("/sa/payroll", "error", "user_not_found");
   }
 
   const periods =
@@ -369,15 +369,15 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
       .eq("period_year", targetPeriod.periodYear);
     if (existingAppraisalError) {
       if (existingAppraisalError.code === "42P01") {
-        return redirectWithFeedback("/bba/payroll", "error", "appraisal_schema_missing");
+        return redirectWithFeedback("/sa/payroll", "error", "appraisal_schema_missing");
       }
-      return redirectWithFeedback("/bba/payroll", "error", "appraisal_recalc_failed");
+      return redirectWithFeedback("/sa/payroll", "error", "appraisal_recalc_failed");
     }
     if ((existingAppraisalData ?? []).some((row) => row.is_published)) {
       if (mode === "rolling") {
         continue;
       }
-      return redirectWithFeedback("/bba/payroll", "error", "appraisal_already_published");
+      return redirectWithFeedback("/sa/payroll", "error", "appraisal_already_published");
     }
 
     const syncResult = await syncMonthlyAppraisalsForPeriod(supabase, {
@@ -393,12 +393,12 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
 
     if (syncResult.error) {
       if (syncResult.error.includes("membership crew") && syncResult.affectedUserCount === 0) {
-        return redirectWithFeedback("/bba/payroll", "error", "no_crew_members");
+        return redirectWithFeedback("/sa/payroll", "error", "no_crew_members");
       }
-      return redirectWithFeedback("/bba/payroll", "error", "appraisal_recalc_failed");
+      return redirectWithFeedback("/sa/payroll", "error", "appraisal_recalc_failed");
     }
     if (syncResult.affectedUserCount === 0) {
-      return redirectWithFeedback("/bba/payroll", "error", "no_crew_members");
+      return redirectWithFeedback("/sa/payroll", "error", "no_crew_members");
     }
 
     // Non-fatal: snapshot failure should not block bonus recalculation
@@ -421,7 +421,7 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
   }
 
   if (periodResult.length === 0) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_recalc_skipped_all");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_recalc_skipped_all");
   }
 
   await writeAuditLog(supabase, {
@@ -440,8 +440,8 @@ export async function recalculateMonthlyAppraisalDraftAction(formData: FormData)
     },
   });
 
-  revalidatePath("/bba/payroll");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/payroll");
+  revalidatePath("/sa/audit-log");
   revalidatePath("/admin/leaderboard");
   return payrollRedirect(formData, active, "success", mode === "rolling" ? "appraisal_recalculated_bulk" : "appraisal_recalculated", {
     month: String(periodMonth),
@@ -456,13 +456,13 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/payroll", "error", "access_denied");
+    return redirectWithFeedback("/sa/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "audit", "/bba/audit");
+  assertAnalystPortalMenu(session, "audit", "/sa/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
-    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+    return redirectWithFeedback("/sa/payroll", "error", "tenant_required");
   }
 
   const periodMonth = Number(formData.get("periodMonth")?.toString() ?? "");
@@ -475,10 +475,10 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
     periodMonth > 12 ||
     periodYear < 2000
   ) {
-    return redirectWithFeedback("/bba/payroll", "error", "invalid_appraisal_period");
+    return redirectWithFeedback("/sa/payroll", "error", "invalid_appraisal_period");
   }
   if (reason.length < 3) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_reason_required");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_reason_required");
   }
 
   const supabase = await createClient();
@@ -486,7 +486,7 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirectWithFeedback("/bba/payroll", "error", "user_not_found");
+    return redirectWithFeedback("/sa/payroll", "error", "user_not_found");
   }
 
   const { data: appraisalRows, error: appraisalRowsError } = await supabase
@@ -497,15 +497,15 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
     .eq("period_year", periodYear);
   if (appraisalRowsError) {
     if (appraisalRowsError.code === "42P01") {
-      return redirectWithFeedback("/bba/payroll", "error", "appraisal_schema_missing");
+      return redirectWithFeedback("/sa/payroll", "error", "appraisal_schema_missing");
     }
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_publish_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_publish_failed");
   }
   if (!appraisalRows || appraisalRows.length === 0) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_not_found");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_not_found");
   }
   if (appraisalRows.every((row) => row.is_published)) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_already_published");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_already_published");
   }
 
   const nowIso = new Date().toISOString();
@@ -521,7 +521,7 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
     .eq("period_year", periodYear)
     .eq("is_published", false);
   if (publishError) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_publish_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_publish_failed");
   }
 
   const { error: lockAddonError } = await supabase
@@ -531,7 +531,7 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
     .eq("period_month", periodMonth)
     .eq("period_year", periodYear);
   if (lockAddonError && lockAddonError.code !== "PGRST116") {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_publish_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_publish_failed");
   }
 
   const { error: publishTrailError } = await supabase
@@ -545,7 +545,7 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
       reason: reason || null,
     });
   if (publishTrailError) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_publish_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_publish_failed");
   }
 
   // Generate final leaderboard snapshot on publish — non-fatal
@@ -567,8 +567,8 @@ export async function publishMonthlyAppraisalPeriodAction(formData: FormData) {
     newValue: { periodMonth, periodYear, reason },
   });
 
-  revalidatePath("/bba/payroll");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/payroll");
+  revalidatePath("/sa/audit-log");
   revalidatePath("/admin/leaderboard");
   return payrollRedirect(formData, active, "success", "appraisal_published", {
     month: String(periodMonth),
@@ -580,13 +580,13 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/payroll", "error", "access_denied");
+    return redirectWithFeedback("/sa/payroll", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "audit", "/bba/audit");
+  assertAnalystPortalMenu(session, "audit", "/sa/audit");
 
   const tenantId = resolvePayrollTenantId(formData, active);
   if (!tenantId) {
-    return redirectWithFeedback("/bba/payroll", "error", "tenant_required");
+    return redirectWithFeedback("/sa/payroll", "error", "tenant_required");
   }
 
   const periodMonth = Number(formData.get("periodMonth")?.toString() ?? "");
@@ -599,10 +599,10 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
     periodMonth > 12 ||
     periodYear < 2000
   ) {
-    return redirectWithFeedback("/bba/payroll", "error", "invalid_appraisal_period");
+    return redirectWithFeedback("/sa/payroll", "error", "invalid_appraisal_period");
   }
   if (reason.length < 3) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_reason_required");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_reason_required");
   }
 
   const supabase = await createClient();
@@ -610,7 +610,7 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return redirectWithFeedback("/bba/payroll", "error", "user_not_found");
+    return redirectWithFeedback("/sa/payroll", "error", "user_not_found");
   }
 
   const { data: appraisalRows, error: appraisalRowsError } = await supabase
@@ -621,15 +621,15 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
     .eq("period_year", periodYear);
   if (appraisalRowsError) {
     if (appraisalRowsError.code === "42P01") {
-      return redirectWithFeedback("/bba/payroll", "error", "appraisal_schema_missing");
+      return redirectWithFeedback("/sa/payroll", "error", "appraisal_schema_missing");
     }
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_unpublish_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_unpublish_failed");
   }
   if (!appraisalRows || appraisalRows.length === 0) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_not_found");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_not_found");
   }
   if (appraisalRows.every((row) => !row.is_published)) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_not_published");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_not_published");
   }
 
   const { error: unpublishError } = await supabase
@@ -644,7 +644,7 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
     .eq("period_year", periodYear)
     .eq("is_published", true);
   if (unpublishError) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_unpublish_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_unpublish_failed");
   }
 
   const { error: unlockAddonError } = await supabase
@@ -654,7 +654,7 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
     .eq("period_month", periodMonth)
     .eq("period_year", periodYear);
   if (unlockAddonError && unlockAddonError.code !== "PGRST116") {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_unpublish_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_unpublish_failed");
   }
 
   const { error: unpublishTrailError } = await supabase
@@ -668,7 +668,7 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
       reason: reason || null,
     });
   if (unpublishTrailError) {
-    return redirectWithFeedback("/bba/payroll", "error", "appraisal_unpublish_failed");
+    return redirectWithFeedback("/sa/payroll", "error", "appraisal_unpublish_failed");
   }
 
   await writeAuditLog(supabase, {
@@ -680,8 +680,8 @@ export async function unpublishMonthlyAppraisalPeriodAction(formData: FormData) 
     newValue: { periodMonth, periodYear, reason },
   });
 
-  revalidatePath("/bba/payroll");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/payroll");
+  revalidatePath("/sa/audit-log");
   return payrollRedirect(formData, active, "success", "appraisal_unpublished", {
     month: String(periodMonth),
     year: String(periodYear),
@@ -692,14 +692,14 @@ export async function updateTenantInfoAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/master-apotek", "error", "access_denied");
+    return redirectWithFeedback("/sa/master-apotek", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "branches", "/bba/branches");
+  assertAnalystPortalMenu(session, "branches", "/sa/branches");
 
   const tenantId = formData.get("tenantId")?.toString();
   const name = formData.get("name")?.toString()?.trim();
   const status = formData.get("status")?.toString();
-  const basePath = buildPathWithQuery("/bba/master-apotek", { tenant: tenantId });
+  const basePath = buildPathWithQuery("/sa/master-apotek", { tenant: tenantId });
   if (!tenantId || !name || (status !== "active" && status !== "inactive")) {
     return redirectWithFeedback(basePath, "error", "invalid_tenant_payload", {
       scope: "tenant_info",
@@ -738,8 +738,8 @@ export async function updateTenantInfoAction(formData: FormData) {
     newValue: { name, status },
   });
 
-  revalidatePath("/bba/master-apotek");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/master-apotek");
+  revalidatePath("/sa/audit-log");
   return redirectWithFeedback(basePath, "success", "tenant_saved", {
     scope: "tenant_info",
   });
@@ -749,9 +749,9 @@ export async function createTenantWithOwnerAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/master-apotek", "error", "access_denied");
+    return redirectWithFeedback("/sa/master-apotek", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "branches", "/bba/branches");
+  assertAnalystPortalMenu(session, "branches", "/sa/branches");
 
   const name = formData.get("name")?.toString()?.trim();
   const code = formData.get("code")?.toString()?.trim().toUpperCase();
@@ -766,7 +766,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
     !ownerEmail ||
     !isValidEmail(ownerEmail)
   ) {
-    return redirectWithFeedback("/bba/master-apotek", "error", "invalid_new_tenant_payload", {
+    return redirectWithFeedback("/sa/master-apotek", "error", "invalid_new_tenant_payload", {
       scope: "tenant_create",
     });
   }
@@ -776,7 +776,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
     data: { user: actor },
   } = await supabase.auth.getUser();
   if (!actor) {
-    return redirectWithFeedback("/bba/master-apotek", "error", "user_not_found", {
+    return redirectWithFeedback("/sa/master-apotek", "error", "user_not_found", {
       scope: "tenant_create",
     });
   }
@@ -787,7 +787,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
     .select("id, code, name")
     .maybeSingle();
   if (createTenantError || !createdTenant?.id) {
-    return redirectWithFeedback("/bba/master-apotek", "error", "tenant_create_failed", {
+    return redirectWithFeedback("/sa/master-apotek", "error", "tenant_create_failed", {
       scope: "tenant_create",
     });
   }
@@ -806,7 +806,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
     adminClient = createAdminClient();
   } catch {
     await supabase.from("tenant_apotek").delete().eq("id", createdTenant.id);
-    return redirectWithFeedback("/bba/master-apotek", "error", "owner_setup_config_missing", {
+    return redirectWithFeedback("/sa/master-apotek", "error", "owner_setup_config_missing", {
       scope: "owner",
     });
   }
@@ -818,7 +818,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
     .maybeSingle();
   if (ownerUserError) {
     await supabase.from("tenant_apotek").delete().eq("id", createdTenant.id);
-    return redirectWithFeedback("/bba/master-apotek", "error", "tenant_create_failed", {
+    return redirectWithFeedback("/sa/master-apotek", "error", "tenant_create_failed", {
       scope: "tenant_create",
     });
   }
@@ -831,7 +831,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
   if (!ownerUserId) {
     if (!ownerFullName || ownerPassword.length < 8) {
       await supabase.from("tenant_apotek").delete().eq("id", createdTenant.id);
-      return redirectWithFeedback("/bba/master-apotek", "error", "owner_autocreate_payload_required", {
+      return redirectWithFeedback("/sa/master-apotek", "error", "owner_autocreate_payload_required", {
         scope: "tenant_create",
       });
     }
@@ -846,7 +846,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
     });
     if (createAuthError || !createdAuthUser.user?.id) {
       await supabase.from("tenant_apotek").delete().eq("id", createdTenant.id);
-      return redirectWithFeedback("/bba/master-apotek", "error", "owner_create_failed", {
+      return redirectWithFeedback("/sa/master-apotek", "error", "owner_create_failed", {
         scope: "owner",
       });
     }
@@ -859,11 +859,12 @@ export async function createTenantWithOwnerAction(formData: FormData) {
       full_name: ownerFullName,
       email: ownerEmail,
       is_active: true,
+      is_owner: true,
     });
     if (insertAppUserError) {
       await adminClient.auth.admin.deleteUser(ownerUserId);
       await supabase.from("tenant_apotek").delete().eq("id", createdTenant.id);
-      return redirectWithFeedback("/bba/master-apotek", "error", "owner_create_failed", {
+      return redirectWithFeedback("/sa/master-apotek", "error", "owner_create_failed", {
         scope: "owner",
       });
     }
@@ -902,7 +903,7 @@ export async function createTenantWithOwnerAction(formData: FormData) {
         await adminClient.from("app_users").delete().eq("id", ownerUserId);
         await adminClient.auth.admin.deleteUser(ownerUserId);
       }
-      return redirectWithFeedback("/bba/master-apotek", "error", "tenant_create_failed", {
+      return redirectWithFeedback("/sa/master-apotek", "error", "tenant_create_failed", {
         scope: "tenant_create",
       });
     }
@@ -918,11 +919,11 @@ export async function createTenantWithOwnerAction(formData: FormData) {
     newValue: { ownerEmail, ownerName },
   });
 
-  revalidatePath("/bba/master-apotek");
-  revalidatePath("/bba/kelola-owner");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/master-apotek");
+  revalidatePath("/sa/kelola-owner");
+  revalidatePath("/sa/audit-log");
   return redirectWithFeedback(
-    buildPathWithQuery("/bba/master-apotek", { tenant: createdTenant.id }),
+    buildPathWithQuery("/sa/master-apotek", { tenant: createdTenant.id }),
     "success",
     "tenant_created_with_owner",
     { scope: "tenant_create" },
@@ -933,9 +934,9 @@ export async function upsertKpiConfigAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/master-apotek", "error", "access_denied");
+    return redirectWithFeedback("/sa/master-apotek", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "audit", "/bba/audit");
+  assertAnalystPortalMenu(session, "audit", "/sa/audit");
 
   const tenantId = formData.get("tenantId")?.toString();
   const periodMonth = Number(formData.get("periodMonth")?.toString() ?? "");
@@ -943,7 +944,7 @@ export async function upsertKpiConfigAction(formData: FormData) {
   const targetOmzet = Number(formData.get("targetOmzet")?.toString() ?? 0);
   const targetAtv = Number(formData.get("targetAtv")?.toString() ?? 0);
   const targetAtu = Number(formData.get("targetAtu")?.toString() ?? 0);
-  const basePath = buildPathWithQuery("/bba/master-apotek", { tenant: tenantId });
+  const basePath = buildPathWithQuery("/sa/master-apotek", { tenant: tenantId });
 
   if (
     !tenantId ||
@@ -1037,8 +1038,8 @@ export async function upsertKpiConfigAction(formData: FormData) {
     },
   });
 
-  revalidatePath("/bba/master-apotek");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/master-apotek");
+  revalidatePath("/sa/audit-log");
   return redirectWithFeedback(basePath, "success", "kpi_saved", { scope: "kpi" });
 }
 
@@ -1046,14 +1047,14 @@ export async function createOwnerAccountAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/kelola-owner", "error", "access_denied");
+    return redirectWithFeedback("/sa/kelola-owner", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "owners", "/bba/owners");
+  assertAnalystPortalMenu(session, "owners", "/sa/owners");
 
   const tenantId = formData.get("tenantId")?.toString() || undefined;
   const redirectPath =
     formData.get("redirectPath")?.toString() ||
-    (tenantId ? buildPathWithQuery("/bba/master-apotek", { tenant: tenantId }) : "/bba/kelola-owner");
+    (tenantId ? buildPathWithQuery("/sa/master-apotek", { tenant: tenantId }) : "/sa/kelola-owner");
   const fullName = formData.get("fullName")?.toString()?.trim();
   const email = formData.get("email")?.toString()?.trim().toLowerCase();
   const password = formData.get("password")?.toString() ?? "";
@@ -1114,6 +1115,7 @@ export async function createOwnerAccountAction(formData: FormData) {
       full_name: fullName,
       email,
       is_active: true,
+      is_owner: true,
     });
     if (appUserInsertError) {
       await adminClient.auth.admin.deleteUser(ownerUserId);
@@ -1138,8 +1140,8 @@ export async function createOwnerAccountAction(formData: FormData) {
   });
 
   if (!tenantId) {
-    revalidatePath("/bba/kelola-owner");
-    revalidatePath("/bba/audit-log");
+    revalidatePath("/sa/kelola-owner");
+    revalidatePath("/sa/audit-log");
     return redirectWithFeedback(redirectPath, "success", "owner_created_global", { scope: "owner" });
   }
 
@@ -1165,9 +1167,9 @@ export async function createOwnerAccountAction(formData: FormData) {
         action: "owner_membership_reactivated",
         newValue: { email, fullName, role: "owner" },
       });
-      revalidatePath("/bba/master-apotek");
-      revalidatePath("/bba/kelola-owner");
-      revalidatePath("/bba/audit-log");
+      revalidatePath("/sa/master-apotek");
+      revalidatePath("/sa/kelola-owner");
+      revalidatePath("/sa/audit-log");
       return redirectWithFeedback(redirectPath, "success", "owner_reactivated", { scope: "owner" });
     }
     return redirectWithFeedback(redirectPath, "error", "owner_already_exists", {
@@ -1203,9 +1205,9 @@ export async function createOwnerAccountAction(formData: FormData) {
     newValue: { email, fullName, role: "owner" },
   });
 
-  revalidatePath("/bba/master-apotek");
-  revalidatePath("/bba/kelola-owner");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/master-apotek");
+  revalidatePath("/sa/kelola-owner");
+  revalidatePath("/sa/audit-log");
   return redirectWithFeedback(redirectPath, "success", "owner_created", { scope: "owner" });
 }
 
@@ -1213,14 +1215,14 @@ export async function assignOwnerToTenantAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/kelola-owner", "error", "access_denied");
+    return redirectWithFeedback("/sa/kelola-owner", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "owners", "/bba/owners");
+  assertAnalystPortalMenu(session, "owners", "/sa/owners");
 
   const email = formData.get("email")?.toString()?.trim().toLowerCase();
   const tenantId = formData.get("tenantId")?.toString();
   const redirectPath =
-    formData.get("redirectPath")?.toString() || "/bba/kelola-owner";
+    formData.get("redirectPath")?.toString() || "/sa/kelola-owner";
   if (!tenantId || !email || !isValidEmail(email)) {
     return redirectWithFeedback(redirectPath, "error", "invalid_owner_payload", {
       scope: "owner",
@@ -1310,9 +1312,9 @@ export async function assignOwnerToTenantAction(formData: FormData) {
     newValue: { ownerEmail: ownerUser.email, ownerName: ownerUser.full_name },
   });
 
-  revalidatePath("/bba/kelola-owner");
-  revalidatePath("/bba/master-apotek");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/kelola-owner");
+  revalidatePath("/sa/master-apotek");
+  revalidatePath("/sa/audit-log");
   return redirectWithFeedback(redirectPath, "success", "owner_assigned", { scope: "owner" });
 }
 
@@ -1320,16 +1322,16 @@ export async function toggleOwnerMembershipStatusAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/kelola-owner", "error", "access_denied");
+    return redirectWithFeedback("/sa/kelola-owner", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "owners", "/bba/owners");
+  assertAnalystPortalMenu(session, "owners", "/sa/owners");
 
   const tenantId = formData.get("tenantId")?.toString();
   const membershipId = formData.get("membershipId")?.toString();
   const nextActive = formData.get("nextActive")?.toString() === "true";
   const redirectPath =
     formData.get("redirectPath")?.toString() ||
-    buildPathWithQuery("/bba/master-apotek", { tenant: tenantId });
+    buildPathWithQuery("/sa/master-apotek", { tenant: tenantId });
   if (!tenantId || !membershipId) {
     return redirectWithFeedback(redirectPath, "error", "invalid_owner_payload", {
       scope: "owner",
@@ -1379,9 +1381,9 @@ export async function toggleOwnerMembershipStatusAction(formData: FormData) {
     newValue: { isActive: nextActive, userId: membership.user_id },
   });
 
-  revalidatePath("/bba/kelola-owner");
-  revalidatePath("/bba/master-apotek");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/kelola-owner");
+  revalidatePath("/sa/master-apotek");
+  revalidatePath("/sa/audit-log");
   return redirectWithFeedback(
     redirectPath,
     "success",
@@ -1394,16 +1396,16 @@ export async function resetOwnerPasswordAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/kelola-owner", "error", "access_denied");
+    return redirectWithFeedback("/sa/kelola-owner", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "owners", "/bba/owners");
+  assertAnalystPortalMenu(session, "owners", "/sa/owners");
 
   const tenantId = formData.get("tenantId")?.toString() || undefined;
   const userId = formData.get("userId")?.toString();
   const password = formData.get("password")?.toString() ?? "";
   const redirectPath =
     formData.get("redirectPath")?.toString() ||
-    (tenantId ? buildPathWithQuery("/bba/master-apotek", { tenant: tenantId }) : "/bba/kelola-owner");
+    (tenantId ? buildPathWithQuery("/sa/master-apotek", { tenant: tenantId }) : "/sa/kelola-owner");
 
   if (!userId || password.length < 8) {
     return redirectWithFeedback(redirectPath, "error", "invalid_owner_payload", {
@@ -1462,9 +1464,9 @@ export async function resetOwnerPasswordAction(formData: FormData) {
     newValue: { tenantId: membership.tenant_apotek_id },
   });
 
-  revalidatePath("/bba/kelola-owner");
-  revalidatePath("/bba/master-apotek");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/kelola-owner");
+  revalidatePath("/sa/master-apotek");
+  revalidatePath("/sa/audit-log");
   return redirectWithFeedback(redirectPath, "success", "owner_password_reset", {
     scope: "owner",
   });
@@ -1474,9 +1476,9 @@ export async function toggleAddonSettingAction(formData: FormData) {
   const session = await getSessionContext();
   const active = session?.activeMembership;
   if (!active || active.role !== "super_admin_bba") {
-    return redirectWithFeedback("/bba/master-apotek", "error", "access_denied");
+    return redirectWithFeedback("/sa/master-apotek", "error", "access_denied");
   }
-  assertAnalystPortalMenu(session, "branches", "/bba/branches");
+  assertAnalystPortalMenu(session, "branches", "/sa/branches");
 
   const tenantId = formData.get("tenantId")?.toString();
   const addonKey = formData.get("addonKey")?.toString();
@@ -1488,7 +1490,7 @@ export async function toggleAddonSettingAction(formData: FormData) {
     "review_pelanggan",
     "payroll",
   ];
-  const basePath = buildPathWithQuery("/bba/master-apotek", { tenant: tenantId });
+  const basePath = buildPathWithQuery("/sa/master-apotek", { tenant: tenantId });
   if (!tenantId || !addonKey || !allowedKeys.includes(addonKey)) {
     return redirectWithFeedback(basePath, "error", "invalid_addon_payload", {
       scope: "addon",
@@ -1536,8 +1538,8 @@ export async function toggleAddonSettingAction(formData: FormData) {
     newValue: { addonKey, isEnabled },
   });
 
-  revalidatePath("/bba/master-apotek");
-  revalidatePath("/bba/audit-log");
+  revalidatePath("/sa/master-apotek");
+  revalidatePath("/sa/audit-log");
   return redirectWithFeedback(basePath, "success", "addon_saved", {
     scope: "addon",
   });
@@ -1676,5 +1678,5 @@ export async function ownerRequestRevisionAction(
   });
 
   revalidatePath("/owner/payroll");
-  return { success: true, message: "Permintaan revisi berhasil dikirim ke BBA." };
+  return { success: true, message: "Permintaan revisi berhasil dikirim ke Apotrik." };
 }

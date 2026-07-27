@@ -7,6 +7,7 @@ type SubmissionRow = {
   transaction_total: number;
   product_total: number;
   rejected_customer_total: number;
+  rejected_medicine_total: number;
 };
 
 export type ReportMetrics = {
@@ -23,6 +24,8 @@ export type ReportMetrics = {
   atu: number;
   rejectedCustomers: number;
   projectedRejectedOmzet: number;
+  rejectedMedicines: number;
+  projectedRejectedMedicineOmzet: number;
   monthApprovedCount: number;
   rangeApprovedCount: number;
   effectiveFrom: string;
@@ -63,7 +66,7 @@ export async function getReportMetricsForTenant(
     supabase
       .from("daily_submissions")
       .select(
-        "submission_date, omzet_total, transaction_total, product_total, rejected_customer_total",
+        "submission_date, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total",
       )
       .eq("tenant_apotek_id", tenantId)
       .in("status", ["approved", "edited_by_admin"])
@@ -92,6 +95,9 @@ export async function getReportMetricsForTenant(
   const totalTransactions = sumBy(rows, (r) => Number(r.transaction_total));
   const totalProducts = sumBy(rows, (r) => Number(r.product_total));
   const rejectedCustomers = sumBy(rows, (r) => Number(r.rejected_customer_total));
+  const rejectedMedicines = sumBy(rows, (r) => Number(r.rejected_medicine_total));
+  // Obat tertolak × harga rata-rata per item (omzet ÷ produk terjual) di level cabang.
+  const projectedRejectedMedicineOmzet = totalProducts > 0 ? (totalOmzet / totalProducts) * rejectedMedicines : 0;
 
   const accumulatedOmzet = sumBy(monthRows, (r) => Number(r.omzet_total));
   const targetOmzet = Number(kpiConfig?.target_omzet ?? 0);
@@ -133,6 +139,8 @@ export async function getReportMetricsForTenant(
     atu,
     rejectedCustomers,
     projectedRejectedOmzet,
+    rejectedMedicines,
+    projectedRejectedMedicineOmzet,
     monthApprovedCount: monthRows.length,
     rangeApprovedCount: rows.length,
     effectiveFrom: from,

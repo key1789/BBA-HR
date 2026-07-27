@@ -3,7 +3,7 @@ import type { HelpContent } from "@/components/shared/help-drawer";
 export const VERIFIKASI_HELP: HelpContent = {
   menuName: "Verifikasi Data",
   description:
-    "Menu ini adalah gate QA cabang — tempat admin mereview dan memutuskan nasib setiap submission harian crew. Setiap data yang crew kirimkan akan masuk antrean di sini sebelum dikunci dan diteruskan ke jalur audit bulanan BBA. Keputusan admin di halaman ini (Setujui / Tolak / Edit) bersifat final dari sisi cabang.",
+    "Menu ini adalah gate QA cabang — tempat admin mereview dan memutuskan nasib setiap submission harian crew. Setiap data yang crew kirimkan akan masuk antrean di sini sebelum dikunci dan diteruskan ke jalur audit bulanan Apotrik. Keputusan admin di halaman ini (Setujui / Tolak / Edit) bersifat final dari sisi cabang.",
 
   steps: [
     {
@@ -19,22 +19,22 @@ export const VERIFIKASI_HELP: HelpContent = {
     {
       title: "Setujui submission yang datanya benar",
       description:
-        'Klik tombol "Setujui" pada baris yang bersangkutan. Submission langsung berpindah ke status Disetujui dan masuk jalur audit BBA. Tindakan ini tidak bisa dibatalkan.',
+        'Klik tombol "Setujui" pada baris yang bersangkutan. Submission langsung berpindah ke status Disetujui dan masuk jalur audit Apotrik. Tindakan ini tidak bisa dibatalkan.',
     },
     {
       title: "Tolak submission yang bermasalah",
       description:
-        'Klik "Tolak" jika data tidak sesuai. Crew akan mengetahui submissionnya ditolak dan bisa mengirim ulang data yang sudah diperbaiki.',
+        'Klik "Tolak" jika data tidak sesuai, lalu isi alasan penolakan (wajib). Crew akan melihat alasan tersebut di riwayat input dan bisa mengirim ulang data yang sudah diperbaiki. Penolakan tidak memberi hukuman poin.',
     },
     {
       title: "Edit langsung jika ada kesalahan minor",
       description:
-        'Klik "Edit langsung" untuk membuka form edit. Ubah nilai yang salah, lalu klik "Simpan & Setujui". Data baru langsung tersimpan dan submission otomatis berstatus Disetujui — tidak perlu tolak lalu minta crew submit ulang.',
+        'Klik "Edit langsung" untuk membuka form edit. Ubah nilai yang salah — termasuk kuantitas produk fokus bila perlu — lalu klik "Simpan & Setujui". Data baru langsung tersimpan dan submission otomatis berstatus Disetujui, tidak perlu tolak lalu minta crew submit ulang.',
     },
     {
       title: "Proses banyak submission sekaligus",
       description:
-        'Centang beberapa baris, lalu klik "Setujui massal" atau "Tolak massal" untuk memproses semua submission yang tercentang dalam satu klik. Secara default semua baris di halaman aktif sudah tercentang.',
+        'Centang baris yang ingin diproses (tidak ada yang tercentang otomatis), isi alasan bila "Tolak massal", lalu klik "Setujui massal" atau "Tolak massal".',
     },
   ],
 
@@ -61,7 +61,7 @@ export const VERIFIKASI_HELP: HelpContent = {
       label: "Disetujui",
       variant: "success",
       description:
-        "Submission sudah final dari sisi cabang dan masuk jalur audit bulanan BBA. Tidak bisa diubah lagi.",
+        "Submission sudah final dari sisi cabang dan masuk jalur audit bulanan Apotrik. Tidak bisa diubah lagi.",
     },
     {
       label: "Draft",
@@ -85,7 +85,7 @@ export const VERIFIKASI_HELP: HelpContent = {
       label: "SLA Terlewati",
       variant: "error",
       description:
-        "Submission sudah tertunda lebih dari satu hari. Data yang terlalu lama diverifikasi dapat mempengaruhi keakuratan laporan bulanan BBA.",
+        "Submission sudah tertunda lebih dari satu hari. Data yang terlalu lama diverifikasi dapat mempengaruhi keakuratan laporan bulanan Apotrik.",
     },
   ],
 
@@ -104,7 +104,7 @@ export const VERIFIKASI_HELP: HelpContent = {
     },
     {
       type: "info",
-      text: "Setelah submission Disetujui, data akan tersedia untuk diaudit oleh tim BBA di portal mereka. Proses penilaian dan publish rapor bulanan adalah kewenangan BBA, bukan admin cabang.",
+      text: "Setelah submission Disetujui, data akan tersedia untuk diaudit oleh tim Apotrik di portal mereka. Proses penilaian dan publish rapor bulanan adalah kewenangan Apotrik, bukan admin cabang.",
     },
   ],
 };

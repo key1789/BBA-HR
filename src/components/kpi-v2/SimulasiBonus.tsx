@@ -1,70 +1,22 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Calculator, TrendingUp, TrendingDown, Minus, Info } from "lucide-react";
 import { CurrencyInput } from "@/components/shared/currency-input";
-import type { KpiConfigV2, BaseSchemeConfig, IndividualUserConfig } from "@/lib/types/kpi-v2";
-
-// ─── Pure calculation helpers ────────────────────────────────────────────────
-
-function calcScore(
-  actualOmzet: number,
-  targetOmzet: number,
-  scheme: BaseSchemeConfig,
-  global: KpiConfigV2["global"],
-): number {
-  let score = 0;
-  let totalWeight = 0;
-
-  if (scheme.use_omzet && targetOmzet > 0) {
-    score += (actualOmzet / targetOmzet) * 100 * (scheme.weight_omzet / 100);
-    totalWeight += scheme.weight_omzet;
-  }
-  if (scheme.use_atv && global.is_atv_enabled) {
-    score += 100 * (scheme.weight_atv / 100); // assume ATV hit 100%
-    totalWeight += scheme.weight_atv;
-  }
-  if (scheme.use_atu && global.is_atu_enabled) {
-    score += 100 * (scheme.weight_atu / 100); // assume ATU hit 100%
-    totalWeight += scheme.weight_atu;
-  }
-
-  if (totalWeight === 0) return 0;
-  if (Math.abs(totalWeight - 100) > 0.1) score = (score / totalWeight) * 100;
-  return score;
-}
-
-function calcBonus(
-  score: number,
-  actualOmzet: number,
-  targetOmzet: number,
-  scheme: BaseSchemeConfig,
-): number {
-  if (score < scheme.min_achievement_percent) return 0;
-  if (scheme.bonus_type === "flat") return scheme.flat_nominal;
-  if (scheme.bonus_type === "kelipatan") {
-    const excess = actualOmzet - targetOmzet;
-    if (excess <= 0 || scheme.kelipatan_step <= 0) return 0;
-    return Math.floor(excess / scheme.kelipatan_step) * scheme.kelipatan_reward;
-  }
-  return 0;
-}
-
-function mergeUserScheme(base: BaseSchemeConfig, uc: IndividualUserConfig): BaseSchemeConfig {
-  return {
-    ...base,
-    weight_omzet: uc.weight_omzet ?? base.weight_omzet,
-    weight_atv: uc.weight_atv ?? base.weight_atv,
-    weight_atu: uc.weight_atu ?? base.weight_atu,
-    bonus_type: uc.bonus_type ?? base.bonus_type,
-    flat_nominal: uc.flat_nominal ?? base.flat_nominal,
-    kelipatan_step: uc.kelipatan_step ?? base.kelipatan_step,
-    kelipatan_reward: uc.kelipatan_reward ?? base.kelipatan_reward,
-  };
-}
+import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
+import {
+  calculateMonthlyBonusFromInputs,
+  type BonusResult,
+  type CrewAchievementRow,
+  type DailyAchievementRow,
+} from "@/lib/kpi-v2/calculator";
 
 // ─── Simulation engine ───────────────────────────────────────────────────────
+// Memakai calculator PRODUKSI (calculateMonthlyBonusFromInputs) atas input SINTETIS
+// agar angka simulasi = angka bayaran nyata. Asumsi: omzet tersebar merata tiap
+// pegawai & hari kerja; ATV/ATU dianggap tercapai 100%.
 
 type UserRow = {
   userId: string;
@@ -95,151 +47,128 @@ type SimResult = {
   indDaily: DailySchemeDetail;
 };
 
+const avg = (nums: number[]): number => (nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0);
+
 function runSimulation(
   config: KpiConfigV2,
   users: Array<{ id: string; name: string }>,
   inputOmzet: number,
 ): SimResult {
   const g = config.global;
-  const workingDays = g.default_working_days || 26;
+  const workingDays = Math.max(1, g.default_working_days || 26);
   const n = users.length;
-  const targetOmzet = g.target_omzet;
 
-  const acc: Record<string, UserRow> = {};
-  users.forEach((u) => {
-    acc[u.id] = { userId: u.id, name: u.name, teamMonthly: 0, teamDaily: 0, indMonthly: 0, indDaily: 0, total: 0 };
+  const emptyScheme = (enabled: boolean): SchemeDetail => ({
+    enabled, score: 0, minPercent: 0, achieved: false, pool: 0, note: "",
+  });
+  const emptyDaily = (enabled: boolean): DailySchemeDetail => ({
+    ...emptyScheme(enabled), daysAchieved: 0, workingDays,
+  });
+  if (n === 0) {
+    return {
+      rows: [],
+      teamMonthly: emptyScheme(config.team_monthly.enabled),
+      teamDaily: emptyDaily(config.team_daily.enabled),
+      indMonthly: emptyScheme(config.individual_monthly.enabled),
+      indDaily: emptyDaily(config.individual_daily.enabled),
+    };
+  }
+
+  // ── Input sintetis: omzet disebar merata tiap pegawai & hari; ATV/ATU 100% ──
+  const perUserPerDay = inputOmzet / n / workingDays;
+  const targetAtv = g.is_atv_enabled && g.target_atv > 0 ? g.target_atv : 0;
+  const targetAtu = g.is_atu_enabled && g.target_atu > 0 ? g.target_atu : 0;
+  const txPerDay = targetAtv > 0 ? perUserPerDay / targetAtv : 1; // ATV = omzet/tx = target
+  const itemsPerDay = targetAtu > 0 ? txPerDay * targetAtu : txPerDay; // ATU = items/tx = target
+
+  const crewAchievements: CrewAchievementRow[] = [];
+  const dailyAchievements: DailyAchievementRow[] = [];
+  for (let d = 1; d <= workingDays; d++) {
+    const dateKey = `sim-${String(d).padStart(4, "0")}`;
+    for (const u of users) {
+      crewAchievements.push({
+        user_id: u.id, achievement_date: dateKey,
+        omzet: perUserPerDay, transactions: txPerDay, items: itemsPerDay,
+      });
+    }
+    dailyAchievements.push({
+      achievement_date: dateKey,
+      total_omzet: perUserPerDay * n, total_transactions: txPerDay * n, total_items: itemsPerDay * n,
+    });
+  }
+
+  const results = calculateMonthlyBonusFromInputs(config, dailyAchievements, crewAchievements, {
+    activeCrewCount: n,
+  });
+  const byUser = new Map<string, BonusResult>(results.map((r) => [r.user_id, r]));
+
+  const rows: UserRow[] = users.map((u) => {
+    const br = byUser.get(u.id);
+    return {
+      userId: u.id,
+      name: u.name,
+      teamMonthly: br?.team_monthly_bonus ?? 0,
+      teamDaily: br?.team_daily_bonus ?? 0,
+      indMonthly: br?.individual_monthly_bonus ?? 0,
+      indDaily: br?.individual_daily_bonus ?? 0,
+      total: br?.total_bonus ?? 0,
+    };
   });
 
-  // ── Team monthly ──────────────────────────────────────────────────────────
-  const tm = config.team_monthly;
-  const tmScore = tm.enabled ? calcScore(inputOmzet, targetOmzet, tm, g) : 0;
-  const tmPool = tm.enabled ? calcBonus(tmScore, inputOmzet, targetOmzet, tm) : 0;
-  if (n > 0 && tmPool > 0) users.forEach((u) => { acc[u.id].teamMonthly = tmPool / n; });
+  const scoreOf = (pick: (b: BonusResult["breakdown"]) => { achievement_percent: number } | undefined) =>
+    avg(results.map((r) => pick(r.breakdown)?.achievement_percent).filter((x): x is number => typeof x === "number"));
 
+  const tmScore = scoreOf((b) => b.team_monthly);
   const teamMonthly: SchemeDetail = {
-    enabled: tm.enabled,
+    enabled: config.team_monthly.enabled,
     score: tmScore,
-    minPercent: tm.min_achievement_percent,
-    achieved: tmScore >= tm.min_achievement_percent,
-    pool: tmPool,
-    note: tm.distribution_method === "proportional"
-      ? "Mode proporsional — simulasi pakai distribusi rata (data per user tidak tersedia)"
-      : `Total pool dibagi rata ke ${n} pegawai`,
+    minPercent: config.team_monthly.min_achievement_percent,
+    achieved: tmScore >= config.team_monthly.min_achievement_percent,
+    pool: rows.reduce((s, r) => s + r.teamMonthly, 0),
+    note: config.team_monthly.distribution_method === "proportional"
+      ? "Mode proporsional — omzet disebar merata di simulasi"
+      : `Pool dibagi ke ${n} pegawai`,
   };
 
-  // ── Team daily ────────────────────────────────────────────────────────────
-  const td = config.team_daily;
-  const dailyTarget = workingDays > 0 ? targetOmzet / workingDays : 0;
-  const dailyActual = workingDays > 0 ? inputOmzet / workingDays : 0;
-  const tdScore = td.enabled && dailyTarget > 0 ? calcScore(dailyActual, dailyTarget, td, g) : 0;
-  const tdDayBonus = td.enabled ? calcBonus(tdScore, dailyActual, dailyTarget, td) : 0;
-  const tdDaysAchieved = tdScore >= td.min_achievement_percent ? workingDays : 0;
-  const tdPool = tdDayBonus * tdDaysAchieved;
-  if (n > 0 && tdPool > 0) users.forEach((u) => { acc[u.id].teamDaily = tdPool / n; });
-
+  const tdPool = rows.reduce((s, r) => s + r.teamDaily, 0);
+  const tdScore = scoreOf((b) => b.team_daily);
   const teamDaily: DailySchemeDetail = {
-    enabled: td.enabled,
+    enabled: config.team_daily.enabled,
     score: tdScore,
-    minPercent: td.min_achievement_percent,
-    achieved: tdScore >= td.min_achievement_percent,
+    minPercent: config.team_daily.min_achievement_percent,
+    achieved: tdPool > 0,
     pool: tdPool,
-    daysAchieved: tdDaysAchieved,
+    daysAchieved: Math.round((tdScore / 100) * workingDays),
     workingDays,
     note: `Omzet diasumsikan merata ${workingDays} hari kerja`,
   };
 
-  // ── Individual monthly ───────────────────────────────────────────────────
-  const im = config.individual_monthly;
-  let imPool = 0;
-  let imAvgScore = 0;
-
-  if (im.enabled && n > 0) {
-    const ucs = im.user_configs ?? {};
-    if (im.target_distribution === "rata") {
-      const perTarget = targetOmzet / n;
-      const perActual = inputOmzet / n;
-      const score = calcScore(perActual, perTarget, im, g);
-      const bonus = calcBonus(score, perActual, perTarget, im);
-      users.forEach((u) => { acc[u.id].indMonthly = bonus; });
-      imPool = bonus * n;
-      imAvgScore = score;
-    } else {
-      const totalManualTarget = users.reduce(
-        (s, u) => s + (ucs[u.id]?.target_omzet ?? targetOmzet / n),
-        0,
-      );
-      users.forEach((u) => {
-        const uc = ucs[u.id];
-        const uTarget = uc?.target_omzet ?? targetOmzet / n;
-        const uActual = totalManualTarget > 0 ? inputOmzet * (uTarget / totalManualTarget) : 0;
-        const effectiveScheme = uc ? mergeUserScheme(im, uc) : im;
-        const score = calcScore(uActual, uTarget, effectiveScheme, g);
-        const bonus = calcBonus(score, uActual, uTarget, effectiveScheme);
-        acc[u.id].indMonthly = bonus;
-        imPool += bonus;
-        imAvgScore += score;
-      });
-      imAvgScore = imAvgScore / n;
-    }
-  }
-
+  const imScore = scoreOf((b) => b.individual_monthly);
   const indMonthly: SchemeDetail = {
-    enabled: im.enabled,
-    score: imAvgScore,
-    minPercent: im.min_achievement_percent,
-    achieved: imAvgScore >= im.min_achievement_percent,
-    pool: imPool,
-    note: im.target_distribution === "rata"
+    enabled: config.individual_monthly.enabled,
+    score: imScore,
+    minPercent: config.individual_monthly.min_achievement_percent,
+    achieved: imScore >= config.individual_monthly.min_achievement_percent,
+    pool: rows.reduce((s, r) => s + r.indMonthly, 0),
+    note: config.individual_monthly.target_distribution === "rata"
       ? "Target dibagi rata ke semua pegawai"
-      : "Target manual per pegawai — distribusi omzet proporsional",
+      : "Target manual per pegawai",
   };
 
-  // ── Individual daily ─────────────────────────────────────────────────────
-  const id_ = config.individual_daily;
-  let idPool = 0;
-  let idAvgScore = 0;
-  let idAvgDays = 0;
-
-  if (id_.enabled && n > 0) {
-    const ucs = id_.user_configs ?? {};
-    users.forEach((u) => {
-      const uc = ucs[u.id];
-      const uWorkingDays = uc?.working_days ?? workingDays;
-      const uDailyTarget =
-        id_.target_distribution === "rata"
-          ? targetOmzet / n / uWorkingDays
-          : (uc?.target_omzet_daily ?? targetOmzet / n / uWorkingDays);
-      const uDailyActual = inputOmzet / n / uWorkingDays;
-      const score = uDailyTarget > 0 ? calcScore(uDailyActual, uDailyTarget, id_, g) : 0;
-      const dayBonus = calcBonus(score, uDailyActual, uDailyTarget, id_);
-      const daysAchieved = score >= id_.min_achievement_percent ? uWorkingDays : 0;
-      acc[u.id].indDaily = dayBonus * daysAchieved;
-      idPool += acc[u.id].indDaily;
-      idAvgScore += score;
-      idAvgDays += daysAchieved;
-    });
-    idAvgScore = idAvgScore / n;
-    idAvgDays = idAvgDays / n;
-  }
-
+  const idPool = rows.reduce((s, r) => s + r.indDaily, 0);
+  const idScore = scoreOf((b) => b.individual_daily);
   const indDaily: DailySchemeDetail = {
-    enabled: id_.enabled,
-    score: idAvgScore,
-    minPercent: id_.min_achievement_percent,
-    achieved: idAvgScore >= id_.min_achievement_percent,
+    enabled: config.individual_daily.enabled,
+    score: idScore,
+    minPercent: config.individual_daily.min_achievement_percent,
+    achieved: idPool > 0,
     pool: idPool,
-    daysAchieved: idAvgDays,
+    daysAchieved: Math.round((idScore / 100) * workingDays),
     workingDays,
     note: "Omzet diasumsikan merata tiap hari & tiap pegawai",
   };
 
-  // ── Totals ────────────────────────────────────────────────────────────────
-  users.forEach((u) => {
-    const r = acc[u.id];
-    r.total = r.teamMonthly + r.teamDaily + r.indMonthly + r.indDaily;
-  });
-
-  return { rows: users.map((u) => acc[u.id]), teamMonthly, teamDaily, indMonthly, indDaily };
+  return { rows, teamMonthly, teamDaily, indMonthly, indDaily };
 }
 
 // ─── UI Helpers ──────────────────────────────────────────────────────────────
@@ -324,7 +253,6 @@ export function SimulasiBonus({
 
       {typeof document !== "undefined" &&
         (() => {
-          const { createPortal } = require("react-dom");
           return createPortal(
             <AnimatePresence>
               {isOpen && (

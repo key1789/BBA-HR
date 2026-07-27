@@ -22,6 +22,7 @@ type SubmissionRow = {
   transaction_total: number;
   product_total: number;
   rejected_customer_total: number;
+  rejected_medicine_total: number;
   late_reason?: string | null;
   status: string;
   focus_items?: Array<{ product_id: string; product_name: string; quantity_sold: number }>;
@@ -214,13 +215,14 @@ export function CrewInputForm({
   const [trxDigits, setTrxDigits]         = useState("");
   const [productDigits, setProductDigits] = useState("");
   const [rejectedDigits, setRejectedDigits] = useState("");
+  const [rejectedMedicineDigits, setRejectedMedicineDigits] = useState("");
   const [focusQtyByProduct, setFocusQtyByProduct] = useState<Record<string, string>>({});
   const [editingSubmissionId, setEditingSubmissionId] = useState("");
   const [confirmingSubmit, setConfirmingSubmit] = useState(false);
 
   // Reset confirmation state if server returns an error
   useEffect(() => {
-    if (state?.status === "error") setConfirmingSubmit(false);
+    if (state?.status === "error") queueMicrotask(() => setConfirmingSubmit(false));
   }, [state]);
 
   const isLate    = selectedDate < todayDateKey;
@@ -246,6 +248,7 @@ export function CrewInputForm({
     setTrxDigits(String(Number(row.transaction_total ?? 0)));
     setProductDigits(String(Number(row.product_total ?? 0)));
     setRejectedDigits(String(Number(row.rejected_customer_total ?? 0)));
+    setRejectedMedicineDigits(String(Number(row.rejected_medicine_total ?? 0)));
     setEditingSubmissionId(row.id);
     const nextFocus: Record<string, string> = {};
     for (const item of row.focus_items ?? []) {
@@ -429,6 +432,22 @@ export function CrewInputForm({
                 Pelanggan yg tidak bisa dilayani (stok habis, resep kurang, dll)
               </p>
             </label>
+
+            {/* Obat Tertolak */}
+            <label className="text-[9px] sm:text-[10px] font-black uppercase tracking-widestst text-slate-400 block">
+              Obat Tertolak
+              <input type="hidden" name="rejectedMedicineTotal" value={rejectedMedicineDigits || "0"} />
+              <input
+                type="text" inputMode="numeric" pattern="[0-9.]*" required
+                value={formatId(rejectedMedicineDigits)}
+                onChange={(e) => setRejectedMedicineDigits(digitsOnly(e.target.value))}
+                className="mt-1.5 rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2.5 text-base font-black text-amber-600 w-full focus:bg-white focus:border-sky-500 focus:ring-4 focus:ring-sky-500/20 transition-all outline-none"
+                placeholder="0"
+              />
+              <p className="mt-1 text-[9px] font-bold text-slate-400">
+                Item obat yg gagal dilayani (stok habis, resep kurang, dll)
+              </p>
+            </label>
           </div>
         </div>
 
@@ -527,6 +546,12 @@ export function CrewInputForm({
                 <>
                   <span>·</span>
                   <span className="text-amber-600">{NUM.format(Number(row.rejected_customer_total))} tolak</span>
+                </>
+              )}
+              {Number(row.rejected_medicine_total) > 0 && (
+                <>
+                  <span>·</span>
+                  <span className="text-amber-600">{NUM.format(Number(row.rejected_medicine_total))} obat</span>
                 </>
               )}
             </div>

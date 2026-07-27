@@ -29,7 +29,7 @@ export function InfoTooltip({
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Pastikan portal hanya dipakai di client (hindari SSR error)
-  useEffect(() => setMounted(true), []);
+  useEffect(() => { queueMicrotask(() => setMounted(true)); }, []);
 
   // Hitung posisi fixed setiap kali tooltip dibuka
   useLayoutEffect(() => {

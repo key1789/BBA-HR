@@ -1,7 +1,7 @@
 import { Candidate, Role, Task, WorkforceRequest } from "@/lib/types";
 
 export const roles: { value: Role; label: string }[] = [
-  { value: "super_admin_bba", label: "Super Admin BBA" },
+  { value: "super_admin_bba", label: "Super Admin Apotrik" },
   { value: "crew", label: "Crew" },
   { value: "admin_apotek", label: "Admin Apotek" },
   { value: "owner", label: "Owner" },

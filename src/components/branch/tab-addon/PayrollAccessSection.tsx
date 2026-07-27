@@ -2,7 +2,7 @@
 
 import { useTransition, useState } from "react";
 import { Loader2, Shield, UserCog, Crown, CheckCircle2 } from "lucide-react";
-import { updatePayrollAddonSettingsAction } from "@/app/bba/branches/[id]/actions";
+import { updatePayrollAddonSettingsAction } from "@/app/sa/branches/[id]/actions";
 import { toast } from "sonner";
 
 interface Props {

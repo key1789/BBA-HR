@@ -11,7 +11,7 @@ import { TeamDailyScheme } from "@/components/kpi-v2/schemes/TeamDailyScheme";
 import { IndividualMonthlyScheme } from "@/components/kpi-v2/schemes/IndividualMonthlyScheme";
 import { IndividualDailyScheme } from "@/components/kpi-v2/schemes/IndividualDailyScheme";
 import { saveKpiV2Action, getPreviousKpiV2Action } from "@/actions/kpi-v2-actions";
-import { validateManualTargetDistribution, validateKpiV2Config } from "@/lib/kpi-v2/utils";
+import { validateManualTargetDistribution, validateKpiV2Config, mergeKpiConfigs, createDefaultKpiV2Config } from "@/lib/kpi-v2/utils";
 import type { IndividualSchemeConfig, KpiConfigV2, KpiGlobalConfig, TeamSchemeConfig } from "@/lib/types/kpi-v2";
 import { isBranchOperationalPersonnel } from "@/lib/branch-personnel";
 import { SimulasiBonus } from "@/components/kpi-v2/SimulasiBonus";
@@ -66,9 +66,13 @@ function TabKpiV2({ branchId, currentMonth, currentYear, users, initialConfig, c
     [schemeActiveUsers],
   );
 
+  // Reset hanya saat ISI initialConfig benar-benar berubah (mis. ganti periode),
+  // bukan tiap kali identitas objek berubah karena re-render induk → editan tak tertimpa.
+  const initialConfigKey = useMemo(() => JSON.stringify(initialConfig), [initialConfig]);
   useEffect(() => {
     queueMicrotask(() => setConfig(initialConfig));
-  }, [initialConfig]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialConfigKey]);
 
   useEffect(() => {
     if (saveState === undefined) return;
@@ -110,7 +114,8 @@ function TabKpiV2({ branchId, currentMonth, currentYear, users, initialConfig, c
     if (result.error) {
       toast.error(result.error, { id: toastId });
     } else if (result.data) {
-      setConfig(result.data);
+      // Merge dgn default agar config lama yang belum punya field baru tak membawa undefined.
+      setConfig(mergeKpiConfigs(createDefaultKpiV2Config(), result.data));
       toast.success("Berhasil menyalin data bulan sebelumnya!", { id: toastId });
     }
     setIsCopying(false);

@@ -4,6 +4,7 @@ import { getSessionContext } from "@/lib/auth-context";
 import { getDefaultPortalPath } from "@/lib/portal";
 import { writeAuditLog } from "@/lib/audit-log";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { notifyAdmins } from "@/lib/notifications";
@@ -75,6 +76,32 @@ function getSubmissionPeriod(submissionDate: string): { periodMonth: number; per
   return { periodMonth: m, periodYear: y };
 }
 
+/**
+ * Whitelist produk fokus ke konfigurasi tenant+periode, lalu bentuk baris siap-upsert.
+ * Dipakai bersama oleh jalur input crew dan input admin (one-logic-one-place).
+ */
+async function resolveFocusRows(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  tenantId: string,
+  period: { periodMonth: number; periodYear: number },
+  focusProductIds: string[],
+  qtyFor: (productId: string) => number,
+): Promise<{ product_id: string; quantity_sold: number }[]> {
+  if (focusProductIds.length === 0) return [];
+  const { data: allowedFocusConfigs } = await supabase
+    .from("product_fokus_configs")
+    .select("product_id")
+    .eq("tenant_apotek_id", tenantId)
+    .eq("period_month", period.periodMonth)
+    .eq("period_year", period.periodYear);
+  const allowed = new Set((allowedFocusConfigs ?? []).map((x: { product_id: string }) => x.product_id));
+  return focusProductIds
+    .filter((id) => allowed.has(id))
+    .map((id) => ({ product_id: id, quantity_sold: Math.max(0, qtyFor(id)) }))
+    .filter((row) => Number.isFinite(row.quantity_sold));
+}
+
 export async function createDailySubmissionAction(
   _prevState: InputFormState,
   formData: FormData,
@@ -100,6 +127,7 @@ export async function createDailySubmissionAction(
   const transactionTotal = toNum(formData.get("transactionTotal"));
   const productTotal = toNum(formData.get("productTotal"));
   const rejectedCustomerTotal = toNum(formData.get("rejectedCustomerTotal"));
+  const rejectedMedicineTotal = toNum(formData.get("rejectedMedicineTotal"));
   const submitNow = formData.get("submitNow")?.toString() === "true";
   const lateReason = formData.get("lateReason")?.toString() || null;
   const editSubmissionId = formData.get("editSubmissionId")?.toString() || null;
@@ -109,7 +137,7 @@ export async function createDailySubmissionAction(
   const focusProductIdsStr = formData.get("focusProductIds")?.toString();
   const focusProductIds = focusProductIdsStr ? focusProductIdsStr.split(',').filter(Boolean) : [];
 
-  const numbersAreValid = [omzetTotal, transactionTotal, productTotal, rejectedCustomerTotal].every(
+  const numbersAreValid = [omzetTotal, transactionTotal, productTotal, rejectedCustomerTotal, rejectedMedicineTotal].every(
     (n) => Number.isFinite(n) && n >= 0,
   );
   if (!submissionDate || !numbersAreValid) {
@@ -124,29 +152,29 @@ export async function createDailySubmissionAction(
     return { status: "error", message: getFeedbackMessage("user_not_found") };
   }
 
+  // Mode Admin Penuh: crew tidak boleh menginput closingan sendiri.
+  const { data: tenantMode } = await supabase
+    .from("tenant_apotek")
+    .select("closing_mode")
+    .eq("id", active.tenantId)
+    .maybeSingle();
+  if (tenantMode?.closing_mode === "admin_full") {
+    return { status: "error", message: "Apotek ini memakai mode Admin Penuh — closingan dicatat oleh admin." };
+  }
+
   const submissionPeriod = getSubmissionPeriod(submissionDate);
   if (!submissionPeriod) {
     return { status: "error", message: getFeedbackMessage("invalid_input") };
   }
 
   // Whitelist product fokus IDs dari konfigurasi tenant + periode submission.
-  const { data: allowedFocusConfigs } = await supabase
-    .from("product_fokus_configs")
-    .select("product_id")
-    .eq("tenant_apotek_id", active.tenantId)
-    .eq("period_month", submissionPeriod.periodMonth)
-    .eq("period_year", submissionPeriod.periodYear);
-
-  const allowedFocusProductIds = new Set(
-    (allowedFocusConfigs ?? []).map((x) => x.product_id),
+  const focusProductsData = await resolveFocusRows(
+    supabase,
+    active.tenantId,
+    submissionPeriod,
+    focusProductIds,
+    (id) => Number(formData.get(`focusProduct_${id}`)?.toString() ?? 0),
   );
-  const focusProductsData = focusProductIds
-    .filter((id) => allowedFocusProductIds.has(id))
-    .map((id) => ({
-      product_id: id,
-      quantity_sold: Math.max(0, Number(formData.get(`focusProduct_${id}`)?.toString() ?? 0)),
-    }))
-    .filter((row) => Number.isFinite(row.quantity_sold));
 
   const { data: existingSubmission } = await supabase
     .from("daily_submissions")
@@ -176,6 +204,7 @@ export async function createDailySubmissionAction(
       transaction_total: transactionTotal,
       product_total: productTotal,
       rejected_customer_total: rejectedCustomerTotal,
+      rejected_medicine_total: rejectedMedicineTotal,
       status: submitNow ? "submitted" : "draft",
       submitted_at: submitNow ? new Date().toISOString() : null,
       late_reason: lateReason,
@@ -219,6 +248,7 @@ export async function createDailySubmissionAction(
       transactionTotal,
       productTotal,
       rejectedCustomerTotal,
+      rejectedMedicineTotal,
       status: submitNow ? "submitted" : "draft",
       lateReason,
       focusProductsData
@@ -279,9 +309,15 @@ export async function verifySubmissionAction(formData: FormData) {
     return redirect(verificationPath(baseParams));
   }
 
-  const allowedActions = ["approve", "reject", "edit_directly"];
+  const allowedActions = ["approve", "reject"];
   if (!allowedActions.includes(action)) {
     await setFlashMessage({ status: "error", message: getFeedbackMessage("single_action_invalid") });
+    return redirect(verificationPath(baseParams));
+  }
+
+  // Alasan wajib saat Tolak — crew perlu tahu apa yang harus diperbaiki.
+  if (action === "reject" && !note) {
+    await setFlashMessage({ status: "error", message: "Alasan penolakan wajib diisi." });
     return redirect(verificationPath(baseParams));
   }
 
@@ -363,6 +399,13 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
     return redirect(verificationPath(baseParams));
   }
 
+  // Alasan wajib saat Tolak massal.
+  const bulkNote = formData.get("note")?.toString()?.trim() || null;
+  if (bulkAction === "reject" && !bulkNote) {
+    await setFlashMessage({ status: "error", message: "Alasan penolakan wajib diisi." });
+    return redirect(verificationPath(baseParams));
+  }
+
   const selectedIds = Array.from(
     new Set(
       formData
@@ -410,7 +453,7 @@ export async function bulkVerifySubmissionsAction(formData: FormData) {
       submission_id: submissionId,
       action: bulkAction,
       error_code: isReject ? "verification_issue" : null,
-      note: isReject ? "bulk_reject" : "bulk_approve",
+      note: isReject ? bulkNote : "bulk_approve",
       acted_by_user_id: user.id,
     })),
   );
@@ -610,16 +653,31 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
   const transactionTotal = Number(formData.get("transaction_total"));
   const productTotal = Number(formData.get("product_total"));
   const rejectedCustomerTotal = Number(formData.get("rejected_customer_total"));
+  const rejectedMedicineTotal = Number(formData.get("rejected_medicine_total"));
   const lateReason = (formData.get("late_reason") as string | null)?.trim() || null;
 
   if (
     isNaN(omzetTotal) || omzetTotal < 0 ||
     isNaN(transactionTotal) || transactionTotal < 0 ||
     isNaN(productTotal) || productTotal < 0 ||
-    isNaN(rejectedCustomerTotal) || rejectedCustomerTotal < 0
+    isNaN(rejectedCustomerTotal) || rejectedCustomerTotal < 0 ||
+    isNaN(rejectedMedicineTotal) || rejectedMedicineTotal < 0
   ) {
     await setFlashMessage({ status: "error", message: "Nilai tidak valid. Semua angka harus non-negatif." });
     return redirect(verificationPath(baseParams));
+  }
+
+  // #4: koreksi kuantitas produk fokus. Field `fp_<productId>` = kuantitas baru (>=0).
+  const focusUpdates: { productId: string; qty: number }[] = [];
+  for (const [key, val] of formData.entries()) {
+    if (!key.startsWith("fp_")) continue;
+    const productId = key.slice(3);
+    const qty = Number(val);
+    if (!productId || isNaN(qty) || qty < 0) {
+      await setFlashMessage({ status: "error", message: "Kuantitas produk fokus tidak valid (harus angka non-negatif)." });
+      return redirect(verificationPath(baseParams));
+    }
+    focusUpdates.push({ productId, qty: Math.round(qty) });
   }
 
   const supabase = await createClient();
@@ -632,7 +690,7 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
   // Fetch existing values + eligibility check
   const { data: existing } = await supabase
     .from("daily_submissions")
-    .select("id, omzet_total, transaction_total, product_total, rejected_customer_total, late_reason")
+    .select("id, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, late_reason")
     .eq("id", submissionId)
     .eq("tenant_apotek_id", active.tenantId)
     .in("status", ["submitted", "edited_by_admin", "reject"])
@@ -654,6 +712,8 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
     changes.push(`produk: ${existing.product_total}→${productTotal}`);
   if (Number(existing.rejected_customer_total) !== rejectedCustomerTotal)
     changes.push(`ditolak: ${existing.rejected_customer_total}→${rejectedCustomerTotal}`);
+  if (Number(existing.rejected_medicine_total) !== rejectedMedicineTotal)
+    changes.push(`obat tertolak: ${existing.rejected_medicine_total}→${rejectedMedicineTotal}`);
   if ((existing.late_reason ?? "") !== (lateReason ?? ""))
     changes.push("alasan terlambat diperbarui");
   const changeNote = changes.length > 0
@@ -683,6 +743,7 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
       transaction_total: transactionTotal,
       product_total: productTotal,
       rejected_customer_total: rejectedCustomerTotal,
+      rejected_medicine_total: rejectedMedicineTotal,
       late_reason: lateReason,
     })
     .eq("id", submissionId)
@@ -698,6 +759,23 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
     return redirect(verificationPath(baseParams));
   }
 
+  // Terapkan koreksi kuantitas produk fokus (bila ada) — memengaruhi bonus produk fokus.
+  // Baris di-scope ke submission ini + product_id (baris yang sudah ada).
+  for (const fu of focusUpdates) {
+    const { error: fpErr } = await supabase
+      .from("daily_submission_products")
+      .update({ quantity_sold: fu.qty })
+      .eq("submission_id", submissionId)
+      .eq("product_id", fu.productId);
+    if (fpErr) {
+      await setFlashMessage({
+        status: "error",
+        message: `Status disetujui & nilai diperbarui, tetapi kuantitas produk fokus gagal: ${fpErr.message}`,
+      });
+      return redirect(verificationPath(baseParams));
+    }
+  }
+
   await writeAuditLog(supabase, {
     tenantApotekId: active.tenantId,
     actorUserId: user.id,
@@ -709,9 +787,18 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
       transaction_total: existing.transaction_total,
       product_total: existing.product_total,
       rejected_customer_total: existing.rejected_customer_total,
+      rejected_medicine_total: existing.rejected_medicine_total,
       late_reason: existing.late_reason,
     },
-    newValue: { omzet_total: omzetTotal, transaction_total: transactionTotal, product_total: productTotal, rejected_customer_total: rejectedCustomerTotal, late_reason: lateReason },
+    newValue: {
+      omzet_total: omzetTotal,
+      transaction_total: transactionTotal,
+      product_total: productTotal,
+      rejected_customer_total: rejectedCustomerTotal,
+      rejected_medicine_total: rejectedMedicineTotal,
+      late_reason: lateReason,
+      ...(focusUpdates.length ? { focus_products: focusUpdates } : {}),
+    },
   });
 
   revalidatePath("/admin/verifikasi");
@@ -720,4 +807,211 @@ export async function adminDirectEditSubmissionAction(formData: FormData) {
   await setFlashMessage({ status: "success", message: `Data diperbarui dan disetujui. ${changeNote}` });
   const redirectPage = await safeRedirectPage(supabase, active.tenantId, currentPage, selectedStatus, from, to);
   redirect(verificationPath({ ...baseParams, page: redirectPage }));
+}
+
+/**
+ * Mode Closingan "Admin Penuh": admin mencatat closingan ATAS NAMA seorang crew,
+ * lalu langsung disahkan (auto-approve). Hanya berjalan bila tenant.closing_mode =
+ * 'admin_full'. Closingan tetap melekat ke user_id crew → KPI/rapor/payroll crew
+ * terisi otomatis. Admin boleh mengedit baris yang sudah approved (khusus mode ini).
+ */
+export async function adminCreateClosingAction(
+  _prevState: InputFormState,
+  formData: FormData,
+): Promise<InputFormState> {
+  const session = await getSessionContext();
+  const active = session?.activeMembership;
+  if (!active || active.role !== "admin_apotek") {
+    return { status: "error", message: getFeedbackMessage("access_denied") };
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { status: "error", message: getFeedbackMessage("user_not_found") };
+  }
+
+  // Gate: hanya untuk apotek bermode admin_full.
+  const { data: tenant } = await supabase
+    .from("tenant_apotek")
+    .select("closing_mode")
+    .eq("id", active.tenantId)
+    .maybeSingle();
+  if (tenant?.closing_mode !== "admin_full") {
+    return { status: "error", message: "Mode closingan apotek ini bukan Admin Penuh." };
+  }
+
+  // Admin menulis closingan ATAS NAMA crew (user_id ≠ admin) & membaca membership
+  // user lain → operasi ini dilewatkan RLS. Aman karena semua otorisasi (role admin +
+  // tenant + mode admin_full + keanggotaan crew) sudah divalidasi eksplisit di sini.
+  const supabaseAdmin = createAdminClient();
+
+  const toNum = (v: FormDataEntryValue | null): number => {
+    const raw = (v?.toString() ?? "").trim();
+    if (!raw) return 0;
+    const normalized = raw.replace(/[^\d-]/g, "");
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : NaN;
+  };
+
+  const targetUserId = formData.get("targetUserId")?.toString();
+  const submissionDate = formData.get("submissionDate")?.toString();
+  const shiftLabel = formData.get("shiftLabel")?.toString() ?? "general";
+  const omzetTotal = toNum(formData.get("omzetTotal"));
+  const transactionTotal = toNum(formData.get("transactionTotal"));
+  const productTotal = toNum(formData.get("productTotal"));
+  const rejectedCustomerTotal = toNum(formData.get("rejectedCustomerTotal"));
+  const rejectedMedicineTotal = toNum(formData.get("rejectedMedicineTotal"));
+
+  const focusProductIdsStr = formData.get("focusProductIds")?.toString();
+  const focusProductIds = focusProductIdsStr ? focusProductIdsStr.split(",").filter(Boolean) : [];
+
+  const numbersAreValid = [omzetTotal, transactionTotal, productTotal, rejectedCustomerTotal, rejectedMedicineTotal].every(
+    (n) => Number.isFinite(n) && n >= 0,
+  );
+  if (!targetUserId || !submissionDate || !numbersAreValid) {
+    return { status: "error", message: getFeedbackMessage("invalid_input") };
+  }
+
+  const submissionPeriod = getSubmissionPeriod(submissionDate);
+  if (!submissionPeriod) {
+    return { status: "error", message: getFeedbackMessage("invalid_input") };
+  }
+
+  // Validasi: targetUserId harus crew aktif di apotek ini.
+  const { data: membership } = await supabaseAdmin
+    .from("tenant_memberships")
+    .select("id")
+    .eq("tenant_apotek_id", active.tenantId)
+    .eq("user_id", targetUserId)
+    .eq("role", "crew")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (!membership) {
+    return { status: "error", message: "Crew tujuan tidak valid untuk apotek ini." };
+  }
+
+  const focusProductsData = await resolveFocusRows(
+    supabaseAdmin,
+    active.tenantId,
+    submissionPeriod,
+    focusProductIds,
+    (id) => Number(formData.get(`focusProduct_${id}`)?.toString() ?? 0),
+  );
+
+  // Cari baris eksisting untuk (tenant, crew, tanggal, shift).
+  const { data: existing } = await supabaseAdmin
+    .from("daily_submissions")
+    .select("id, status")
+    .eq("tenant_apotek_id", active.tenantId)
+    .eq("user_id", targetUserId)
+    .eq("submission_date", submissionDate)
+    .eq("shift_label", shiftLabel)
+    .maybeSingle();
+
+  const values = {
+    omzet_total: omzetTotal,
+    transaction_total: transactionTotal,
+    product_total: productTotal,
+    rejected_customer_total: rejectedCustomerTotal,
+    rejected_medicine_total: rejectedMedicineTotal,
+  };
+
+  let submissionId: string;
+  let isEdit = false;
+
+  if (existing) {
+    isEdit = true;
+    submissionId = existing.id;
+    const { error: updErr } = await supabaseAdmin
+      .from("daily_submissions")
+      .update(values)
+      .eq("id", existing.id)
+      .eq("tenant_apotek_id", active.tenantId);
+    if (updErr) {
+      return { status: "error", message: getFeedbackMessage("save_failed") };
+    }
+    // Bila belum approved, sahkan lewat verifikasi (trigger set status → approved).
+    if (existing.status !== "approved") {
+      const { error: vErr } = await supabaseAdmin.from("submission_verifications").insert({
+        submission_id: existing.id,
+        action: "approve",
+        note: "Dicatat & disahkan admin (mode Admin Penuh)",
+        acted_by_user_id: user.id,
+      });
+      if (vErr) {
+        return { status: "error", message: getFeedbackMessage("save_failed") };
+      }
+    }
+  } else {
+    const { data: inserted, error: insErr } = await supabaseAdmin
+      .from("daily_submissions")
+      .insert({
+        tenant_apotek_id: active.tenantId,
+        user_id: targetUserId,
+        submission_date: submissionDate,
+        shift_label: shiftLabel,
+        ...values,
+        status: "submitted",
+        submitted_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (insErr || !inserted) {
+      return { status: "error", message: getFeedbackMessage("save_failed") };
+    }
+    submissionId = inserted.id;
+    // Auto-approve: trigger apply_submission_verification_effect → status 'approved'.
+    const { error: vErr } = await supabaseAdmin.from("submission_verifications").insert({
+      submission_id: submissionId,
+      action: "approve",
+      note: "Dicatat & disahkan admin (mode Admin Penuh)",
+      acted_by_user_id: user.id,
+    });
+    if (vErr) {
+      return { status: "error", message: getFeedbackMessage("save_failed") };
+    }
+  }
+
+  if (focusProductsData.length > 0) {
+    const { error: focusErr } = await supabaseAdmin.from("daily_submission_products").upsert(
+      focusProductsData.map((fp) => ({
+        tenant_apotek_id: active.tenantId,
+        submission_id: submissionId,
+        product_id: fp.product_id,
+        quantity_sold: fp.quantity_sold,
+      })),
+      { onConflict: "submission_id,product_id" },
+    );
+    if (focusErr) {
+      return { status: "error", message: getFeedbackMessage("focus_save_failed") };
+    }
+  }
+
+  await writeAuditLog(supabaseAdmin, {
+    tenantApotekId: active.tenantId,
+    actorUserId: user.id,
+    entityType: "daily_submissions",
+    entityId: submissionId,
+    action: isEdit ? "submission_admin_edited" : "submission_admin_created",
+    newValue: {
+      onBehalfOfUserId: targetUserId,
+      submissionDate,
+      shiftLabel,
+      ...values,
+      focusProductsData,
+      mode: "admin_full",
+    },
+  });
+
+  revalidatePath("/admin/input-harian");
+  revalidatePath("/crew/rapor");
+  revalidatePath("/owner/laporan");
+  await setFlashMessage({
+    status: "success",
+    message: isEdit
+      ? "Closingan crew berhasil diperbarui."
+      : "Closingan crew berhasil dicatat & disahkan.",
+  });
+  redirect(inputHarianPath("admin_apotek", {}));
 }

@@ -33,6 +33,8 @@ export function ReportMetricsGrid({ metrics }: Props) {
     { label: "ATU", value: metricValue(metrics.atu, false, 2) },
     { label: "Jumlah Pelanggan Tertolak", value: metricValue(metrics.rejectedCustomers) },
     { label: "Perkiraan Omzet Tertolak", value: metricValue(metrics.projectedRejectedOmzet, true) },
+    { label: "Jumlah Obat Tertolak", value: metricValue(metrics.rejectedMedicines) },
+    { label: "Perkiraan Omzet (Obat)", value: metricValue(metrics.projectedRejectedMedicineOmzet, true) },
   ];
 
   return (

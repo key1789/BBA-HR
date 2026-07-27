@@ -1,6 +1,6 @@
 import { GlassCard } from "@/components/shared/glass-card";
 import { CustomLineChart } from "@/components/dashboard/custom-line-chart";
-import { BbaDashboardLeaderboard } from "@/app/bba/dashboard/bba-dashboard-leaderboard";
+import { BbaDashboardLeaderboard } from "@/app/sa/dashboard/bba-dashboard-leaderboard";
 import { cn } from "@/lib/utils";
 import { ArrowDownRight, ArrowUpRight, TrendingUp } from "lucide-react";
 import Link from "next/link";
@@ -104,6 +104,12 @@ export function OwnerPenjualanKinerja({
               Detail →
             </Link>
           )}
+        </GlassCard>
+        <GlassCard className="!py-4">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Obat hilang</p>
+          <p className="mt-1 text-xl font-black text-amber-700">
+            {numberFormatter.format(kpis.lostMedicines)}
+          </p>
         </GlassCard>
       </div>
 

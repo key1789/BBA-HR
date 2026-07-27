@@ -67,7 +67,7 @@ function normalizeRouteId(raw: unknown): string {
 }
 
 /**
- * Route `/bba/audit/[id]` memakai tenant_apotek.id; terima juga monthly_audits.id (deep link lama).
+ * Route `/sa/audit/[id]` memakai tenant_apotek.id; terima juga monthly_audits.id (deep link lama).
  */
 export async function resolveBranchRouteTenantId(
   supabase: SupabaseClient,
@@ -154,7 +154,7 @@ export async function fetchAuditBranchDashboardData(
   const { data: approvedRows } = await supabase
     .from("daily_submissions")
     .select(
-      "id, submission_date, user_id, omzet_total, transaction_total, product_total, rejected_customer_total, user:app_users!user_id(full_name)",
+      "id, submission_date, user_id, omzet_total, transaction_total, product_total, rejected_customer_total, rejected_medicine_total, user:app_users!user_id(full_name)",
     )
     .eq("tenant_apotek_id", branchId)
     .in("status", submissionStatuses as unknown as string[])
@@ -172,7 +172,7 @@ export async function fetchAuditBranchDashboardData(
 
   const byDate = new Map<
     string,
-    { total_omzet: number; total_transactions: number; total_items: number; rejected_count: number }
+    { total_omzet: number; total_transactions: number; total_items: number; rejected_count: number; rejected_med_count: number }
   >();
   for (const row of approvedRows ?? []) {
     const dateKey = String(row.submission_date).slice(0, 10);
@@ -181,16 +181,19 @@ export async function fetchAuditBranchDashboardData(
       total_transactions: 0,
       total_items: 0,
       rejected_count: 0,
+      rejected_med_count: 0,
     };
     current.total_omzet += Number(row.omzet_total ?? 0);
     current.total_transactions += Number(row.transaction_total ?? 0);
     current.total_items += Number(row.product_total ?? 0);
     current.rejected_count += Number(row.rejected_customer_total ?? 0);
+    current.rejected_med_count += Number(row.rejected_medicine_total ?? 0);
     byDate.set(dateKey, current);
   }
   const achievements = Array.from(byDate.entries())
     .map(([achievement_date, val]) => {
       const atv = val.total_transactions > 0 ? val.total_omzet / val.total_transactions : 0;
+      const itemPrice = val.total_items > 0 ? val.total_omzet / val.total_items : 0;
       return {
         achievement_date,
         total_omzet: val.total_omzet,
@@ -198,6 +201,8 @@ export async function fetchAuditBranchDashboardData(
         total_items: val.total_items,
         rejected_count: val.rejected_count,
         rejected_omzet_est: atv * val.rejected_count,
+        rejected_med_count: val.rejected_med_count,
+        rejected_med_omzet_est: itemPrice * val.rejected_med_count,
       };
     })
     .sort((a, b) => a.achievement_date.localeCompare(b.achievement_date));
@@ -210,6 +215,7 @@ export async function fetchAuditBranchDashboardData(
     transactions: Number(row.transaction_total ?? 0),
     items: Number(row.product_total ?? 0),
     rejected_customer_total: Number(row.rejected_customer_total ?? 0),
+    rejected_medicine_total: Number(row.rejected_medicine_total ?? 0),
     app_users: row.user,
   }));
 

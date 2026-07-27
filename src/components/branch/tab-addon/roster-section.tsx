@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { Clock, CalendarDays, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { copyRosterAction, saveRosterAction } from "@/app/bba/branches/[id]/actions";
+import { copyRosterAction, saveRosterAction } from "@/app/sa/branches/[id]/actions";
 import { isBranchOperationalPersonnel } from "@/lib/branch-personnel";
 
 /** Supabase/pg mengembalikan date sebagai "YYYY-MM-DD" atau ISO; bandingkan aman untuk roster. */
@@ -213,6 +213,23 @@ export function RosterSection({
     });
   }, [branchId, roster]);
 
+  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+  // Ringkasan per crew (Kerja / OFF / Kosong) sebulan — update saat sel diubah.
+  const summaryFor = (userId: string) => {
+    let kerja = 0;
+    let off = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const sch =
+        localRosterByUserDate[`${userId}|${dateStr}`] ??
+        roster.find((r) => r.user_id === userId && scheduleDateKey(r.schedule_date) === dateStr);
+      if (sch?.is_off) off++;
+      else if (sch?.shift_id) kerja++;
+    }
+    return { kerja, off, kosong: daysInMonth - kerja - off };
+  };
+
   return (
     <div className="space-y-8 pb-10">
       <div className="p-6 bg-gradient-to-br from-cyan-50 to-sky-50 border border-cyan-100/50 rounded-[24px] flex gap-5 items-start">
@@ -277,6 +294,9 @@ export function RosterSection({
                   </div>
                 </th>
               ))}
+              <th className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest sticky right-0 bg-slate-50/95 backdrop-blur-md z-20 min-w-[136px] border-b border-l border-slate-100 shadow-[-2px_0_10px_-2px_rgba(0,0,0,0.05)]">
+                Ringkasan
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -317,6 +337,27 @@ export function RosterSection({
                     />
                   );
                 })}
+                {(() => {
+                  const s = summaryFor(user.app_users.id);
+                  return (
+                    <td className="p-3 sticky right-0 bg-white group-hover:bg-slate-50 z-10 border-b border-l border-slate-100 transition-colors shadow-[-2px_0_10px_-2px_rgba(0,0,0,0.05)]">
+                      <div className="flex items-center justify-center gap-2 text-[10px] font-black">
+                        <span className="flex flex-col items-center px-1.5 py-1 rounded-lg bg-sky-50 text-sky-700 min-w-[34px]">
+                          <span className="text-sm leading-none">{s.kerja}</span>
+                          <span className="text-[8px] font-bold opacity-70 mt-0.5">KERJA</span>
+                        </span>
+                        <span className="flex flex-col items-center px-1.5 py-1 rounded-lg bg-rose-50 text-rose-600 min-w-[34px]">
+                          <span className="text-sm leading-none">{s.off}</span>
+                          <span className="text-[8px] font-bold opacity-70 mt-0.5">OFF</span>
+                        </span>
+                        <span className="flex flex-col items-center px-1.5 py-1 rounded-lg bg-slate-50 text-slate-400 min-w-[34px]">
+                          <span className="text-sm leading-none">{s.kosong}</span>
+                          <span className="text-[8px] font-bold opacity-70 mt-0.5">KOSONG</span>
+                        </span>
+                      </div>
+                    </td>
+                  );
+                })()}
               </tr>
             ))}
           </tbody>
