@@ -84,7 +84,7 @@ export async function GET() {
               }}
             />
             <span style={{ color: "#7dd3fc", fontSize: 18, fontWeight: 700 }}>
-              bba-system.vercel.app
+              apotrik.ksnd.my.id
             </span>
           </div>
         </div>

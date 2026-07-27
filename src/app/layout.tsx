@@ -13,18 +13,14 @@ const nunito = Nunito({
 export const metadata: Metadata = {
   title: "Apotrik",
   description: "Platform HR untuk operasional dan monitoring apotek",
-  icons: {
-    icon: "/apotrik-logo.png",
-    apple: "/apotrik-logo.png",
-  },
   openGraph: {
     title: "Apotrik",
     description: "Platform HR untuk operasional dan monitoring apotek",
-    url: "https://bba-system.vercel.app",
+    url: "https://apotrik.ksnd.my.id",
     siteName: "Apotrik",
     images: [
       {
-        url: "https://bba-system.vercel.app/api/og",
+        url: "https://apotrik.ksnd.my.id/api/og",
         width: 1200,
         height: 630,
         alt: "Apotrik",
@@ -36,7 +32,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Apotrik",
     description: "Platform HR untuk operasional dan monitoring apotek",
-    images: ["https://bba-system.vercel.app/api/og"],
+    images: ["https://apotrik.ksnd.my.id/api/og"],
   },
 };
 
