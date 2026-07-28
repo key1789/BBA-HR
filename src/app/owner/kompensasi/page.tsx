@@ -101,6 +101,7 @@ export default async function OwnerKompensasiPage({
             approvedProductRows={auditPayload.approvedProductRows}
             attendanceLogs={auditPayload.attendanceLogs}
             leaveRequestsApproved={auditPayload.leaveRequestsApproved}
+            rosterSchedules={auditPayload.rosterSchedules}
             monthlyAddonAppraisals={auditPayload.monthlyAddonAppraisals}
             activeCrewCount={auditPayload.activeCrewCount}
             raportPeriodPublished={auditPayload.raportPeriodPublished}

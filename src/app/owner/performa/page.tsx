@@ -94,6 +94,7 @@ export default async function OwnerPerformaPage({
           approvedProductRows={auditPayload.approvedProductRows}
           attendanceLogs={auditPayload.attendanceLogs}
           leaveRequestsApproved={auditPayload.leaveRequestsApproved}
+          rosterSchedules={auditPayload.rosterSchedules}
           monthlyAddonAppraisals={auditPayload.monthlyAddonAppraisals}
           activeCrewCount={auditPayload.activeCrewCount}
           raportPeriodPublished={auditPayload.raportPeriodPublished}

@@ -7,6 +7,7 @@ import { getCurrentKpiV2 } from "@/actions/kpi-v2-actions";
 import { mergeKpiConfigs } from "@/lib/kpi-v2/utils";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { getSessionContext } from "@/lib/auth-context";
+import { fetchApprovedLeaveKeys } from "@/lib/attendance-recap";
 import { bbaCanAccessTenant } from "@/lib/bba-portal-guard";
 import { hasPermission, mapBbaSessionToAppPermissionRole } from "@/lib/permissions";
 
@@ -130,11 +131,12 @@ export default async function BranchDetailPage({ params, searchParams }: { param
     .lte("schedule_date", endDate)
     .order("schedule_date", { ascending: true });
 
-  // 9. Fetch Crew Shift Defaults (pola mingguan per crew)
-  const { data: shiftDefaults } = await supabaseAdmin
-    .from("crew_shift_defaults")
-    .select("*")
-    .eq("tenant_apotek_id", id);
+  // 9. Kunci izin disetujui bulan ini — overlay penanda "IZIN" di sel roster.
+  const approvedLeaveKeys = await fetchApprovedLeaveKeys(supabaseAdmin, {
+    tenantId: id,
+    month: currentMonth,
+    year: currentYear,
+  });
 
   // 10. Fetch Payroll Configs
   const { data: payrollConfigs } = await supabaseAdmin
@@ -204,7 +206,7 @@ export default async function BranchDetailPage({ params, searchParams }: { param
         products={products || []}
         productFokus={productFokus || []}
         roster={roster || []}
-        shiftDefaults={shiftDefaults || []}
+        approvedLeaveKeys={approvedLeaveKeys}
         payrollConfigs={payrollConfigs || []}
         activityLogs={activityLogs || []}
         availableOwners={availableOwnersData || []}

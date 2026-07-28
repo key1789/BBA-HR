@@ -1111,15 +1111,6 @@ export async function deleteShiftAction(formData: FormData) {
     };
   }
 
-  // Pola mingguan (crew_shift_defaults, per-hari) memakai ON DELETE CASCADE — slot
-  // yg memakai shift ini ikut terhapus. Tidak memblokir (sesuai kesepakatan); dilaporkan.
-  // Hitung DISTINCT crew yang terdampak (bukan jumlah slot/hari).
-  const { data: defaultRows } = await supabaseAdmin
-    .from("crew_shift_defaults")
-    .select("user_id")
-    .eq("shift_id", shiftId);
-  const defaultsCount = new Set((defaultRows ?? []).map((r) => r.user_id)).size;
-
   const { data: oldShift } = await supabaseAdmin
     .from("master_shifts")
     .select("*")
@@ -1135,16 +1126,11 @@ export async function deleteShiftAction(formData: FormData) {
   if (error) return { error: `Gagal menghapus shift: ${error.message}` };
 
   if (user) {
-    await logActivity(supabaseAdmin, tenantId, user.id, "master_shifts", shiftId, "DELETE", oldShift, { deletedDefaults: defaultsCount ?? 0 });
+    await logActivity(supabaseAdmin, tenantId, user.id, "master_shifts", shiftId, "DELETE", oldShift, null);
   }
 
   revalidatePath(`/sa/branches/${tenantId}`);
-  return {
-    success: true,
-    message: defaultsCount > 0
-      ? `Shift dihapus. Slot pola mingguan ${defaultsCount} crew yang memakainya ikut terhapus.`
-      : "Shift berhasil dihapus!",
-  };
+  return { success: true, message: "Shift berhasil dihapus!" };
 }
 
 export async function saveAddonSettingsAction(prevState: any, formData: FormData) {
@@ -1605,12 +1591,35 @@ export async function saveRosterAction(formData: FormData) {
     .eq("schedule_date", date)
     .maybeSingle();
 
-  const normalizedShiftId = shiftId === "OFF" || shiftId === "" ? null : shiftId;
+  // "Kosong" (shiftId === "") = tidak dijadwalkan → HAPUS baris. Menyimpan baris
+  // shift_id null malah dianggap "terjadwal kerja" oleh resolver kehadiran →
+  // hari lampau tanpa absen keliru dihitung ALPHA, dan crew muncul di kalender
+  // tanpa shift. OFF tetap baris nyata (is_off=true) agar tercatat sebagai libur.
+  if (shiftId === "") {
+    if (oldRoster) {
+      const { error } = await supabaseAdmin
+        .from("shift_schedules")
+        .delete()
+        .eq("tenant_apotek_id", tenantId)
+        .eq("user_id", userId)
+        .eq("schedule_date", date);
+      if (error) return { error: `Gagal mengosongkan roster: ${error.message}` };
+      if (user) {
+        await logActivity(
+          supabaseAdmin, tenantId, user.id, "shift_schedules",
+          `${userId}:${date}`, "DELETE", oldRoster, null,
+        );
+      }
+    }
+    revalidateSchedulePaths(tenantId);
+    return { success: true };
+  }
+
   const payload = {
     tenant_apotek_id: tenantId,
     user_id: userId,
     schedule_date: date,
-    shift_id: normalizedShiftId,
+    shift_id: shiftId === "OFF" ? null : shiftId,
     is_off: shiftId === "OFF",
   };
 
@@ -1790,165 +1799,6 @@ export async function applyShiftTemplateAction(prevState: any, formData: FormDat
 
   revalidatePath(`/sa/branches/${branchId}`);
   return { success: true, message: `${entries.length} jadwal shift berhasil diterapkan.` };
-}
-
-export async function saveCrewShiftDefaultAction(prevState: any, formData: FormData) {
-  const tenantId = formData.get("tenantId") as string;
-  const access = await resolveScheduleWriteAccess(tenantId);
-  if (!access.ok) return { error: access.error };
-  const userId = formData.get("userId") as string;
-  const weekday = parseInt(formData.get("weekday") as string, 10);
-  const value = (formData.get("value") as string) || ""; // shiftId | "OFF" | "" (kosongkan)
-
-  if (!tenantId || !userId) return { error: "Data tidak valid." };
-  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) return { error: "Hari tidak valid." };
-
-  const supabase = createAdminClient();
-  const supabaseClient = await createClient();
-  const { data: { user } } = await supabaseClient.auth.getUser();
-
-  // Kosong → hapus slot (tak ada pola untuk hari itu).
-  if (value === "") {
-    const { error } = await supabase
-      .from("crew_shift_defaults")
-      .delete()
-      .eq("tenant_apotek_id", tenantId)
-      .eq("user_id", userId)
-      .eq("weekday", weekday);
-    if (error) return { error: `Gagal menghapus pola: ${error.message}` };
-  } else {
-    const isOff = value === "OFF";
-    const payload = {
-      tenant_apotek_id: tenantId,
-      user_id: userId,
-      weekday,
-      shift_id: isOff ? null : value,
-      is_off: isOff,
-      updated_at: new Date().toISOString(),
-    };
-    const { error } = await supabase
-      .from("crew_shift_defaults")
-      .upsert(payload, { onConflict: "tenant_apotek_id,user_id,weekday" });
-    if (error) return { error: `Gagal menyimpan pola jadwal: ${error.message}` };
-  }
-
-  if (user) {
-    await logActivity(
-      supabase, tenantId, user.id, "crew_shift_defaults",
-      `${tenantId}:${userId}:${weekday}`, "UPDATE", null,
-      { action: "SAVE_CREW_SHIFT_DEFAULT", userId, weekday, value },
-    );
-  }
-
-  revalidateSchedulePaths(tenantId);
-  return { success: true };
-}
-
-export async function generateRosterFromDefaultsAction(prevState: any, formData: FormData) {
-  const tenantId = formData.get("tenantId") as string;
-  const access = await resolveScheduleWriteAccess(tenantId);
-  if (!access.ok) return { error: access.error };
-  const month = parseInt(formData.get("month") as string);
-  const year = parseInt(formData.get("year") as string);
-  // Mode: 'overwrite' = timpa seluruh bulan (perilaku lama). 'fill_empty' = isi
-  // hanya sel yang belum ada jadwalnya (pertahankan editan manual). (B)
-  const mode = (formData.get("mode") as string) === "fill_empty" ? "fill_empty" : "overwrite";
-
-  if (!tenantId || isNaN(month) || isNaN(year)) return { error: "Data tidak valid." };
-
-  const supabase = createAdminClient();
-  const supabaseClient = await createClient();
-  const { data: { user } } = await supabaseClient.auth.getUser();
-
-  // Step 1: Ambil pola per-hari (crew, weekday) → shift atau OFF.
-  const { data: defaults, error: fetchError } = await supabase
-    .from("crew_shift_defaults")
-    .select("user_id, weekday, shift_id, is_off")
-    .eq("tenant_apotek_id", tenantId);
-
-  if (fetchError) return { error: `Gagal mengambil pola jadwal: ${fetchError.message}` };
-  if (!defaults || defaults.length === 0) {
-    return { error: "Pola mingguan belum diatur. Atur pola mingguan crew terlebih dahulu." };
-  }
-
-  // patternByUserWeekday[user][weekday] = { shiftId|null, isOff }
-  const pattern: Record<string, Record<number, { shiftId: string | null; isOff: boolean }>> = {};
-  for (const d of defaults) {
-    const uid = d.user_id as string;
-    (pattern[uid] ??= {})[d.weekday as number] = {
-      shiftId: (d.shift_id as string | null) ?? null,
-      isOff: Boolean(d.is_off),
-    };
-  }
-
-  // Step 2: Expand pola ke tanggal konkret bulan/tahun.
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
-  const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
-
-  const entries: { userId: string; shiftId: string | null; isOff: boolean; date: string }[] = [];
-  for (const [userId, byWeekday] of Object.entries(pattern)) {
-    for (let day = 1; day <= daysInMonth; day++) {
-      const weekday = new Date(year, month - 1, day).getDay();
-      const slot = byWeekday[weekday];
-      if (!slot) continue; // hari tak diatur → dilewati (kosong)
-      entries.push({
-        userId,
-        shiftId: slot.isOff ? null : slot.shiftId,
-        isOff: slot.isOff,
-        date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-      });
-    }
-  }
-
-  // Step 3: Fill-empty → sisihkan (user,date) yang SUDAH ada jadwalnya. Overwrite → hapus dulu.
-  let toInsert = entries;
-  if (mode === "fill_empty") {
-    const { data: existing } = await supabase
-      .from("shift_schedules")
-      .select("user_id, schedule_date")
-      .eq("tenant_apotek_id", tenantId)
-      .gte("schedule_date", firstDay)
-      .lte("schedule_date", lastDay);
-    const taken = new Set((existing ?? []).map((r) => `${r.user_id}|${String(r.schedule_date).slice(0, 10)}`));
-    toInsert = entries.filter((e) => !taken.has(`${e.userId}|${e.date}`));
-  } else {
-    const { error: deleteError } = await supabase
-      .from("shift_schedules")
-      .delete()
-      .eq("tenant_apotek_id", tenantId)
-      .gte("schedule_date", firstDay)
-      .lte("schedule_date", lastDay);
-    if (deleteError) return { error: `Gagal reset jadwal: ${deleteError.message}` };
-  }
-
-  // Step 4: Bulk insert.
-  if (toInsert.length > 0) {
-    const rows = toInsert.map((e) => ({
-      tenant_apotek_id: tenantId,
-      user_id: e.userId,
-      schedule_date: e.date,
-      shift_id: e.shiftId,
-      is_off: e.isOff,
-    }));
-    const { error: insertError } = await supabase.from("shift_schedules").insert(rows);
-    if (insertError) return { error: `Gagal menyimpan jadwal: ${insertError.message}` };
-  }
-
-  if (user) {
-    await logActivity(
-      supabase, tenantId, user.id, "shift_schedules", tenantId, "UPDATE", null,
-      { action: "GENERATE_ROSTER_FROM_DEFAULTS", mode, month, year, insertedCount: toInsert.length },
-    );
-  }
-
-  revalidateSchedulePaths(tenantId);
-  return {
-    success: true,
-    message: mode === "fill_empty"
-      ? `${toInsert.length} jadwal kosong diisi dari pola (editan manual dipertahankan).`
-      : `${toInsert.length} jadwal dibuat dari pola mingguan.`,
-  };
 }
 
 export async function savePayrollConfigAction(prevState: any, formData: FormData) {

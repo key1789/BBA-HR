@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Clock, CalendarDays, Save, Loader2 } from "lucide-react";
+import { Clock, CalendarDays, Save, Loader2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { copyRosterAction, saveRosterAction } from "@/app/sa/branches/[id]/actions";
 import { isBranchOperationalPersonnel } from "@/lib/branch-personnel";
@@ -25,6 +25,7 @@ export function RosterCell({
   userName,
   onApply,
   shiftColorById,
+  hasApprovedLeave,
 }: any) {
   const [isPending, startTransition] = useTransition();
   const [val, setVal] = useState(schedule?.is_off ? "OFF" : schedule?.shift_id || "");
@@ -95,6 +96,14 @@ export function RosterCell({
           <div className="w-1.5 h-1.5 rounded-full bg-sky-600 animate-bounce"></div>
         </div>
       )}
+      {hasApprovedLeave && !isPending && (
+        <span
+          title="Izin disetujui hari ini"
+          className="absolute top-0.5 right-0.5 flex items-center gap-0.5 rounded-md bg-violet-100 px-1 text-[7px] font-black uppercase tracking-tight text-violet-700 ring-1 ring-violet-200 pointer-events-none"
+        >
+          Izin
+        </span>
+      )}
       {val !== "" && !isPending && (
         <div
           className={`absolute bottom-1 right-1 w-1 h-1 rounded-full ${val === "OFF" ? "bg-rose-400" : "bg-sky-400"} animate-in zoom-in duration-500`}
@@ -111,8 +120,140 @@ export interface RosterSectionProps {
   users: any[];
   shifts: any[];
   roster: any[];
+  /** Kunci `${user_id}|${YYYY-MM-DD}` untuk hari izin disetujui — overlay penanda di sel roster. */
+  approvedLeaveKeys?: string[];
   /** Memberi tahu parent saat ada penyimpanan roster berjalan (untuk blok penutup modal). */
   onBusyChange?: (busy: boolean) => void;
+}
+
+const MOBILE_WEEKDAY = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+
+/** Baris crew di editor per-hari (HP): nama + dropdown shift. Simpan via onApply. */
+function MobileShiftSelect({ schedule, shifts, branchId, userId, dateStr, day, userName, onApply, hasApprovedLeave }: any) {
+  const [isPending, startTransition] = useTransition();
+  const [val, setVal] = useState(schedule?.is_off ? "OFF" : schedule?.shift_id || "");
+
+  useEffect(() => {
+    queueMicrotask(() => setVal(schedule?.is_off ? "OFF" : schedule?.shift_id || ""));
+  }, [schedule]);
+
+  const apply = (v: string) => {
+    setVal(v);
+    startTransition(async () => {
+      await onApply({ branchId, userId, dateStr, shiftId: v, day, userName, silent: false });
+    });
+  };
+
+  const hasShiftOption = !!(val && val !== "OFF" && shifts.some((s: any) => s.id === val));
+
+  return (
+    <div className="flex items-center gap-2.5 py-2.5">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-[9px] font-black uppercase text-sky-600">
+        {String(userName).slice(0, 2)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12px] font-bold text-slate-800">{userName}</p>
+        {hasApprovedLeave && (
+          <span className="mt-0.5 inline-flex rounded-md bg-violet-100 px-1.5 text-[8px] font-black uppercase tracking-tight text-violet-700 ring-1 ring-violet-200">
+            Izin disetujui
+          </span>
+        )}
+      </div>
+      <div className="relative shrink-0">
+        <select
+          value={val}
+          disabled={isPending}
+          onChange={(e) => apply(e.target.value)}
+          className={`h-9 w-[116px] rounded-xl border px-2 text-[11px] font-black uppercase outline-none transition-all disabled:opacity-50 ${
+            val === ""
+              ? "border-slate-200 bg-white text-slate-400"
+              : val === "OFF"
+                ? "border-rose-200 bg-rose-50 text-rose-600"
+                : "border-sky-200 bg-sky-50 text-sky-700"
+          }`}
+        >
+          <option value="">— Kosong</option>
+          <option value="OFF">OFF (Libur)</option>
+          {val && val !== "OFF" && !hasShiftOption ? (
+            <option value={val}>Shift lama (hilang)</option>
+          ) : null}
+          {shifts.map((s: any) => (
+            <option key={s.id} value={s.id}>{s.shift_name}</option>
+          ))}
+        </select>
+        {isPending && (
+          <span className="absolute -right-1 -top-1 h-2 w-2 animate-ping rounded-full bg-sky-500" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Kartu hari yang bisa dilipat di editor per-hari (HP). */
+function MobileDayRow({ day, dateStr, weekday, isWeekend, monthLabel, crewSchedules, shifts, branchId, onApply }: any) {
+  const [open, setOpen] = useState(false);
+  let kerja = 0;
+  let off = 0;
+  for (const cs of crewSchedules) {
+    if (cs.schedule?.is_off) off++;
+    else if (cs.schedule?.shift_id) kerja++;
+  }
+  const kosong = crewSchedules.length - kerja - off;
+
+  return (
+    <div className={`overflow-hidden rounded-2xl border bg-white ${isWeekend ? "border-rose-100" : "border-slate-200"}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left"
+      >
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-black ${isWeekend ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-700"}`}>
+          {day}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className={`text-[11px] font-black uppercase tracking-widest ${isWeekend ? "text-rose-500" : "text-slate-600"}`}>
+            {weekday}, {monthLabel}
+          </p>
+          <p className="mt-0.5 text-[10px] font-bold text-slate-400">
+            {kerja === 0 && off === 0 ? (
+              "Belum diatur"
+            ) : (
+              <>
+                {kerja > 0 && <span className="text-sky-600">{kerja} kerja</span>}
+                {kerja > 0 && (off > 0 || kosong > 0) && " · "}
+                {off > 0 && <span className="text-rose-500">{off} off</span>}
+                {off > 0 && kosong > 0 && " · "}
+                {kosong > 0 && <span className="text-slate-400">{kosong} kosong</span>}
+              </>
+            )}
+          </p>
+        </div>
+        <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="divide-y divide-slate-50 border-t border-slate-100 px-3">
+          {crewSchedules.length === 0 ? (
+            <p className="py-3 text-[11px] text-slate-400">Belum ada crew.</p>
+          ) : (
+            crewSchedules.map((cs: any) => (
+              <MobileShiftSelect
+                key={cs.userId}
+                schedule={cs.schedule}
+                shifts={shifts}
+                branchId={branchId}
+                userId={cs.userId}
+                dateStr={dateStr}
+                day={day}
+                userName={cs.userName}
+                onApply={onApply}
+                hasApprovedLeave={cs.hasApprovedLeave}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function RosterSection({
@@ -122,10 +263,12 @@ export function RosterSection({
   users,
   shifts,
   roster,
+  approvedLeaveKeys,
   onBusyChange,
 }: RosterSectionProps) {
   const [pendingRosterSaves, setPendingRosterSaves] = useState(0);
   const [localRosterByUserDate, setLocalRosterByUserDate] = useState<Record<string, any>>({});
+  const leaveSet = useMemo(() => new Set(approvedLeaveKeys ?? []), [approvedLeaveKeys]);
   const [isCopyPending, startCopyTransition] = useTransition();
 
   useEffect(() => {
@@ -214,6 +357,7 @@ export function RosterSection({
   }, [branchId, roster]);
 
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+  const monthShort = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"][currentMonth - 1];
 
   // Ringkasan per crew (Kerja / OFF / Kosong) sebulan — update saat sel diubah.
   const summaryFor = (userId: string) => {
@@ -232,13 +376,13 @@ export function RosterSection({
 
   return (
     <div className="space-y-8 pb-10">
-      <div className="p-6 bg-gradient-to-br from-cyan-50 to-sky-50 border border-cyan-100/50 rounded-[24px] flex gap-5 items-start">
-        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-cyan-600 shadow-sm shrink-0">
-          <Clock size={20} />
+      <div className="flex items-start gap-3 rounded-2xl border border-cyan-100/50 bg-gradient-to-br from-cyan-50 to-sky-50 p-4 sm:gap-5 sm:rounded-[24px] sm:p-6">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-600 shadow-sm sm:h-10 sm:w-10">
+          <Clock size={18} />
         </div>
-        <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+        <p className="text-[11px] font-semibold leading-relaxed text-slate-600 sm:text-xs">
           Atur jadwal shift kerja karyawan untuk satu bulan penuh. Pastikan{" "}
-          <span className="text-cyan-600 font-black text-[10px] uppercase tracking-widest">Roster Terisi</span> dengan
+          <span className="text-[10px] font-black uppercase tracking-widest text-cyan-600">Roster Terisi</span> dengan
           benar agar operasional apotek berjalan lancar.
         </p>
       </div>
@@ -270,7 +414,44 @@ export function RosterSection({
         </button>
       </div>
 
-      <div className="border border-slate-100 rounded-[28px] overflow-hidden bg-white shadow-xl shadow-slate-200/50 overflow-x-auto custom-scrollbar relative border-separate border-spacing-0">
+      {/* Mobile: editor per-hari (tap satu hari → atur shift tiap crew) */}
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+          const dateStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const dow = new Date(currentYear, currentMonth - 1, day).getDay();
+          const crewSchedules = users
+            .filter((u) => isBranchOperationalPersonnel(u))
+            .map((user) => {
+              const uid = user.app_users.id;
+              const schedule =
+                localRosterByUserDate[`${uid}|${dateStr}`] ??
+                roster.find((r) => r.user_id === uid && scheduleDateKey(r.schedule_date) === dateStr);
+              return {
+                userId: uid,
+                userName: user.app_users.full_name,
+                schedule,
+                hasApprovedLeave: leaveSet.has(`${uid}|${dateStr}`),
+              };
+            });
+          return (
+            <MobileDayRow
+              key={day}
+              day={day}
+              dateStr={dateStr}
+              weekday={MOBILE_WEEKDAY[dow]}
+              isWeekend={dow === 0 || dow === 6}
+              monthLabel={monthShort}
+              crewSchedules={crewSchedules}
+              shifts={shifts}
+              branchId={branchId}
+              onApply={applyRosterChange}
+            />
+          );
+        })}
+      </div>
+
+      {/* Desktop: matriks roster penuh */}
+      <div className="hidden border border-slate-100 rounded-[28px] overflow-hidden bg-white shadow-xl shadow-slate-200/50 overflow-x-auto custom-scrollbar relative border-separate border-spacing-0 md:block">
         <table className="w-full text-left border-separate border-spacing-0 min-w-[1000px]">
           <thead>
             <tr className="bg-slate-50/80 backdrop-blur-sm">
@@ -334,6 +515,7 @@ export function RosterSection({
                       userName={user.app_users.full_name}
                       onApply={applyRosterChange}
                       shiftColorById={shiftColorById}
+                      hasApprovedLeave={leaveSet.has(`${user.app_users.id}|${dateStr}`)}
                     />
                   );
                 })}

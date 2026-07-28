@@ -5,6 +5,9 @@ import { Building2, Lock } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { GlassCard } from "@/components/shared/glass-card";
 import { JadwalManager } from "@/components/branch/tab-jadwal/JadwalManager";
+import { fetchAttendanceRecap, fetchApprovedLeaveKeys, type AttendanceRecap } from "@/lib/attendance-recap";
+import { AttendanceRecapMatrix } from "@/components/attendance/attendance-recap-matrix";
+import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 
 export const dynamic = "force-dynamic";
 
@@ -46,16 +49,31 @@ export default async function OwnerJadwalPage({
     addonEnabled &&
     Boolean((addonRow?.settings as Record<string, unknown> | null)?.allow_owner_schedule);
 
+  // Rekap kehadiran (read-only) — tampil bila addon absensi aktif, tak butuh delegasi edit.
+  const recap: AttendanceRecap = addonEnabled
+    ? await fetchAttendanceRecap(supabaseAdmin, {
+        tenantId,
+        month,
+        year,
+        todayKey: getOperationalReminderWindow().dateKey,
+      })
+    : { month, year, dates: [], rows: [] };
+
+  // Overlay izin di sel roster (bila jadwal ditampilkan).
+  const approvedLeaveKeys: string[] = allowOwnerSchedule
+    ? await fetchApprovedLeaveKeys(supabaseAdmin, { tenantId, month, year })
+    : [];
+
   // Data pengelolaan jadwal — hanya di-fetch bila owner diberi izin.
   let scheduleData:
-    | { users: unknown[]; shifts: unknown[]; roster: unknown[]; shiftDefaults: unknown[] }
+    | { users: unknown[]; shifts: unknown[]; roster: unknown[] }
     | null = null;
   if (allowOwnerSchedule) {
     const pad2 = (n: number) => String(n).padStart(2, "0");
     const monthStart = `${year}-${pad2(month)}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const monthEnd = `${year}-${pad2(month)}-${pad2(lastDay)}`;
-    const [usersRes, shiftsRes, rosterRes, defaultsRes] = await Promise.all([
+    const [usersRes, shiftsRes, rosterRes] = await Promise.all([
       supabaseAdmin
         .from("tenant_memberships")
         .select(
@@ -75,16 +93,11 @@ export default async function OwnerJadwalPage({
         .gte("schedule_date", monthStart)
         .lte("schedule_date", monthEnd)
         .order("schedule_date", { ascending: true }),
-      supabaseAdmin
-        .from("crew_shift_defaults")
-        .select("*")
-        .eq("tenant_apotek_id", tenantId),
     ]);
     scheduleData = {
       users: usersRes.data ?? [],
       shifts: shiftsRes.data ?? [],
       roster: rosterRes.data ?? [],
-      shiftDefaults: defaultsRes.data ?? [],
     };
   }
 
@@ -93,18 +106,26 @@ export default async function OwnerJadwalPage({
       <OwnerPortalShell
         ctx={ctx}
         basePath="/owner/jadwal"
-        title="KELOLA JADWAL"
-        subtitle={`Pola mingguan & roster ${ctx.activeOwnerMembership.tenantName}`}
+        title="JADWAL & KEHADIRAN"
+        subtitle={`Rekap kehadiran, pola & roster ${ctx.activeOwnerMembership.tenantName}`}
       >
+        {addonEnabled && (
+          <div className="mb-4 space-y-2">
+            <p className="px-1 text-[11px] font-black uppercase tracking-widest text-slate-500">
+              Rekap Kehadiran {new Date(year, month - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" })}
+            </p>
+            <AttendanceRecapMatrix recap={recap} />
+          </div>
+        )}
         {scheduleData ? (
           <JadwalManager
             branchId={tenantId}
             users={scheduleData.users}
             shifts={scheduleData.shifts}
             roster={scheduleData.roster}
-            shiftDefaults={scheduleData.shiftDefaults}
             currentMonth={month}
             currentYear={year}
+            approvedLeaveKeys={approvedLeaveKeys}
           />
         ) : (
           <GlassCard className="border-slate-100/50">

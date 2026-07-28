@@ -9,6 +9,7 @@ import {
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { resolveAttendanceStatus } from "@/lib/attendance-status";
 import {
   clockInAction, requestLeaveAction, requestShiftSwapAction,
   cancelLeaveRequestAction, cancelShiftSwapAction,
@@ -241,13 +242,14 @@ export function KehadiranClient({
   }
 
   // Banner shown at top of page (only when addon is active and there's a schedule today)
-  type BannerState = "libur" | "hadir" | "terlambat" | "belum_absen" | null;
+  type BannerState = "libur" | "hadir" | "terlambat" | "izin" | "belum_absen" | null;
   const bannerState: BannerState =
     !addonAbsensi || !todaySchedule                ? null :
     (todaySchedule as any).is_off                  ? "libur" :
-    !todayAttendance                               ? "belum_absen" :
-    (todayAttendance as any).is_late               ? "terlambat" :
-                                                     "hadir";
+    todayAttendance
+      ? ((todayAttendance as any).is_late ? "terlambat" : "hadir")
+      : approvedLeaveDateKeys.has(todayDateKey)    ? "izin"
+                                                   : "belum_absen";
   const todayClockIn = todayAttendance
     ? toWIBTime((todayAttendance as any).clock_in_time)
     : null;
@@ -313,7 +315,17 @@ export function KehadiranClient({
       ? getShiftColor((sch as any).shift_id ?? (sch as any).shift_name ?? "")
       : null;
 
-    const hasApprovedLeave = approvedLeaveDateKeys.has(dateKey);
+    const status = resolveAttendanceStatus({
+      isScheduled: Boolean(sch),
+      isOff,
+      hasClockIn: attendedDates.has(dateKey),
+      isLate: lateDates.has(dateKey),
+      hasApprovedLeave: approvedLeaveDateKeys.has(dateKey),
+      isPast: dateKey < todayDateKey,
+    });
+    const isIzin  = status === "izin";
+    const isAlpha = status === "alpha";
+    const overlay = isIzin || isAlpha; // status menimpa warna shift
 
     return (
       <div
@@ -321,39 +333,43 @@ export function KehadiranClient({
           "relative h-14 sm:h-16 rounded-xl border p-1 flex flex-col justify-between",
           // Today ring — sits on top of any background color
           isToday && "ring-2 ring-sky-400 ring-offset-1",
-          // Fallback classes for off / no-schedule cells
+          isIzin       ? "bg-violet-100 border-violet-200" :
+          isAlpha      ? "bg-rose-100 border-rose-200" :
           isOff        ? "bg-slate-100 border-slate-200" :
           !sch         ? "bg-white border-slate-100" :
           /* shift cell with inline style below */ "border",
         )}
-        style={sc ? { backgroundColor: sc.bgHex, borderColor: sc.borderHex } : undefined}
+        style={(!overlay && sc) ? { backgroundColor: sc.bgHex, borderColor: sc.borderHex } : undefined}
       >
-        {/* Approved leave indicator dot — top-right corner */}
-        {hasApprovedLeave && (
-          <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-violet-400 shadow-sm" />
+        {/* Status badge — top-right */}
+        {isIzin && (
+          <div className="absolute top-1 right-1 rounded px-1 text-[7px] font-black leading-tight bg-violet-500 text-white">IZIN</div>
+        )}
+        {isAlpha && (
+          <div className="absolute top-1 right-1 rounded px-1 text-[7px] font-black leading-tight bg-rose-500 text-white">ALPHA</div>
         )}
 
         {/* Day number */}
         <span
           className={cn(
             "text-[10px] font-black leading-none",
-            isOff ? "text-slate-400" : !sch ? "text-slate-300" : "",
+            isIzin ? "text-violet-700" : isAlpha ? "text-rose-700" : isOff ? "text-slate-400" : !sch ? "text-slate-300" : "",
           )}
-          style={sc ? { color: sc.dayColor } : undefined}
+          style={(!overlay && sc) ? { color: sc.dayColor } : undefined}
         >
           {day}
         </span>
 
-        {/* Shift label */}
-        {sch && (
+        {/* Shift / status label */}
+        {(sch || isIzin) && (
           <span
             className={cn(
               "text-[8px] sm:text-[9px] font-black uppercase truncate leading-none",
-              isOff ? "text-slate-400" : "",
+              isIzin ? "text-violet-700" : isAlpha ? "text-rose-700" : isOff ? "text-slate-400" : "",
             )}
-            style={sc ? { color: sc.shiftColor } : undefined}
+            style={(!overlay && sc) ? { color: sc.shiftColor } : undefined}
           >
-            {isOff ? "OFF" : (sch.shift_name ?? "-")}
+            {isIzin ? "Izin" : isOff ? "OFF" : (sch?.shift_name ?? "-")}
           </span>
         )}
       </div>
@@ -371,6 +387,7 @@ export function KehadiranClient({
           bannerState === "libur"       && "bg-slate-50 border-slate-200",
           bannerState === "hadir"       && "bg-emerald-50 border-emerald-200",
           bannerState === "terlambat"   && "bg-rose-50 border-rose-200",
+          bannerState === "izin"        && "bg-violet-50 border-violet-200",
           bannerState === "belum_absen" && "bg-amber-50 border-amber-200",
         )}>
           <div>
@@ -379,6 +396,7 @@ export function KehadiranClient({
               bannerState === "libur"       && "text-slate-400",
               bannerState === "hadir"       && "text-emerald-500",
               bannerState === "terlambat"   && "text-rose-400",
+              bannerState === "izin"        && "text-violet-500",
               bannerState === "belum_absen" && "text-amber-500",
             )}>
               Hari Ini
@@ -388,11 +406,13 @@ export function KehadiranClient({
               bannerState === "libur"       && "text-slate-600",
               bannerState === "hadir"       && "text-emerald-700",
               bannerState === "terlambat"   && "text-rose-700",
+              bannerState === "izin"        && "text-violet-700",
               bannerState === "belum_absen" && "text-amber-700",
             )}>
               {bannerState === "libur"       ? "Hari Ini Libur" :
                bannerState === "hadir"       ? `Sudah Hadir · ${todayClockIn} WIB` :
                bannerState === "terlambat"   ? `Terlambat · ${todayClockIn} WIB` :
+               bannerState === "izin"        ? "Sedang Izin Hari Ini" :
                                               "Belum Absen Hari Ini"}
             </p>
           </div>

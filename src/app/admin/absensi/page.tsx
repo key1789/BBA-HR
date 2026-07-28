@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { HelpDrawer } from "@/components/shared/help-drawer";
 import { AddonGate } from "@/components/shared/addon-gate";
 import { AbsensiClient } from "./absensi-client";
-import { JadwalManager } from "@/components/branch/tab-jadwal/JadwalManager";
+import { fetchAttendanceRecap, fetchApprovedLeaveKeys, type AttendanceRecap } from "@/lib/attendance-recap";
 import { ABSENSI_HELP } from "./help-content";
 import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { CalendarDays } from "lucide-react";
@@ -99,7 +99,10 @@ export default async function AdminAbsensiPage({
         .lte("schedule_date", monthEnd)
         .order("schedule_date"),
 
-      supabase
+      // Admin client — RLS app_users menghalangi admin membaca nama user LAIN via
+      // client biasa, membuat peta nama kosong (tampil "—"). Service-role aman
+      // (konsisten dgn schedules & recap).
+      supabaseAdmin
         .from("tenant_memberships")
         .select("user_id, app_users!inner(id, full_name)")
         .eq("tenant_apotek_id", active.tenantId)
@@ -136,10 +139,10 @@ export default async function AdminAbsensiPage({
 
   // Data pengelolaan jadwal — hanya di-fetch bila admin diberi izin (hemat query).
   let scheduleData:
-    | { users: unknown[]; shifts: unknown[]; roster: unknown[]; shiftDefaults: unknown[] }
+    | { users: unknown[]; shifts: unknown[]; roster: unknown[] }
     | null = null;
   if (allowAdminSchedule) {
-    const [usersRes, shiftsRes, rosterRes, defaultsRes] = await Promise.all([
+    const [usersRes, shiftsRes, rosterRes] = await Promise.all([
       supabaseAdmin
         .from("tenant_memberships")
         .select(
@@ -159,18 +162,18 @@ export default async function AdminAbsensiPage({
         .gte("schedule_date", monthStart)
         .lte("schedule_date", monthEnd)
         .order("schedule_date", { ascending: true }),
-      supabaseAdmin
-        .from("crew_shift_defaults")
-        .select("*")
-        .eq("tenant_apotek_id", active.tenantId),
     ]);
     scheduleData = {
       users: usersRes.data ?? [],
       shifts: shiftsRes.data ?? [],
       roster: rosterRes.data ?? [],
-      shiftDefaults: defaultsRes.data ?? [],
     };
   }
+
+  // Overlay izin di sel roster (bila jadwal ditampilkan).
+  const scheduleLeaveKeys: string[] = allowAdminSchedule
+    ? await fetchApprovedLeaveKeys(supabaseAdmin, { tenantId: active.tenantId, month, year })
+    : [];
 
   // ── Build name map ───────────────────────────────────────────────────────
   const nameById = new Map<string, string>();
@@ -248,6 +251,16 @@ export default async function AdminAbsensiPage({
     },
   );
 
+  // ── Rekap kehadiran (matriks crew × hari) — hanya bila addon aktif ──────────
+  const recap: AttendanceRecap = addonEnabled
+    ? await fetchAttendanceRecap(supabaseAdmin, {
+        tenantId: active.tenantId,
+        month,
+        year,
+        todayKey: todayDateKey,
+      })
+    : { month, year, dates: [], rows: [] };
+
   return (
     <section className="space-y-4">
       {/* ── Hero card ── */}
@@ -271,24 +284,6 @@ export default async function AdminAbsensiPage({
         addonKey="absensi_shift"
         description="Fitur kalender jadwal shift, approval izin, dan persetujuan tukar shift antar kru."
       >
-        {scheduleData && (
-          <div className="space-y-2 mb-4">
-            <div className="flex items-center gap-2 px-1">
-              <CalendarDays size={14} className="text-sky-600" />
-              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Kelola Pola &amp; Jadwal</p>
-              <span className="text-[9px] font-bold text-slate-400">· diizinkan oleh Apotrik</span>
-            </div>
-            <JadwalManager
-              branchId={active.tenantId}
-              users={scheduleData.users}
-              shifts={scheduleData.shifts}
-              roster={scheduleData.roster}
-              shiftDefaults={scheduleData.shiftDefaults}
-              currentMonth={month}
-              currentYear={year}
-            />
-          </div>
-        )}
         <AbsensiClient
           schedulesByDate={schedulesByDate}
           pendingLeaves={pendingLeaves}
@@ -296,6 +291,10 @@ export default async function AdminAbsensiPage({
           month={month}
           year={year}
           today={todayDateKey}
+          recap={recap}
+          branchId={active.tenantId}
+          scheduleData={scheduleData}
+          approvedLeaveKeys={scheduleLeaveKeys}
         />
       </AddonGate>
 

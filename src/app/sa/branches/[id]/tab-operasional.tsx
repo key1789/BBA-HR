@@ -16,7 +16,7 @@ export function TabOperasional({
   shifts,
   users,
   roster,
-  shiftDefaults,
+  approvedLeaveKeys,
   payrollConfigs,
   currentMonth,
   currentYear,
@@ -32,7 +32,7 @@ export function TabOperasional({
   shifts: any[];
   users: any[];
   roster: any[];
-  shiftDefaults: any[];
+  approvedLeaveKeys?: string[];
   payrollConfigs: any[];
   currentMonth: number;
   currentYear: number;
@@ -46,7 +46,7 @@ export function TabOperasional({
 }) {
   const segments: { id: TopSeg; label: string; Icon: React.ElementType }[] = [
     { id: "shift", label: "Master Shift", Icon: Clock },
-    ...(isAbsensiEnabled ? [{ id: "jadwal" as TopSeg, label: "Pola & Jadwal", Icon: CalendarDays }] : []),
+    ...(isAbsensiEnabled ? [{ id: "jadwal" as TopSeg, label: "Jadwal", Icon: CalendarDays }] : []),
     ...(isPayrollEnabled ? [{ id: "gaji" as TopSeg, label: "Setup Gaji", Icon: Wallet }] : []),
   ];
 
@@ -98,7 +98,7 @@ export function TabOperasional({
           transition={{ duration: 0.18 }}
         >
           {resolvedTop === "shift" && (
-            <TabShift branchId={branchId} shifts={shifts} shiftDefaults={shiftDefaults} />
+            <TabShift branchId={branchId} shifts={shifts} />
           )}
           {resolvedTop === "jadwal" && (
             <JadwalSection
@@ -106,7 +106,7 @@ export function TabOperasional({
               users={users}
               shifts={shifts}
               roster={roster}
-              shiftDefaults={shiftDefaults}
+              approvedLeaveKeys={approvedLeaveKeys}
               currentMonth={currentMonth}
               currentYear={currentYear}
               allowOwnerSchedule={allowOwnerSchedule}
@@ -137,14 +137,14 @@ export function TabOperasional({
 
 
 function JadwalSection({
-  branchId, users, shifts, roster, shiftDefaults, currentMonth, currentYear,
+  branchId, users, shifts, roster, approvedLeaveKeys, currentMonth, currentYear,
   allowOwnerSchedule, allowAdminSchedule,
 }: {
   branchId: string;
   users: any[];
   shifts: any[];
   roster: any[];
-  shiftDefaults: any[];
+  approvedLeaveKeys?: string[];
   currentMonth: number;
   currentYear: number;
   allowOwnerSchedule: boolean;
@@ -163,7 +163,7 @@ function JadwalSection({
         users={users}
         shifts={shifts}
         roster={roster}
-        shiftDefaults={shiftDefaults}
+        approvedLeaveKeys={approvedLeaveKeys}
         currentMonth={currentMonth}
         currentYear={currentYear}
       />

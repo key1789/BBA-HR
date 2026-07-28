@@ -204,7 +204,7 @@ export async function resetTrialBranchAction(branchId: string) {
   // Tabel operasional yang dihapus (urutan: parent dulu, CASCADE handle child-nya)
   // KEEP: tenant_apotek, tenant_memberships, addon_settings, master_shifts,
   //       master_products, payroll_configs, tenant_kpi_policies, employee_profiles,
-  //       crew_shift_defaults, staff_invitations
+  //       staff_invitations
   const operationalTables = [
     "daily_submissions",        // CASCADE: daily_submission_products, submission_verifications, submission_assignments
     "monthly_audits",           // CASCADE: monthly_crew_audits, monthly_audit_state_events

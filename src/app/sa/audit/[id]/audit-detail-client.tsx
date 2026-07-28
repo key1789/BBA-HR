@@ -215,6 +215,34 @@ function leaveDaySetForUser(leaves: any[], userId: string, scopeStart: string, s
   return set;
 }
 
+/**
+ * Hari "alpha/mangkir": hari LAMPAU (< todayKey) yang terjadwal KERJA (roster, bukan OFF)
+ * dalam window [scopeStart, scopeEnd], tanpa clock-in & tanpa izin disetujui. Hari ini
+ * & masa depan tak dihitung (crew masih mungkin absen).
+ */
+function alphaDaySetForUser(
+  rosterSchedules: any[],
+  userId: string,
+  scopeStart: string,
+  scopeEnd: string,
+  todayKey: string,
+  attendedDays: Set<string>,
+  leaveDays: Set<string>,
+) {
+  const set = new Set<string>();
+  for (const r of rosterSchedules ?? []) {
+    if (String(r.user_id) !== String(userId)) continue;
+    if (r.is_off) continue;
+    const dk = String(r.schedule_date).slice(0, 10);
+    if (dk < scopeStart || dk > scopeEnd) continue;
+    if (dk >= todayKey) continue;
+    if (attendedDays.has(dk)) continue;
+    if (leaveDays.has(dk)) continue;
+    set.add(dk);
+  }
+  return set;
+}
+
 function stripToDigits(s: string) {
   return s.replace(/\D/g, "");
 }
@@ -245,7 +273,7 @@ function parseSignedDotThousands(formatted: string) {
 }
 
 export function AuditDetailClient({
-  branch, kpi, achievements, crewAchievements, audit, isGlobalSuperAdmin = false, isTrialBranch = false, crewAudits, payrollConfigs, productFokusConfigs, internalReviews, customerReviews, addons, month, year, selectedDate, approvedProductRows, attendanceLogs = [], leaveRequestsApproved = [], monthlyAddonAppraisals = [], activeCrewCount = 0, raportPeriodPublished = false,
+  branch, kpi, achievements, crewAchievements, audit, isGlobalSuperAdmin = false, isTrialBranch = false, crewAudits, payrollConfigs, productFokusConfigs, internalReviews, customerReviews, addons, month, year, selectedDate, approvedProductRows, attendanceLogs = [], leaveRequestsApproved = [], rosterSchedules = [], monthlyAddonAppraisals = [], activeCrewCount = 0, raportPeriodPublished = false,
   branchOmzetHistori = [],
   payrollPeriod = null,
   payrollItems = [],
@@ -254,7 +282,7 @@ export function AuditDetailClient({
   ownerVerifiedOnly = true,
   ownerNavBasePath,
 }: {
-  branch: any, kpi: any, achievements: any[], crewAchievements: any[], audit: any, isGlobalSuperAdmin?: boolean, isTrialBranch?: boolean, crewAudits: any[], payrollConfigs: any[], productFokusConfigs: any[], internalReviews: any[], customerReviews: any[], addons: any[], month: number, year: number, selectedDate: string, approvedProductRows: any[], attendanceLogs?: any[], leaveRequestsApproved?: any[], monthlyAddonAppraisals?: any[], activeCrewCount?: number, raportPeriodPublished?: boolean,
+  branch: any, kpi: any, achievements: any[], crewAchievements: any[], audit: any, isGlobalSuperAdmin?: boolean, isTrialBranch?: boolean, crewAudits: any[], payrollConfigs: any[], productFokusConfigs: any[], internalReviews: any[], customerReviews: any[], addons: any[], month: number, year: number, selectedDate: string, approvedProductRows: any[], attendanceLogs?: any[], leaveRequestsApproved?: any[], rosterSchedules?: any[], monthlyAddonAppraisals?: any[], activeCrewCount?: number, raportPeriodPublished?: boolean,
   branchOmzetHistori?: { month: number; year: number; omzet: number }[],
   payrollPeriod?: any | null,
   payrollItems?: any[],
@@ -3754,8 +3782,12 @@ export function AuditDetailClient({
                         const bonus = Number(u.kpiBonus ?? 0) + productBonus + Number(u.adjustment ?? 0);
                         const thpBersih = pendapatan - potongan + bonus;
                         const hasOverride = !!payrollConfigOverrides[u.id];
-                        const attHadir = mergeAttendanceByDay(attendanceLogs, String(u.id), monthStartKey, mtdThroughDateKey).length;
-                        const attIzin = leaveDaySetForUser(leaveRequestsApproved, String(u.id), monthStartKey, mtdThroughDateKey).size;
+                        const attMerged = mergeAttendanceByDay(attendanceLogs, String(u.id), monthStartKey, mtdThroughDateKey);
+                        const attHadir = attMerged.length;
+                        const attendedDays = new Set(attMerged.map((d) => d.dateKey));
+                        const leaveDays = leaveDaySetForUser(leaveRequestsApproved, String(u.id), monthStartKey, mtdThroughDateKey);
+                        const attIzin = leaveDays.size;
+                        const attAlpha = alphaDaySetForUser(rosterSchedules, String(u.id), monthStartKey, mtdThroughDateKey, todayKey, attendedDays, leaveDays).size;
                         return (
                           <tr key={u.id} className="transition-colors hover:bg-slate-50/60">
                             <td className="px-4 py-3">
@@ -3783,9 +3815,10 @@ export function AuditDetailClient({
                                 onChange={(e) => setDaysWorkedMap(prev => ({ ...prev, [u.id]: e.target.value }))}
                                 className="w-12 rounded-xl border border-slate-200 bg-slate-50 py-1.5 text-center text-[11px] font-black text-slate-900 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-400/30"
                               />
-                              {(attHadir > 0 || attIzin > 0) && (
-                                <p className="mt-1 text-[8px] font-semibold leading-tight text-slate-400" title="Dari data absensi periode ini. Hari Masuk tetap diisi manual.">
+                              {(attHadir > 0 || attIzin > 0 || attAlpha > 0) && (
+                                <p className="mt-1 text-[8px] font-semibold leading-tight text-slate-400" title="Dari data absensi periode ini. Alpha = terjadwal kerja tanpa absen & tanpa izin. Hari Masuk tetap diisi manual.">
                                   {attHadir} hadir{attIzin > 0 ? ` · ${attIzin} izin` : ""}
+                                  {attAlpha > 0 ? <span className="text-rose-500"> · {attAlpha} alpha</span> : ""}
                                 </p>
                               )}
                             </td>
@@ -5274,8 +5307,12 @@ export function AuditDetailClient({
         const dwRaw = daysWorkedMap[payrollModalUserId] ?? "";
         const dw = dwRaw !== "" ? parseInt(dwRaw, 10) : NaN;
         const hasDw = !isNaN(dw) && dw >= 0;
-        const mAttHadir = mergeAttendanceByDay(attendanceLogs, String(payrollModalUserId), monthStartKey, mtdThroughDateKey).length;
-        const mAttIzin = leaveDaySetForUser(leaveRequestsApproved, String(payrollModalUserId), monthStartKey, mtdThroughDateKey).size;
+        const mAttMerged = mergeAttendanceByDay(attendanceLogs, String(payrollModalUserId), monthStartKey, mtdThroughDateKey);
+        const mAttHadir = mAttMerged.length;
+        const mAttendedDays = new Set(mAttMerged.map((d) => d.dateKey));
+        const mLeaveDays = leaveDaySetForUser(leaveRequestsApproved, String(payrollModalUserId), monthStartKey, mtdThroughDateKey);
+        const mAttIzin = mLeaveDays.size;
+        const mAttAlpha = alphaDaySetForUser(rosterSchedules, String(payrollModalUserId), monthStartKey, mtdThroughDateKey, todayKey, mAttendedDays, mLeaveDays).size;
 
         // Config values — use override if present, else from userStats (which reads payrollConfigs)
         const cfg = {
@@ -5423,9 +5460,10 @@ export function AuditDetailClient({
                     <div className="flex-1">
                       <p className="text-[9px] font-black uppercase tracking-widest text-indigo-700">Hari Masuk Bulan Ini</p>
                       <p className="mt-0.5 text-[10px] font-medium text-indigo-600">Mempengaruhi tunjangan makan &amp; transport harian</p>
-                      {(mAttHadir > 0 || mAttIzin > 0) && (
-                        <p className="mt-1 text-[10px] font-semibold text-slate-500" title="Dari data absensi periode ini. Hari Masuk tetap diisi manual.">
+                      {(mAttHadir > 0 || mAttIzin > 0 || mAttAlpha > 0) && (
+                        <p className="mt-1 text-[10px] font-semibold text-slate-500" title="Dari data absensi periode ini. Alpha = terjadwal kerja tanpa absen & tanpa izin. Hari Masuk tetap diisi manual.">
                           Absensi: {mAttHadir} hari hadir{mAttIzin > 0 ? ` · ${mAttIzin} hari izin` : ""}
+                          {mAttAlpha > 0 ? <span className="text-rose-500"> · {mAttAlpha} hari alpha</span> : ""}
                         </p>
                       )}
                     </div>

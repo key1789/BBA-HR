@@ -10,6 +10,7 @@ import {
   Loader2,
   ArrowLeftRight,
   CalendarDays,
+  CalendarCog,
   ClipboardList,
   AlertCircle,
   UserCheck,
@@ -17,6 +18,9 @@ import {
 import { reviewLeaveRequestAction, reviewShiftSwapRequestAction } from "@/actions/attendance";
 import { cn } from "@/lib/utils";
 import type { ScheduleEntry, PendingLeave, PendingSwap } from "./page";
+import { AttendanceRecapMatrix } from "@/components/attendance/attendance-recap-matrix";
+import { JadwalManager } from "@/components/branch/tab-jadwal/JadwalManager";
+import type { AttendanceRecap } from "@/lib/attendance-recap";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -64,6 +68,12 @@ interface Props {
   month: number;
   year: number;
   today: string; // YYYY-MM-DD
+  recap: AttendanceRecap;
+  branchId: string;
+  /** Data roster editable — hanya terisi bila Apotrik mengizinkan admin mengatur jadwal. */
+  scheduleData: { users: unknown[]; shifts: unknown[]; roster: unknown[] } | null;
+  /** Kunci `${uid}|${date}` izin disetujui — overlay penanda di sel roster (tab Atur Jadwal). */
+  approvedLeaveKeys: string[];
 }
 
 // ─── Leave approval card ──────────────────────────────────────────────────────
@@ -327,7 +337,10 @@ function SwapApprovalCard({ swap }: { swap: PendingSwap }) {
 
 // ─── Main client component ────────────────────────────────────────────────────
 
-type Tab = "kalender" | "izin" | "tukar";
+type Tab = "kalender" | "izin" | "tukar" | "rekap" | "atur";
+
+// Tab yang bergantung bulan → tampilkan navigasi bulan bersama di header.
+const MONTH_SCOPED_TABS: Tab[] = ["kalender", "rekap", "atur"];
 
 export function AbsensiClient({
   schedulesByDate,
@@ -336,9 +349,14 @@ export function AbsensiClient({
   month,
   year,
   today,
+  recap,
+  branchId,
+  scheduleData,
+  approvedLeaveKeys,
 }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("kalender");
+  const canManageSchedule = scheduleData !== null;
 
   // ── Month navigation ─────────────────────────────────────────────────────
   function navigate(delta: number) {
@@ -365,11 +383,18 @@ export function AbsensiClient({
     ? Number(today.slice(8, 10))
     : null;
 
+  // Urut per-kelompok: 🔎 Lihat (Kalender, Rekap) → ✅ Approve (Izin, Tukar) → ✏️ Atur.
   const tabs: { id: Tab; label: string; count?: number; Icon: React.ElementType }[] = [
     { id: "kalender", label: "Kalender", Icon: CalendarDays },
+    { id: "rekap",    label: "Rekap",       Icon: ClipboardList },
     { id: "izin",     label: "Izin",     Icon: UserCheck,   count: pendingLeaves.length },
     { id: "tukar",    label: "Tukar Shift", Icon: ArrowLeftRight, count: pendingSwaps.length },
+    ...(canManageSchedule
+      ? [{ id: "atur" as Tab, label: "Atur Jadwal", Icon: CalendarCog }]
+      : []),
   ];
+
+  const showMonthNav = MONTH_SCOPED_TABS.includes(activeTab);
 
   return (
     <div className="space-y-4">
@@ -381,6 +406,7 @@ export function AbsensiClient({
             key={id}
             type="button"
             onClick={() => setActiveTab(id)}
+            title={label}
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[10px] font-black uppercase tracking-widest transition-all",
               activeTab === id
@@ -388,8 +414,8 @@ export function AbsensiClient({
                 : "text-slate-400 hover:text-slate-600",
             )}
           >
-            <Icon size={13} />
-            {label}
+            <Icon size={13} className="shrink-0" />
+            <span className="hidden sm:inline">{label}</span>
             {count !== undefined && count > 0 && (
               <span
                 className={cn(
@@ -406,30 +432,60 @@ export function AbsensiClient({
         ))}
       </div>
 
+      {/* ── Navigasi bulan bersama (hanya tab yang berbasis bulan) ────── */}
+      {showMonthNav && (
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <p className="text-sm font-black uppercase tracking-widest text-slate-800">
+            {MONTH_NAMES[month - 1]} {year}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate(1)}
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* ── REKAP TAB ────────────────────────────────────────────────── */}
+      {activeTab === "rekap" && (
+        <div className="space-y-2">
+          <p className="px-1 text-[11px] font-semibold text-slate-500">
+            Rekap kehadiran {new Date(year, month - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" })} — gabungan roster, absen, &amp; izin disetujui.
+          </p>
+          <AttendanceRecapMatrix recap={recap} />
+        </div>
+      )}
+
+      {/* ── ATUR JADWAL TAB (roster editable) ────────────────────────── */}
+      {activeTab === "atur" && scheduleData && (
+        <div className="space-y-2">
+          <p className="px-1 text-[11px] font-semibold text-slate-500">
+            Susun roster shift tiap crew untuk bulan ini. Sel bertanda <span className="font-black text-violet-600">IZIN</span> = crew punya izin disetujui.
+          </p>
+          <JadwalManager
+            branchId={branchId}
+            users={scheduleData.users}
+            shifts={scheduleData.shifts}
+            roster={scheduleData.roster}
+            currentMonth={month}
+            currentYear={year}
+            approvedLeaveKeys={approvedLeaveKeys}
+          />
+        </div>
+      )}
+
       {/* ── KALENDER TAB ─────────────────────────────────────────────── */}
       {activeTab === "kalender" && (
         <div className="space-y-3">
-          {/* Month nav */}
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <p className="text-sm font-black uppercase tracking-widest text-slate-800">
-              {MONTH_NAMES[month - 1]} {year}
-            </p>
-            <button
-              type="button"
-              onClick={() => navigate(1)}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-
           {/* Desktop: full grid calendar */}
           <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white">
             {/* Day headers */}

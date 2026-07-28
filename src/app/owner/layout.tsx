@@ -51,9 +51,10 @@ export default async function OwnerLayout({
     Boolean((payrollRow?.settings as Record<string, unknown> | null)?.allow_owner_input);
 
   const scheduleRow = scheduleRes.data;
-  const showSchedule =
-    Boolean(scheduleRow?.is_enabled) &&
-    Boolean((scheduleRow?.settings as Record<string, unknown> | null)?.allow_owner_schedule);
+  // Nav "Jadwal & Kehadiran" tampil bila modul absensi aktif — owner bisa LIHAT
+  // rekap kehadiran + roster (read-only). Mengedit roster tetap digating
+  // allow_owner_schedule di dalam halaman.
+  const showSchedule = Boolean(scheduleRow?.is_enabled);
 
   async function handleLogout() {
     "use server";

@@ -100,6 +100,7 @@ export default async function AuditDetailPage({
       approvedProductRows={payload.approvedProductRows}
       attendanceLogs={payload.attendanceLogs}
       leaveRequestsApproved={payload.leaveRequestsApproved}
+      rosterSchedules={payload.rosterSchedules}
       monthlyAddonAppraisals={payload.monthlyAddonAppraisals}
       activeCrewCount={payload.activeCrewCount}
       raportPeriodPublished={payload.raportPeriodPublished}

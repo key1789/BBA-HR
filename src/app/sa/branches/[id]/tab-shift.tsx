@@ -9,21 +9,12 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { InfoTooltip } from "@/components/shared/info-tooltip";
 
-export function TabShift({ branchId, shifts, shiftDefaults = [] }: { branchId: string, shifts: any[], shiftDefaults?: any[] }) {
+export function TabShift({ branchId, shifts }: { branchId: string, shifts: any[] }) {
   const [isPending, startTransition] = useTransition();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<any>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Berapa CREW (distinct) yang memakai tiap shift di pola mingguan per-hari (untuk peringatan hapus).
-  const crewsByShift = shiftDefaults.reduce<Record<string, Set<string>>>((acc, d) => {
-    const sid = String(d?.shift_id ?? "");
-    const uid = String(d?.user_id ?? "");
-    if (sid && uid) (acc[sid] ??= new Set()).add(uid);
-    return acc;
-  }, {});
-  const deleteDefaultsCount = confirmDeleteId ? (crewsByShift[confirmDeleteId]?.size ?? 0) : 0;
 
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -224,15 +215,6 @@ export function TabShift({ branchId, shifts, shiftDefaults = [] }: { branchId: s
                     Shift dengan riwayat lama (sudah lewat) boleh dihapus.
                   </p>
                 </div>
-                {deleteDefaultsCount > 0 && (
-                  <div className="w-full flex gap-2.5 items-start p-3 bg-amber-50 border border-amber-200 rounded-2xl text-left">
-                    <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-[11px] font-semibold text-amber-800 leading-relaxed">
-                      Shift ini dipakai di <span className="font-black">{deleteDefaultsCount} pola mingguan crew</span>.
-                      Menghapusnya akan <span className="font-black">ikut menghapus pola tersebut</span>.
-                    </p>
-                  </div>
-                )}
                 <div className="flex gap-3 w-full pt-2">
                   <button
                     type="button"

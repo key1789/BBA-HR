@@ -41,6 +41,7 @@ export type AuditBranchDashboardPayload = {
   approvedProductRows: any[];
   attendanceLogs: any[];
   leaveRequestsApproved: any[];
+  rosterSchedules: any[];
   monthlyAddonAppraisals: any[];
   activeCrewCount: number;
   /** true bila semua baris monthly_appraisals periode ini is_published */
@@ -308,6 +309,7 @@ export async function fetchAuditBranchDashboardData(
   const [
     { data: attendanceLogs },
     { data: leaveRequestsApproved },
+    { data: rosterSchedules },
     { data: monthlyAddonAppraisals },
     { data: monthlyAppraisalPublishRows },
     { data: snapshotRows },
@@ -331,6 +333,12 @@ export async function fetchAuditBranchDashboardData(
         .eq("status", "approved")
         .lte("start_date", endDate)
         .gte("end_date", startDate),
+      supabase
+        .from("shift_schedules")
+        .select("user_id, schedule_date, is_off")
+        .eq("tenant_apotek_id", branchId)
+        .gte("schedule_date", startDate)
+        .lte("schedule_date", endDate),
       supabase
         .from("monthly_addon_appraisals")
         .select("*")
@@ -404,6 +412,7 @@ export async function fetchAuditBranchDashboardData(
     approvedProductRows: approvedProductRows || [],
     attendanceLogs: attendanceLogs ?? [],
     leaveRequestsApproved: leaveRequestsApproved ?? [],
+    rosterSchedules: rosterSchedules ?? [],
     monthlyAddonAppraisals: monthlyAddonAppraisals ?? [],
     activeCrewCount: Number(activeCrewCount ?? 0),
     raportPeriodPublished,
