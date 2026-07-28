@@ -7,9 +7,14 @@ export const VERIFIKASI_HELP: HelpContent = {
 
   steps: [
     {
+      title: "Kenali dua tab: Antrian & Log Disetujui",
+      description:
+        'Tab "Antrian" berisi submission yang masih butuh tindakan (menunggu verifikasi, diedit, atau ditolak). Tab "Log Disetujui" berisi riwayat yang sudah disetujui. Angka di tiap tab menunjukkan total masing-masing.',
+    },
+    {
       title: "Atur filter untuk mempersempit antrean",
       description:
-        'Gunakan filter Status dan Rentang Tanggal lalu klik "Terapkan Filter". Filter "Semua" menampilkan seluruh riwayat, diurutkan otomatis berdasarkan prioritas aksi — submission yang paling butuh perhatian muncul paling atas.',
+        'Gunakan filter Status dan Rentang Tanggal lalu klik "Terapkan Filter". Di tab Antrian, filter "Semua (prioritas aksi)" menampilkan seluruh item yang butuh tindakan, diurutkan otomatis — submission yang paling butuh perhatian muncul paling atas.',
     },
     {
       title: "Periksa detail tiap submission",
@@ -92,7 +97,7 @@ export const VERIFIKASI_HELP: HelpContent = {
   tips: [
     {
       type: "tip",
-      text: 'Filter "Semua (prioritas aksi)" adalah tampilan paling efisien untuk kerja harian — submission yang butuh tindakan segera otomatis naik ke atas, tanpa perlu pilih filter manual.',
+      text: 'Tab Antrian dengan filter "Semua (prioritas aksi)" adalah tampilan paling efisien untuk kerja harian — submission yang butuh tindakan segera otomatis naik ke atas. Yang sudah disetujui pindah ke tab Log Disetujui.',
     },
     {
       type: "tip",

@@ -14,7 +14,7 @@ export const LAPORAN_HELP: HelpContent = {
     {
       title: "Baca ringkasan KPI",
       description:
-        "Kotak metrik di bawah filter menampilkan total omzet, jumlah nota, rata-rata ATV, ATU, dan total pelanggan tertolak dalam rentang aktif.",
+        "Kotak metrik di bawah filter menampilkan total omzet, jumlah nota, rata-rata ATV, ATU, total pelanggan tertolak, serta obat tertolak (permintaan obat yang tak terlayani) dalam rentang aktif.",
     },
     {
       title: "Analisis breakdown per karyawan",
@@ -62,7 +62,19 @@ export const LAPORAN_HELP: HelpContent = {
       label: "Est. Omzet Hilang",
       variant: "warning",
       description:
-        "Perkiraan omzet yang hilang akibat penolakan. Dihitung: Pelanggan Tertolak × ATV hari itu. Ini adalah estimasi, bukan angka pasti.",
+        "Perkiraan omzet yang hilang akibat penolakan pelanggan. Dihitung: Pelanggan Tertolak × ATV hari itu. Ini adalah estimasi, bukan angka pasti.",
+    },
+    {
+      label: "Obat Tertolak",
+      variant: "error",
+      description:
+        "Jumlah permintaan obat/produk yang tidak dapat dilayani (stok kosong / tidak tersedia) dan dicatat karyawan. Bersifat pelaporan.",
+    },
+    {
+      label: "Est. Omzet Obat Hilang",
+      variant: "warning",
+      description:
+        "Perkiraan omzet yang hilang akibat obat tertolak. Dihitung: Obat Tertolak × harga rata-rata per item (fallback ke rata-rata cabang bila perlu). Estimasi kasar.",
     },
   ],
 

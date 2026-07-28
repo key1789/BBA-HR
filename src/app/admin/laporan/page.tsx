@@ -103,7 +103,7 @@ export default async function AdminLaporanPage({
       .eq("period_month", currentMonth)
       .eq("period_year", currentYear)
       .maybeSingle(),
-    // Status audit BBA bulan berjalan
+    // Status audit Apotrik bulan berjalan
     supabase
       .from("monthly_audits")
       .select("status")
@@ -326,7 +326,7 @@ export default async function AdminLaporanPage({
             </h2>
             <Target size={11} className="text-slate-300" />
           </div>
-          {/* Status audit BBA */}
+          {/* Status audit Apotrik */}
           {auditStatus ? (
             <span
               className={cn(

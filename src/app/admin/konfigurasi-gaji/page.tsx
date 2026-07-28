@@ -6,6 +6,8 @@ import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { Banknote, Lock } from "lucide-react";
 import { AdminPayrollConfigClient, type CrewPayrollRow } from "./admin-payroll-config-client";
 import { savePayrollConfigByAdminAction } from "@/actions/payroll-config";
+import { HelpDrawer } from "@/components/shared/help-drawer";
+import { SETUP_GAJI_HELP } from "./help-content";
 
 export const dynamic = "force-dynamic";
 
@@ -151,6 +153,7 @@ export default async function AdminKonfigurasiGajiPage() {
           saveAction={savePayrollConfigByAdminAction}
         />
       </div>
+      <HelpDrawer content={SETUP_GAJI_HELP} />
     </AnimatedPage>
   );
 }
