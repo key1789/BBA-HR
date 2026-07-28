@@ -13,7 +13,7 @@ export const INPUT_HARIAN_HELP: HelpContent = {
     {
       title: "Isi metrik laporan",
       description:
-        "Masukkan total omzet (Rupiah), jumlah transaksi/nota, total produk terjual, dan jumlah pelanggan yang tidak terlayani. Pelanggan Tertolak adalah pelanggan yang tidak bisa dilayani karena stok habis, resep tidak lengkap, dll. Isi 0 jika tidak ada.",
+        "Masukkan total omzet (Rupiah), jumlah transaksi/nota, dan total produk terjual. Pelanggan Tertolak = jumlah ORANG yang pulang tanpa dilayani (dihitung per pelanggan). Obat Tertolak = jumlah ITEM OBAT yang gagal disediakan (1 pelanggan bisa beberapa item). Keduanya beda satuan — isi terpisah, 0 jika tidak ada.",
     },
     {
       title: "Isi produk fokus (jika aktif)",
@@ -69,6 +69,10 @@ export const INPUT_HARIAN_HELP: HelpContent = {
     {
       type: "tip",
       text: "Produk fokus yang kosong tidak perlu diisi — hanya isi produk yang benar-benar terjual hari ini.",
+    },
+    {
+      type: "info",
+      text: "Pelanggan Tertolak menghitung orang; Obat Tertolak menghitung item obat. Satu pelanggan yang ditolak karena obat kosong tercatat di keduanya — itu wajar (beda satuan), bukan data dobel.",
     },
   ],
 };

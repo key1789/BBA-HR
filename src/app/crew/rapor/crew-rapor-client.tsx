@@ -32,6 +32,7 @@ type ProdukFokusItem = { productId: string; productName: string; sold: number; t
 type HistoriItem     = { month: number; year: number; omzet: number | null; bonus: number | null; isPublished: boolean };
 
 type AbsensiData = { hadir: number; telat: number; izin: number; alpha: number };
+type KpiScheme   = { key: string; label: string; daily: boolean; enabled: boolean; target: number };
 
 type Props = {
   month: number;
@@ -46,6 +47,8 @@ type Props = {
   addonManual: number | null;
   bbaAdj: number | null;
   calcBreakdown: any;
+  kpiSchemes: KpiScheme[];
+  payrollPending: boolean;
   approvedCount: number;
   // Performa snapshot
   mySnapshot: Snapshot | null;
@@ -509,8 +512,8 @@ function PenilaianTab(props: Props) {
 function RaporPayrollTab(props: Props) {
   const {
     month, year, isPublished, publishedAt,
-    totalBonus, autoBonus, addonManual, bbaAdj, calcBreakdown,
-    thpData, histori, produkFokus, addonProdukFokus,
+    totalBonus, autoBonus, addonManual, bbaAdj, calcBreakdown, kpiSchemes,
+    thpData, payrollPending, histori, produkFokus, addonProdukFokus,
     isLiveEstimate,
   } = props;
 
@@ -581,12 +584,40 @@ function RaporPayrollTab(props: Props) {
               bold
             />
             {perUser && (
-              <>
-                {Number(perUser.teamMonthlyBonus       ?? 0) > 0 && <LineItem label="— Tim (bulanan)"      value={IDR.format(Number(perUser.teamMonthlyBonus))}       indent />}
-                {Number(perUser.teamDailyBonus         ?? 0) > 0 && <LineItem label="— Tim (harian)"       value={IDR.format(Number(perUser.teamDailyBonus))}         indent />}
-                {Number(perUser.individualMonthlyBonus ?? 0) > 0 && <LineItem label="— Individu (bulanan)" value={IDR.format(Number(perUser.individualMonthlyBonus))} indent />}
-                {Number(perUser.individualDailyBonus   ?? 0) > 0 && <LineItem label="— Individu (harian)"  value={IDR.format(Number(perUser.individualDailyBonus))}   indent />}
-              </>
+              kpiSchemes.length > 0 ? (
+                kpiSchemes.map((s) => {
+                  const bd = (perUser.breakdown as any)?.[s.key];
+                  const topLevel = ({
+                    team_monthly:       perUser.teamMonthlyBonus,
+                    team_daily:         perUser.teamDailyBonus,
+                    individual_monthly: perUser.individualMonthlyBonus,
+                    individual_daily:   perUser.individualDailyBonus,
+                  } as Record<string, number | undefined>)[s.key];
+                  const amount = bd ? Number(bd.bonus_earned ?? 0) : Number(topLevel ?? 0);
+                  const pct    = bd ? Number(bd.achievement_percent ?? 0) : 0;
+                  const tgt    = Number(s.target ?? 0);
+                  const tgtLabel = tgt > 0 ? `Target ${IDR.format(tgt)}${s.daily ? "/hari" : ""}` : null;
+                  let caption: string;
+                  if (bd) {
+                    const capaian = s.daily ? `${pct.toFixed(0)}% hari tercapai` : `tercapai ${pct.toFixed(1)}%`;
+                    caption = tgtLabel ? `${tgtLabel} · ${capaian}` : capaian;
+                  } else if (amount > 0) {
+                    caption = tgtLabel ?? "";
+                  } else {
+                    caption = tgtLabel ? `${tgtLabel} · belum tercapai` : "Belum tercapai";
+                  }
+                  return (
+                    <LineItem key={s.key} label={`— ${s.label}`} value={IDR.format(amount)} indent caption={caption || undefined} />
+                  );
+                })
+              ) : (
+                <>
+                  {Number(perUser.teamMonthlyBonus       ?? 0) > 0 && <LineItem label="— Tim (bulanan)"      value={IDR.format(Number(perUser.teamMonthlyBonus))}       indent />}
+                  {Number(perUser.teamDailyBonus         ?? 0) > 0 && <LineItem label="— Tim (harian)"       value={IDR.format(Number(perUser.teamDailyBonus))}         indent />}
+                  {Number(perUser.individualMonthlyBonus ?? 0) > 0 && <LineItem label="— Individu (bulanan)" value={IDR.format(Number(perUser.individualMonthlyBonus))} indent />}
+                  {Number(perUser.individualDailyBonus   ?? 0) > 0 && <LineItem label="— Individu (harian)"  value={IDR.format(Number(perUser.individualDailyBonus))}   indent />}
+                </>
+              )
             )}
             {/* Live: produk fokus bonus */}
             {isLiveEstimate && addonProdukFokus && produkFokus.some(p => p.bonusEarned > 0) && (
@@ -612,15 +643,18 @@ function RaporPayrollTab(props: Props) {
         </div>
       )}
 
-      {/* ── Slip Gaji (payroll run) ── */}
+      {/* ── Slip Gaji — hanya tampil setelah payroll difinalisasi (locked) ── */}
       {thpData ? (
         <SlipGajiCard thpData={thpData} />
-      ) : (
-        isPublished && (
-          <p className="text-center text-[10px] text-slate-400 font-medium">
-            Slip gaji belum diproses oleh admin untuk periode ini.
+      ) : (payrollPending || isPublished) && (
+        <div className="bg-slate-50 border border-slate-100 rounded-3xl px-5 py-4 text-center">
+          <p className="text-[11px] font-black text-slate-500 uppercase tracking-wide">Slip Gaji Belum Terbit</p>
+          <p className="text-[10px] text-slate-400 font-medium mt-1">
+            {payrollPending
+              ? "Payroll sedang diproses admin. Slip gaji resmi muncul setelah payroll difinalisasi (dikunci). Sementara itu, lihat estimasi berjalan di atas."
+              : "Slip gaji akan muncul setelah admin memproses & mengunci payroll periode ini."}
           </p>
-        )
+        </div>
       )}
 
       {/* ── Produk Fokus ── */}
@@ -951,13 +985,16 @@ function StatChip({ label, value, color }: { label: string; value: string; color
   );
 }
 
-function LineItem({ label, value, bold, indent, color }: { label: string; value: string; bold?: boolean; indent?: boolean; color?: "emerald" | "rose" }) {
+function LineItem({ label, value, bold, indent, color, caption }: { label: string; value: string; bold?: boolean; indent?: boolean; color?: "emerald" | "rose"; caption?: string }) {
   return (
-    <div className={cn("px-5 py-3 flex items-center justify-between", indent && "bg-slate-50/60")}>
-      <p className={cn(indent ? "text-[10px] text-slate-500 pl-3" : "text-[11px] text-slate-700", bold && !indent && "font-black", !bold && "font-medium")}>
-        {label}
-      </p>
-      <p className={cn(bold ? "font-black" : "font-bold", indent ? "text-[10px] text-slate-600" : "text-[11px]", color === "emerald" && "text-emerald-700", color === "rose" && "text-rose-600", !color && "text-slate-900")}>
+    <div className={cn("px-5 py-3 flex items-start justify-between gap-3", indent && "bg-slate-50/60")}>
+      <div className={cn("min-w-0", indent && "pl-3")}>
+        <p className={cn(indent ? "text-[10px] text-slate-500" : "text-[11px] text-slate-700", bold && !indent && "font-black", !bold && "font-medium")}>
+          {label}
+        </p>
+        {caption && <p className="text-[9px] font-medium text-slate-400 mt-0.5 leading-snug">{caption}</p>}
+      </div>
+      <p className={cn(bold ? "font-black" : "font-bold", indent ? "text-[10px] text-slate-600" : "text-[11px]", "shrink-0", color === "emerald" && "text-emerald-700", color === "rose" && "text-rose-600", !color && "text-slate-900")}>
         {value}
       </p>
     </div>

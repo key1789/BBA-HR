@@ -439,7 +439,7 @@ export function CrewInputForm({
                 placeholder="0"
               />
               <p className="mt-1 text-[9px] font-bold text-slate-400">
-                Pelanggan yg tidak bisa dilayani (stok habis, resep kurang, dll)
+                Jumlah <span className="text-slate-500">orang</span> yang pulang tanpa dilayani — dihitung per pelanggan.
               </p>
             </label>
 
@@ -455,7 +455,7 @@ export function CrewInputForm({
                 placeholder="0"
               />
               <p className="mt-1 text-[9px] font-bold text-slate-400">
-                Item obat yg gagal dilayani (stok habis, resep kurang, dll)
+                Jumlah <span className="text-slate-500">item obat</span> yang gagal disediakan — 1 pelanggan bisa beberapa item.
               </p>
             </label>
           </div>

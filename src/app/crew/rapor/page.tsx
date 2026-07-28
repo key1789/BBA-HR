@@ -9,6 +9,7 @@ import { CrewRaporClient } from "./crew-rapor-client";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 import { calculateMonthlyBonusFromInputs } from "@/lib/kpi-v2/calculator";
 import type { DailyAchievementRow, CrewAchievementRow } from "@/lib/kpi-v2/calculator";
+import { calculateTeamDailyTarget, effectiveDailyTargetForUser } from "@/lib/kpi-v2/utils";
 import { productFokusEarnedForConfig } from "@/lib/produk-fokus-core";
 import { customAdjMultiplier } from "@/lib/payroll-adjustments";
 
@@ -407,6 +408,23 @@ export default async function CrewRaporPage({
     }
   }
 
+  // ── Meta skema KPI aktif untuk keterangan breakdown bonus ──
+  // Target dihitung via helper BERSAMA (one-logic-one-place) supaya angka konsisten
+  // dgn owner/kalkulator. Dipakai untuk keterangan tiap baris skema — TERMASUK skema
+  // aktif yang gagal target (kalkulator tak menyimpan entry breakdown untuk kasus ini).
+  const wdGlobal = Number((kpiV2 as any)?.global?.default_working_days) || 26;
+  const kpiSchemes = kpiV2
+    ? ([
+        { key: "team_monthly",       label: "Tim (bulanan)",      daily: false, enabled: !!kpiV2.team_monthly?.enabled,       target: teamTarget },
+        { key: "team_daily",         label: "Tim (harian)",       daily: true,  enabled: !!kpiV2.team_daily?.enabled,         target: calculateTeamDailyTarget(teamTarget, wdGlobal) },
+        { key: "individual_monthly", label: "Individu (bulanan)", daily: false, enabled: !!kpiV2.individual_monthly?.enabled, target: personalTarget },
+        { key: "individual_daily",   label: "Individu (harian)",  daily: true,  enabled: !!kpiV2.individual_daily?.enabled,
+          target: kpiV2.individual_daily?.enabled
+            ? effectiveDailyTargetForUser(kpiV2.individual_daily, (kpiV2 as any).global, userId, activeCrew)
+            : 0 },
+      ].filter((s) => s.enabled))
+    : [];
+
 
   // ── Live KPI bonus estimate (ketika monthly_appraisals belum ada) ──
   // Sumber sama seperti owner portal: daily_submissions → calculateMonthlyBonusFromInputs
@@ -452,6 +470,7 @@ export default async function CrewRaporPage({
           teamDailyBonus:         mine.team_daily_bonus,
           individualMonthlyBonus: mine.individual_monthly_bonus,
           individualDailyBonus:   mine.individual_daily_bonus,
+          breakdown:              mine.breakdown,
         };
       }
     } catch {
@@ -488,9 +507,14 @@ export default async function CrewRaporPage({
     payrollItem = (payItem as any) ?? null;
   }
 
-  // THP: hanya dari payroll_run yang sudah diproses (tidak tampilkan estimasi dari config)
+  // THP/Slip Gaji: hanya tampil saat payroll SUDAH DIFINALISASI (locked).
+  // Selama draft/proses, crew cukup melihat estimasi berjalan — slip resmi ditahan
+  // sampai admin mengunci payroll (flow: data berjalan dulu, slip saat final).
+  const payrollFinalized = payrollPeriodStatus === "locked";
+  const payrollPending    = payrollPeriodStatus != null && !payrollFinalized;
+
   let thpData: any = null;
-  if (payrollItem) {
+  if (payrollItem && payrollFinalized) {
     const snap     = (payrollItem as any).config_snapshot as any ?? null;
     const snapAudit = snap?.bonus_from_audit ?? null;
 
@@ -595,6 +619,8 @@ export default async function CrewRaporPage({
         addonManual={appraisal ? Number(appraisal.addon_manual_total ?? 0) : null}
         bbaAdj={appraisal      ? Number(appraisal.bba_adjustment     ?? 0) : null}
         calcBreakdown={effectiveCalcBreakdown}
+        kpiSchemes={kpiSchemes}
+        payrollPending={payrollPending}
         isLiveEstimate={isLiveEstimate}
         approvedCount={Number(appraisal?.approved_submission_count ?? 0)}
         // Snapshot performa
