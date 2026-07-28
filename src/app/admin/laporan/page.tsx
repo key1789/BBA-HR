@@ -1,9 +1,9 @@
 import { Card } from "@/components/shared/card";
 import { Input } from "@/components/shared/input";
-import { PageHeader } from "@/components/shared/page-header";
 import { ReportMetricsGrid } from "@/components/reports/report-metrics-grid";
 import { HelpDrawer } from "@/components/shared/help-drawer";
 import { getSessionContext } from "@/lib/auth-context";
+import { getOperationalReminderWindow } from "@/lib/reminder-windows";
 import { getReportMetricsForTenant } from "@/lib/report-metrics";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
@@ -240,7 +240,19 @@ export default async function AdminLaporanPage({
 
   return (
     <section className="space-y-6">
-      <PageHeader title="Laporan" subtitle="Analisis omzet, KPI, dan performa tim" />
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-sky-600 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+            <Target size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Laporan</h1>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              {active?.tenantName ?? "Apotek"} · {getOperationalReminderWindow().dateKey}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* ── Filter — collapsible ─────────────────────────────────────── */}
       <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm">

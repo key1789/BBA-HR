@@ -1,5 +1,4 @@
 import { getSessionContext } from "@/lib/auth-context";
-import { getUnreadNotificationCount } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
@@ -73,8 +72,22 @@ export default async function AdminLayout({
 
   const sidebarItems = buildSidebarItems(isAdminFull, showAbsensi, showSalaryConfig);
 
-  const [unreadCount, pendingAttendanceCount] = await Promise.all([
-    getUnreadNotificationCount(session.userId).catch(() => 0),
+  const [verifikasiCount, pendingAttendanceCount] = await Promise.all([
+    // Antrian verifikasi yang butuh keputusan admin (submitted/edited) — BUKAN
+    // jumlah notifikasi. Sebelumnya badge salah pakai unread-notification.
+    (async (): Promise<number> => {
+      if (!tenantId || isAdminFull) return 0;
+      try {
+        const { count } = await supabase
+          .from("daily_submissions")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_apotek_id", tenantId)
+          .in("status", ["submitted", "edited_by_admin"]);
+        return count ?? 0;
+      } catch {
+        return 0;
+      }
+    })(),
     (async (): Promise<number> => {
       if (!tenantId) return 0;
       try {
@@ -193,7 +206,7 @@ export default async function AdminLayout({
         </main>
 
         {/* Bottom nav (mobile only) */}
-        <AdminBottomNav unreadCount={unreadCount} pendingAttendanceCount={pendingAttendanceCount} isAdminFull={isAdminFull} showAbsensi={showAbsensi} showSalaryConfig={showSalaryConfig} />
+        <AdminBottomNav verifikasiCount={verifikasiCount} pendingAttendanceCount={pendingAttendanceCount} isAdminFull={isAdminFull} showAbsensi={showAbsensi} showSalaryConfig={showSalaryConfig} />
       </div>
     </div>
   );

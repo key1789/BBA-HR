@@ -121,9 +121,14 @@ export default async function AdminVerifikasiPage({
     .eq("tenant_apotek_id", active.tenantId)
     .order("submission_date", { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1);
-  if (selectedStatus !== "all") {
-    query = query.eq("status", selectedStatus);
-  }
+  // Scope query ke VIEW: Antrian = status actionable (non-approved), Log = approved.
+  // Sebelumnya query tak di-scope view → count/pagination menghitung SEMUA submission
+  // (termasuk approved) padahal Antrian hanya me-render non-approved → tampil
+  // "N data / M halaman" tapi list kosong. Filter eksplisit tetap dihormati.
+  const ACTIONABLE_STATUSES = ["submitted", "edited_by_admin", "reject"];
+  const viewStatuses = activeView === "log" ? ["approved"] : ACTIONABLE_STATUSES;
+  const statusFilter = selectedStatus !== "all" ? [selectedStatus] : viewStatuses;
+  query = query.in("status", statusFilter);
   if (from) {
     query = query.gte("submission_date", from);
   }
@@ -131,6 +136,23 @@ export default async function AdminVerifikasiPage({
     query = query.lte("submission_date", to);
   }
   const { data, count } = await query;
+
+  // Total per kategori untuk badge tab (hormati filter tanggal) — bukan hitungan
+  // per-halaman (yang menyesatkan).
+  const buildCountQuery = (statuses: string[]) => {
+    let q = supabase
+      .from("daily_submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_apotek_id", active.tenantId)
+      .in("status", statuses);
+    if (from) q = q.gte("submission_date", from);
+    if (to) q = q.lte("submission_date", to);
+    return q;
+  };
+  const [{ count: actionableTotal }, { count: approvedTotal }] = await Promise.all([
+    buildCountQuery(ACTIONABLE_STATUSES),
+    buildCountQuery(["approved"]),
+  ]);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -322,12 +344,12 @@ export default async function AdminVerifikasiPage({
         >
           <ClipboardCheck size={13} />
           Antrian
-          {actionableRows.length > 0 && (
+          {(actionableTotal ?? 0) > 0 && (
             <span className={cn(
               "inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none",
               activeView === "antrian" ? "bg-white/20 text-white" : "bg-sky-100 text-sky-700",
             )}>
-              {actionableRows.length}
+              {actionableTotal}
             </span>
           )}
         </Link>
@@ -342,12 +364,12 @@ export default async function AdminVerifikasiPage({
         >
           <History size={13} />
           Log Disetujui
-          {approvedRows.length > 0 && (
+          {(approvedTotal ?? 0) > 0 && (
             <span className={cn(
               "inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none",
               activeView === "log" ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-700",
             )}>
-              {approvedRows.length}
+              {approvedTotal}
             </span>
           )}
         </Link>

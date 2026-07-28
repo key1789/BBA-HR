@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, ClipboardCheck, Banknote, Star, CalendarDays, UserCog } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type BadgeType = "none" | "unread" | "attendance";
+type BadgeType = "none" | "verifikasi" | "attendance";
 type NavItem = { name: string; path: string; Icon: React.ElementType; badge: BadgeType };
 
 function buildNavItems(isAdminFull: boolean, showAbsensi: boolean, showSalaryConfig: boolean): NavItem[] {
@@ -13,7 +13,7 @@ function buildNavItems(isAdminFull: boolean, showAbsensi: boolean, showSalaryCon
     { name: "Dashboard", path: "/admin/dashboard", Icon: LayoutDashboard, badge: "none" },
     isAdminFull
       ? { name: "Closingan", path: "/admin/input-harian", Icon: UserCog, badge: "none" }
-      : { name: "Verifikasi", path: "/admin/verifikasi", Icon: ClipboardCheck, badge: "unread" },
+      : { name: "Verifikasi", path: "/admin/verifikasi", Icon: ClipboardCheck, badge: "verifikasi" },
     ...(showAbsensi
       ? [{ name: "Absensi", path: "/admin/absensi", Icon: CalendarDays, badge: "attendance" as BadgeType }]
       : []),
@@ -25,13 +25,13 @@ function buildNavItems(isAdminFull: boolean, showAbsensi: boolean, showSalaryCon
 }
 
 export function AdminBottomNav({
-  unreadCount,
+  verifikasiCount,
   pendingAttendanceCount,
   isAdminFull = false,
   showAbsensi = true,
   showSalaryConfig = true,
 }: {
-  unreadCount: number;
+  verifikasiCount: number;
   pendingAttendanceCount: number;
   isAdminFull?: boolean;
   showAbsensi?: boolean;
@@ -41,7 +41,7 @@ export function AdminBottomNav({
   const NAV_ITEMS = buildNavItems(isAdminFull, showAbsensi, showSalaryConfig);
 
   function badgeCount(type: BadgeType): number {
-    if (type === "unread") return unreadCount;
+    if (type === "verifikasi") return verifikasiCount;
     if (type === "attendance") return pendingAttendanceCount;
     return 0;
   }

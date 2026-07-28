@@ -1,5 +1,6 @@
 import { getSessionContext } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { HelpDrawer } from "@/components/shared/help-drawer";
 import { AddonGate } from "@/components/shared/addon-gate";
 import { Input } from "@/components/shared/input";
@@ -69,7 +70,11 @@ export default async function AdminReviewPelangganPage({
   const addonEnabled = addonData?.is_enabled ?? false;
 
   // ── Crew list ────────────────────────────────────────────────────────────
-  const { data: memberships } = await supabase
+  // Service-role: RLS tenant_memberships/app_users menghalangi admin membaca
+  // baris crew lain via client biasa → dropdown karyawan kosong. Konsisten dgn
+  // konfigurasi-gaji, input-harian, & absensi.
+  const supabaseAdmin = createAdminClient();
+  const { data: memberships } = await supabaseAdmin
     .from("tenant_memberships")
     .select("user_id, app_users!inner(id, full_name)")
     .eq("tenant_apotek_id", active.tenantId)

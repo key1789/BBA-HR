@@ -12,7 +12,6 @@ import {
   Star, Clock,
   ArrowRight, CalendarDays, TrendingUp, Users,
 } from "lucide-react";
-import { BellButton } from "./bell-button";
 
 export default async function AdminDashboardPage() {
   const session = await getSessionContext();
@@ -196,7 +195,7 @@ export default async function AdminDashboardPage() {
               <span>{active.tenantName}</span>
             </div>
           </div>
-          <BellButton unreadCount={0} />
+          {/* Bell notifikasi disembunyikan sampai fitur pengumuman siap (dulu placeholder "Dalam Pengembangan"). */}
         </div>
       </div>
 
