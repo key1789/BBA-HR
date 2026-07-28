@@ -144,7 +144,7 @@ export default async function CrewRiwayatInputPage({
           <div>
             <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Riwayat Input</h1>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              {active.tenantCode} · Semua Periode
+              {active.tenantName} · Semua Periode
             </p>
           </div>
         </div>

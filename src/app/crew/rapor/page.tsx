@@ -92,6 +92,7 @@ export default async function CrewRaporPage({
     crewMembershipsResult,
     attendanceResult,
     leaveResult,
+    scheduleResult,
   ] = await Promise.all([
     // supabaseAdmin: monthly_appraisals RLS tidak expose ke crew, butuh service role
     supabaseAdmin
@@ -164,6 +165,15 @@ export default async function CrewRaporPage({
       .eq("status", "approved")
       .lte("start_date", endDate)
       .gte("end_date", startDate),
+
+    // Roster: jadwal shift bulan ini — untuk deteksi alpha (mangkir)
+    supabaseAdmin
+      .from("shift_schedules")
+      .select("schedule_date, is_off")
+      .eq("tenant_apotek_id", tenantId)
+      .eq("user_id", userId)
+      .gte("schedule_date", startDate)
+      .lte("schedule_date", endDate),
   ]);
 
   // Crew audit (sequential)
@@ -337,10 +347,26 @@ export default async function CrewRaporPage({
   }
   const izinCount = izinDays.size;
 
+  // Alpha (mangkir): hari LAMPAU yang terjadwal kerja (bukan OFF), tanpa clock-in
+  // & tanpa izin. Hari ini & mendatang belum dihitung.
+  const scheduleRows = (scheduleResult.data ?? []) as any[];
+  const todayKey = reminderWindow.dateKey;
+  let alphaCount = 0;
+  for (const s of scheduleRows) {
+    if (s.is_off) continue;
+    const dk = String(s.schedule_date).slice(0, 10);
+    if (dk < startDate || dk > endDate) continue;
+    if (dk >= todayKey) continue;
+    if (clockByDay.has(dk)) continue;
+    if (izinDays.has(dk)) continue;
+    alphaCount++;
+  }
+
   const absensiData = {
     hadir: hadirCount,
     telat: telatCount,
     izin:  izinCount,
+    alpha: alphaCount,
   };
 
   // ── Derived: target dari KPI config ──

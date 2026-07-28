@@ -8,7 +8,7 @@ import { InlineAlert } from "@/components/shared/inline-alert";
 import { getSubmissionStatusBadgeClass } from "@/lib/labels";
 import {
   Clock, AlertCircle, Loader2, PenLine, History,
-  FileText, CheckCircle2, Pencil, Info, Send, CalendarCheck,
+  FileText, CheckCircle2, Pencil, Info, Send, CalendarCheck, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -217,6 +217,7 @@ export function CrewInputForm({
   const [rejectedDigits, setRejectedDigits] = useState("");
   const [rejectedMedicineDigits, setRejectedMedicineDigits] = useState("");
   const [focusQtyByProduct, setFocusQtyByProduct] = useState<Record<string, string>>({});
+  const [focusSearch, setFocusSearch] = useState("");
   const [editingSubmissionId, setEditingSubmissionId] = useState("");
   const [confirmingSubmit, setConfirmingSubmit] = useState(false);
 
@@ -263,6 +264,15 @@ export function CrewInputForm({
   const touchedFocusProductIds = focusProducts
     .filter((fp) => focusQtyByProduct[fp.product_id] !== undefined && focusQtyByProduct[fp.product_id] !== "")
     .map((fp) => fp.product_id);
+
+  // Produk fokus: search-by-name (hanya menyaring TAMPILAN — qty yang sudah diketik
+  // tetap tersimpan di state & terkirim, termasuk produk yang sedang tersembunyi).
+  const showFocusSearch = focusProducts.length > 4;
+  const focusQuery = focusSearch.trim().toLowerCase();
+  const visibleFocusProducts = focusQuery
+    ? focusProducts.filter((fp) => fp.product_name.toLowerCase().includes(focusQuery))
+    : focusProducts;
+  const filledFocusCount = touchedFocusProductIds.length;
 
   // ── Draft banner ────────────────────────────────────────────────────────────
   const draftBanner = currentDraft ? (
@@ -458,17 +468,49 @@ export function CrewInputForm({
               <div className="w-7 h-7 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
                 <CheckCircle2 size={14} className="text-white" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <h2 className="text-[10px] font-black text-emerald-900 uppercase tracking-widestst">Produk Fokus</h2>
                 <p className="text-[9px] font-bold text-emerald-600 mt-0.5">Target penjualan bulan ini — kosongkan jika tidak terjual</p>
               </div>
+              {filledFocusCount > 0 && (
+                <span className="shrink-0 text-[9px] font-black text-emerald-700 bg-white border border-emerald-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
+                  {filledFocusCount} terisi
+                </span>
+              )}
             </div>
+
+            {showFocusSearch && (
+              <div className="relative mb-3">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-400" />
+                <input
+                  type="text"
+                  value={focusSearch}
+                  onChange={(e) => setFocusSearch(e.target.value)}
+                  placeholder="Cari produk fokus…"
+                  className="w-full pl-10 pr-3 py-2.5 bg-white border border-emerald-200 rounded-2xl text-xs font-bold text-slate-700 placeholder:text-emerald-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all outline-none"
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
+              {/* Hidden mirror untuk SEMUA produk fokus — nilai produk yang tersembunyi
+                  oleh filter tetap ikut terkirim (server baca focusProduct_<id>). */}
               {focusProducts.map((fp) => (
+                <input
+                  key={`focus-hidden-${fp.product_id}`}
+                  type="hidden"
+                  name={`focusProduct_${fp.product_id}`}
+                  value={focusQtyByProduct[fp.product_id] ?? ""}
+                />
+              ))}
+              {visibleFocusProducts.length === 0 ? (
+                <p className="py-6 text-center text-[10px] font-black text-emerald-500/70 uppercase tracking-widest">
+                  Produk tidak ditemukan
+                </p>
+              ) : visibleFocusProducts.map((fp) => (
                 <div key={fp.product_id} className="bg-white border border-emerald-100 rounded-2xl px-3 py-2.5 flex items-center justify-between gap-3 shadow-sm">
                   <span className="text-xs font-black text-slate-700 flex-1 line-clamp-2">{fp.product_name}</span>
                   <div className="w-20 shrink-0">
-                    <input type="hidden" name={`focusProduct_${fp.product_id}`} value={focusQtyByProduct[fp.product_id] ?? ""} />
                     <input
                       type="text" inputMode="numeric" pattern="[0-9.]*"
                       value={formatId(focusQtyByProduct[fp.product_id] ?? "")}

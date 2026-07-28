@@ -86,7 +86,7 @@ export default async function ReviewRekanPage() {
               Review Rekan Kerja
             </h1>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              {active.tenantCode} · {reminderWindow.dateKey.slice(0, 7)}
+              {active.tenantName} · {reminderWindow.dateKey.slice(0, 7)}
             </p>
           </div>
         </div>

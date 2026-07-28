@@ -16,7 +16,6 @@ import {
   CircleDot,
 } from "lucide-react";
 import { CrewDashboardClient } from "./crew-dashboard-client";
-import { BellButton } from "./bell-button";
 import type { KpiConfigV2 } from "@/lib/types/kpi-v2";
 
 const IDR = new Intl.NumberFormat("id-ID", {
@@ -67,7 +66,6 @@ export default async function CrewDashboardPage() {
     personalPending,
     personalApproved,
     bonusResult,
-    unreadAnnouncementsResult,
     personalMonthlyResult,
     leaderboardResult,
     kpiConfigResult,
@@ -104,14 +102,6 @@ export default async function CrewDashboardPage() {
       .eq("period_month", todayM!)
       .eq("period_year", todayY!)
       .maybeSingle(),
-
-    supabaseAdmin
-      .from("announcement_receipts")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", session.userId)
-      .eq("role", "crew")
-      .or(`tenant_apotek_id.eq.${active.tenantId},tenant_apotek_id.is.null`)
-      .is("viewed_at", null),
 
     // Personal omzet + metrics bulan ini (approved)
     supabase
@@ -172,7 +162,6 @@ export default async function CrewDashboardPage() {
       + Number(bonus.bba_adjustment ?? 0)
     : null;
   const bonusPublished = Boolean(bonus?.is_published);
-  const unreadCount = unreadAnnouncementsResult.count ?? 0;
 
   // ── Running personal bulan ini ──
   const personalMonthly = personalMonthlyResult.data ?? [];
@@ -332,7 +321,7 @@ export default async function CrewDashboardPage() {
               <span>{active.tenantName}</span>
             </div>
           </div>
-          <BellButton unreadCount={unreadCount} />
+          {/* Bell notifikasi disembunyikan sampai fitur pengumuman siap (placeholder "Dalam Pengembangan"). */}
         </div>
       </div>
 

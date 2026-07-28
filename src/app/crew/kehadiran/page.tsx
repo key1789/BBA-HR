@@ -203,7 +203,7 @@ export default async function CrewKehadiranPage({
               Kehadiran & <span className="text-sky-600">Jadwal</span>
             </h1>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              {active.tenantCode} · {todayDateKey}
+              {active.tenantName} · {todayDateKey}
             </p>
           </div>
         </div>

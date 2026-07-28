@@ -595,6 +595,11 @@ export function KehadiranClient({
               </div>
               <span className="text-[9px] font-black text-slate-400 uppercase tracking-wide">Izin</span>
             </div>
+            {/* Alpha — hari lampau terjadwal kerja tanpa absen & tanpa izin */}
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-rose-100 border border-rose-200" />
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wide">Alpha</span>
+            </div>
             {/* Per-shift colors (inline hex, not dynamic Tailwind) */}
             {uniqueShifts.map(({ id, name }) => {
               const c = getShiftColor(id);

@@ -31,7 +31,7 @@ type CrewAudit       = { analyst_score: number | null; analyst_feedback: string 
 type ProdukFokusItem = { productId: string; productName: string; sold: number; target: number; progressPct: number; bonusType: string; bonusValue: number; bonusStep: number; bonusEarned: number };
 type HistoriItem     = { month: number; year: number; omzet: number | null; bonus: number | null; isPublished: boolean };
 
-type AbsensiData = { hadir: number; telat: number; izin: number };
+type AbsensiData = { hadir: number; telat: number; izin: number; alpha: number };
 
 type Props = {
   month: number;
@@ -362,12 +362,13 @@ function PenilaianTab(props: Props) {
       {/* ── Jadwal & Absensi ── */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <SectionHeader icon={<CalendarDays size={14} className="text-sky-500" />} label="Jadwal &amp; Absensi" />
-        <div className="p-4 grid grid-cols-3 gap-3">
+        <div className="p-4 grid grid-cols-2 gap-3">
           <AbsensiChip label="Hadir" value={absensi.hadir} icon={<ShieldCheck size={14} className="text-emerald-500" />} color="emerald" />
           <AbsensiChip label="Telat" value={absensi.telat} icon={<Clock       size={14} className="text-amber-500"  />} color={absensi.telat > 0 ? "amber" : undefined} />
           <AbsensiChip label="Izin"  value={absensi.izin}  icon={<Umbrella    size={14} className="text-sky-500"   />} color="sky" />
+          <AbsensiChip label="Alpha" value={absensi.alpha} icon={<AlertCircle size={14} className="text-rose-500"  />} color={absensi.alpha > 0 ? "rose" : undefined} />
         </div>
-        {absensi.hadir === 0 && absensi.izin === 0 && (
+        {absensi.hadir === 0 && absensi.izin === 0 && absensi.alpha === 0 && (
           <p className="text-center text-[10px] text-slate-400 pb-4">
             Belum ada data kehadiran untuk periode ini
           </p>

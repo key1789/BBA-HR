@@ -13,7 +13,7 @@ export const RAPOR_HELP: HelpContent = {
     {
       title: "Tab Penilaian",
       description:
-        "Menampilkan progress omzet vs target individu, metrik KPI & operasional (nota, produk, ATV, ATU, SARP), jadwal & absensi (hadir, telat, izin), evaluasi & penilaian dari admin, serta ringkasan bonus variabel — termasuk estimasi berjalan jika admin belum menjalankan kalkulasi.",
+        "Menampilkan progress omzet vs target individu, metrik KPI & operasional (nota, produk, ATV, ATU, SARP), jadwal & absensi (hadir, telat, izin, alpha), evaluasi & penilaian dari admin, serta ringkasan bonus variabel — termasuk estimasi berjalan jika admin belum menjalankan kalkulasi.",
     },
     {
       title: "Tab Rapor & Payroll",
@@ -58,7 +58,7 @@ export const RAPOR_HELP: HelpContent = {
     },
     {
       type: "info",
-      text: "Jadwal & Absensi bersumber dari data clock-in harian dan pengajuan izin yang sudah disetujui admin.",
+      text: "Jadwal & Absensi bersumber dari clock-in harian, izin disetujui, dan roster. Alpha = hari lampau terjadwal kerja tanpa absen & tanpa izin.",
     },
     {
       type: "info",

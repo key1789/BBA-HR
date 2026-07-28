@@ -145,7 +145,7 @@ export default async function CrewInputHarianPage() {
           <div>
             <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Input Harian</h1>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              {active.tenantCode} · {reminderWindow.dateKey}
+              {active.tenantName} · {reminderWindow.dateKey}
             </p>
           </div>
         </div>
