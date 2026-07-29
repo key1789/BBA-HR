@@ -17,12 +17,24 @@ import { AdminBottomNav } from "./admin-bottom-nav";
 import { SidebarLink } from "@/components/shared/crew-sidebar-link";
 import { SwitchModeModal } from "@/components/shared/switch-mode-modal";
 
-function buildSidebarItems(isAdminFull: boolean, showAbsensi: boolean, showSalaryConfig: boolean) {
+function buildSidebarItems(
+  isAdminFull: boolean,
+  showAbsensi: boolean,
+  showSalaryConfig: boolean,
+  pendingVerifikasi: number,
+) {
   return [
     { name: "Dashboard", path: "/admin/dashboard", icon: LayoutDashboard },
-    isAdminFull
-      ? { name: "Input Closingan", path: "/admin/input-harian", icon: UserCog }
-      : { name: "Verifikasi", path: "/admin/verifikasi", icon: ClipboardCheck },
+    ...(isAdminFull
+      ? [
+          { name: "Input Closingan", path: "/admin/input-harian", icon: UserCog },
+          // Drain sisa antrian verifikasi lama (mis. setelah ganti mode dari berjenjang) —
+          // tampil hanya bila masih ada yang belum disahkan, lalu hilang sendiri.
+          ...(pendingVerifikasi > 0
+            ? [{ name: "Verifikasi", path: "/admin/verifikasi", icon: ClipboardCheck }]
+            : []),
+        ]
+      : [{ name: "Verifikasi", path: "/admin/verifikasi", icon: ClipboardCheck }]),
     // Absensi hanya bila modul absensi_shift aktif (halaman di-gate AddonGate).
     ...(showAbsensi ? [{ name: "Absensi", path: "/admin/absensi", icon: CalendarDays }] : []),
     { name: "Review", path: "/admin/review-pelanggan", icon: Star },
@@ -70,13 +82,12 @@ export default async function AdminLayout({
     Boolean((payrollRow?.settings as Record<string, unknown> | null)?.allow_admin_input);
   const showAbsensi = Boolean(absensiRow?.is_enabled);
 
-  const sidebarItems = buildSidebarItems(isAdminFull, showAbsensi, showSalaryConfig);
-
   const [verifikasiCount, pendingAttendanceCount] = await Promise.all([
     // Antrian verifikasi yang butuh keputusan admin (submitted/edited) — BUKAN
     // jumlah notifikasi. Sebelumnya badge salah pakai unread-notification.
+    // Dihitung juga saat admin_full agar sisa antrian lama tetap bisa didrain.
     (async (): Promise<number> => {
-      if (!tenantId || isAdminFull) return 0;
+      if (!tenantId) return 0;
       try {
         const { count } = await supabase
           .from("daily_submissions")
@@ -109,6 +120,8 @@ export default async function AdminLayout({
       }
     })(),
   ]);
+
+  const sidebarItems = buildSidebarItems(isAdminFull, showAbsensi, showSalaryConfig, verifikasiCount);
 
   const userName    = session.userFullName || session.userEmail?.split("@")[0] || "Admin";
   const userInitial = userName.charAt(0).toUpperCase();

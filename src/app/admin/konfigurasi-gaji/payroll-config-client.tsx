@@ -4,11 +4,12 @@ import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronDown, Loader2, CheckCircle2, Save, User, Banknote, Plus,
-  Trash2, AlertCircle, Copy, X,
+  AlertCircle, Copy, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "@/components/shared/info-tooltip";
 import { CurrencyInput } from "@/components/shared/currency-input";
+import { PayrollAdjustmentRow } from "@/components/payroll/adjustment-row";
 import { toast } from "sonner";
 
 const IDR = new Intl.NumberFormat("id-ID", {
@@ -323,31 +324,13 @@ function CrewCard({
             ) : (
               <div className="space-y-2">
                 {customAdj.map((adj, idx) => adj.type !== "addition" ? null : (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="Nama penambahan..."
-                      value={adj.name}
-                      onChange={(e) => updateCustomAdj(idx, { name: e.target.value })}
-                      className="flex-1 min-w-0 rounded-xl border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-800 bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none"
-                    />
-                    <CurrencyInput
-                      value={adj.amount}
-                      onChange={(val) => updateCustomAdj(idx, { amount: val })}
-                      className="w-28 rounded-xl border border-emerald-200 px-2 py-1.5 text-xs font-black text-emerald-600 bg-emerald-50/30 outline-none focus:border-emerald-400"
-                    />
-                    <div className="flex shrink-0 overflow-hidden rounded-lg border border-slate-200 text-[8px] font-black uppercase" title="Bulanan = ×1; /hari = × hari masuk aktual saat rekap">
-                      <button type="button"
-                        onClick={() => updateCustomAdj(idx, { basis: "monthly" })}
-                        className={`px-1.5 py-1.5 ${adj.basis === "daily" ? "bg-white text-slate-400" : "bg-slate-800 text-white"}`}>Bln</button>
-                      <button type="button"
-                        onClick={() => updateCustomAdj(idx, { basis: "daily" })}
-                        className={`px-1.5 py-1.5 ${adj.basis === "daily" ? "bg-amber-500 text-white" : "bg-white text-slate-400"}`}>/hr</button>
-                    </div>
-                    <button type="button" onClick={() => removeCustomAdj(idx)} className="text-rose-300 hover:text-rose-500 transition-colors">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  <PayrollAdjustmentRow
+                    key={idx}
+                    value={adj}
+                    accent="emerald"
+                    onUpdate={(patch) => updateCustomAdj(idx, patch)}
+                    onRemove={() => removeCustomAdj(idx)}
+                  />
                 ))}
               </div>
             )}
@@ -373,31 +356,13 @@ function CrewCard({
             ) : (
               <div className="space-y-2">
                 {customAdj.map((adj, idx) => adj.type !== "deduction" ? null : (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="Nama pengurangan..."
-                      value={adj.name}
-                      onChange={(e) => updateCustomAdj(idx, { name: e.target.value })}
-                      className="flex-1 min-w-0 rounded-xl border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-800 bg-slate-50 focus:bg-white focus:border-rose-400 outline-none"
-                    />
-                    <CurrencyInput
-                      value={adj.amount}
-                      onChange={(val) => updateCustomAdj(idx, { amount: val })}
-                      className="w-28 rounded-xl border border-rose-200 px-2 py-1.5 text-xs font-black text-rose-600 bg-rose-50/30 outline-none focus:border-rose-400"
-                    />
-                    <div className="flex shrink-0 overflow-hidden rounded-lg border border-slate-200 text-[8px] font-black uppercase" title="Bulanan = ×1; /hari = × hari masuk aktual saat rekap">
-                      <button type="button"
-                        onClick={() => updateCustomAdj(idx, { basis: "monthly" })}
-                        className={`px-1.5 py-1.5 ${adj.basis === "daily" ? "bg-white text-slate-400" : "bg-slate-800 text-white"}`}>Bln</button>
-                      <button type="button"
-                        onClick={() => updateCustomAdj(idx, { basis: "daily" })}
-                        className={`px-1.5 py-1.5 ${adj.basis === "daily" ? "bg-amber-500 text-white" : "bg-white text-slate-400"}`}>/hr</button>
-                    </div>
-                    <button type="button" onClick={() => removeCustomAdj(idx)} className="text-rose-300 hover:text-rose-500 transition-colors">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  <PayrollAdjustmentRow
+                    key={idx}
+                    value={adj}
+                    accent="rose"
+                    onUpdate={(patch) => updateCustomAdj(idx, patch)}
+                    onRemove={() => removeCustomAdj(idx)}
+                  />
                 ))}
               </div>
             )}

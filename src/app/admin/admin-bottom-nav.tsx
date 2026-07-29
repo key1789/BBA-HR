@@ -8,12 +8,23 @@ import { cn } from "@/lib/utils";
 type BadgeType = "none" | "verifikasi" | "attendance";
 type NavItem = { name: string; path: string; Icon: React.ElementType; badge: BadgeType };
 
-function buildNavItems(isAdminFull: boolean, showAbsensi: boolean, showSalaryConfig: boolean): NavItem[] {
+function buildNavItems(
+  isAdminFull: boolean,
+  showAbsensi: boolean,
+  showSalaryConfig: boolean,
+  pendingVerifikasi: number,
+): NavItem[] {
   return [
     { name: "Dashboard", path: "/admin/dashboard", Icon: LayoutDashboard, badge: "none" },
-    isAdminFull
-      ? { name: "Closingan", path: "/admin/input-harian", Icon: UserCog, badge: "none" }
-      : { name: "Verifikasi", path: "/admin/verifikasi", Icon: ClipboardCheck, badge: "verifikasi" },
+    ...(isAdminFull
+      ? [
+          { name: "Closingan", path: "/admin/input-harian", Icon: UserCog, badge: "none" as BadgeType },
+          // Drain sisa antrian verifikasi lama; tampil hanya bila masih ada.
+          ...(pendingVerifikasi > 0
+            ? [{ name: "Verifikasi", path: "/admin/verifikasi", Icon: ClipboardCheck, badge: "verifikasi" as BadgeType }]
+            : []),
+        ]
+      : [{ name: "Verifikasi", path: "/admin/verifikasi", Icon: ClipboardCheck, badge: "verifikasi" as BadgeType }]),
     ...(showAbsensi
       ? [{ name: "Absensi", path: "/admin/absensi", Icon: CalendarDays, badge: "attendance" as BadgeType }]
       : []),
@@ -38,7 +49,7 @@ export function AdminBottomNav({
   showSalaryConfig?: boolean;
 }) {
   const pathname = usePathname();
-  const NAV_ITEMS = buildNavItems(isAdminFull, showAbsensi, showSalaryConfig);
+  const NAV_ITEMS = buildNavItems(isAdminFull, showAbsensi, showSalaryConfig, verifikasiCount);
 
   function badgeCount(type: BadgeType): number {
     if (type === "verifikasi") return verifikasiCount;

@@ -285,6 +285,9 @@ export function AdminClosingForm({
                   className="mt-1.5 rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2.5 text-base font-black text-amber-600 w-full focus:bg-white focus:border-sky-500 focus:ring-4 focus:ring-sky-500/20 transition-all outline-none"
                   placeholder="0"
                 />
+                <p className="mt-1 text-[9px] font-bold text-slate-400">
+                  Jumlah <span className="text-slate-500">orang</span> yang pulang tanpa dilayani — dihitung per pelanggan.
+                </p>
               </label>
 
               <label className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-400 block">
@@ -297,6 +300,9 @@ export function AdminClosingForm({
                   className="mt-1.5 rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2.5 text-base font-black text-amber-600 w-full focus:bg-white focus:border-sky-500 focus:ring-4 focus:ring-sky-500/20 transition-all outline-none"
                   placeholder="0"
                 />
+                <p className="mt-1 text-[9px] font-bold text-slate-400">
+                  Jumlah <span className="text-slate-500">item obat</span> yang gagal disediakan — 1 pelanggan bisa beberapa item.
+                </p>
               </label>
             </div>
           </div>
@@ -310,7 +316,7 @@ export function AdminClosingForm({
                 </div>
                 <div className="flex-1 min-w-0">
                   <h2 className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Produk Fokus</h2>
-                  <p className="text-[9px] font-bold text-emerald-600 mt-0.5">Kosongkan jika tidak terjual</p>
+                  <p className="text-[9px] font-bold text-emerald-600 mt-0.5">Target penjualan bulan ini — kosongkan jika tidak terjual</p>
                 </div>
                 {filledFocusCount > 0 && (
                   <span className="shrink-0 text-[9px] font-black text-emerald-700 bg-white border border-emerald-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
